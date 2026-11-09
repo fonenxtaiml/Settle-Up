@@ -320,7 +320,7 @@ final class BleTransport implements SyncTransport {
           _tick = null;
           await _adverts?.cancel();
           _adverts = null;
-          _probeQueue.clear();
+          _clearProbeQueue();
           try {
             await api.stopScan();
           } catch (e, st) {
@@ -365,6 +365,13 @@ final class BleTransport implements SyncTransport {
     s.queued = true;
     _probeQueue.add(id);
     unawaited(_runProbes());
+  }
+
+  void _clearProbeQueue() {
+    for (final id in _probeQueue) {
+      _seen[id]?.queued = false;
+    }
+    _probeQueue.clear();
   }
 
   Future<void> _runProbes() async {

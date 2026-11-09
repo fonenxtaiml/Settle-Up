@@ -184,6 +184,29 @@ void main() {
       expect(central.count('stopScan'), 1);
     });
 
+    test('a scan stopped before its probe ran probes on the next scan',
+        () async {
+      final a = transport('A',
+          probeRetryAfter: const Duration(milliseconds: 300));
+      final b = transport('B');
+      final c = transport('C');
+      await b.startAdvertising(info('b', 'Priya'));
+      await c.startAdvertising(info('c', 'Sam'));
+      final central = air.central('A')..connectHangs = true;
+      // The first probe hangs, so the second phone stays queued.
+      final sub = a.discover().listen((_) {});
+      await pumpUntil(() => central.count('connect') == 1);
+      await Future<void>.delayed(_tick * 2);
+      await sub.cancel();
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      central.connectHangs = false;
+
+      final names = <String>{};
+      final again = a.discover().listen((p) => names.add(p.name));
+      await pumpUntil(() => names.containsAll(['Priya', 'Sam']));
+      await again.cancel();
+    });
+
     test('a new listener gets visible cached peers at once', () async {
       final a = transport('A');
       final b = transport('B');
