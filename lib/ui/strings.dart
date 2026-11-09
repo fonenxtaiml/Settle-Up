@@ -159,6 +159,12 @@ abstract final class S {
   static const youSub = 'You, on this phone';
   static const renameTitle = 'Rename';
   static const memberAdded = 'Person added';
+  static String alreadyInGroup(String name) =>
+      '$name is already in this group';
+  static String cannotRemoveTitle(String name) => "$name can't be removed yet";
+  static String cannotRemoveBody(String name, String balance) =>
+      '$name has $balance open in this group. Settle up first, then remove.';
+  static const ok = 'OK';
 
   // ------------------------------------------------------------- invite --
   static String inviteTitle(String group) => 'Join $group';
