@@ -1,6 +1,5 @@
 // PLATFORM-R1-02 / -11: permissions are asked for, and every radio problem
 // on the Sync tab has a way out.
-import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
