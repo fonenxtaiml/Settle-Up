@@ -68,8 +68,8 @@ void main() {
 
     final e = alex.state.groups[s.g]!.liveExpenses.first.id;
     await alex.rename(s.g, e, 'Dinner at the shack');
-    await alex.addExpense(s.g, payer: s.a, owers: [s.a, s.b], total: 990);
-    await priya.addExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 450);
+    await alex.authorExpense(s.g, payer: s.a, owers: [s.a, s.b], total: 990);
+    await priya.authorExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 450);
     await priya.rename(s.g, e, 'Shack dinner');
     expect(priya.canonical, isNot(alex.canonical));
 
@@ -89,7 +89,7 @@ void main() {
     await join(ravi, 1);
 
     await syncPair(alex, priya);
-    await priya.addExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 300);
+    await priya.authorExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 300);
     final (rb, rc) = await syncPair(priya, ravi);
 
     expect(rb.outcome, SyncOutcome.completed);
@@ -131,7 +131,7 @@ void main() {
       () async {
     final s = await seedGroup(alex, expenses: 0);
     for (var i = 0; i < 1997; i++) {
-      await alex.addExpense(s.g,
+      await alex.authorExpense(s.g,
           payer: s.a, owers: [s.a, s.b], total: 100 + i, description: 'E$i');
     }
     await join(priya, 1);
@@ -160,7 +160,7 @@ void main() {
       'without duplicates', () async {
     final s = await seedGroup(alex, expenses: 0);
     for (var i = 0; i < 300; i++) {
-      await alex.addExpense(s.g,
+      await alex.authorExpense(s.g,
           payer: s.a, owers: [s.a, s.b], total: 100 + i, description: 'E$i');
     }
     await join(priya, 1);
@@ -348,12 +348,12 @@ void main() {
     expect(priya.canonical, alex.canonical);
 
     final sw = Stopwatch()..start();
-    await alex.addExpense(s.g, payer: s.a, owers: [s.a, s.b], total: 777);
+    await alex.authorExpense(s.g, payer: s.a, owers: [s.a, s.b], total: 777);
     expect(priya.opCount(s.g), 6);
     expect(await eventually(() => priya.opCount(s.g) == 7), isTrue);
     expect(sw.elapsed, lessThan(const Duration(seconds: 1)));
     // And the other way.
-    await priya.addExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 222);
+    await priya.authorExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 222);
     expect(await eventually(() => alex.opCount(s.g) == 8), isTrue);
     // Keepalive holds the session open past the idle limit... briefly.
     await Future<void>.delayed(const Duration(milliseconds: 700));

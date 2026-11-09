@@ -229,7 +229,7 @@ base class TestLedger implements SyncStore {
   String _newId(String kind) => '$localDeviceId/$kind/${++_entitySeq}';
 
   /// Creates the group (holding [key]) and returns its id.
-  Future<GroupId> createGroup(
+  Future<GroupId> authorGroup(
     GroupId g,
     Uint8List key, {
     String name = 'Goa trip',
@@ -245,7 +245,7 @@ base class TestLedger implements SyncStore {
     return g;
   }
 
-  Future<MemberId> addMember(GroupId g, String name) async {
+  Future<MemberId> authorMember(GroupId g, String name) async {
     final m = _newId('m');
     await author(g, EntityType.member, m, OpKind.create, {
       MemberFields.displayName: name,
@@ -255,7 +255,7 @@ base class TestLedger implements SyncStore {
     return m;
   }
 
-  Future<ExpenseId> addExpense(
+  Future<ExpenseId> authorExpense(
     GroupId g, {
     required MemberId payer,
     required List<MemberId> owers,
@@ -299,11 +299,11 @@ Future<({GroupId g, MemberId a, MemberId b})> seedGroup(
   int group = 1,
   int expenses = 3,
 }) async {
-  final g = await owner.createGroup(groupIdOf(group), groupKeyOf(group));
-  final a = await owner.addMember(g, 'Alex');
-  final b = await owner.addMember(g, 'Priya');
+  final g = await owner.authorGroup(groupIdOf(group), groupKeyOf(group));
+  final a = await owner.authorMember(g, 'Alex');
+  final b = await owner.authorMember(g, 'Priya');
   for (var i = 0; i < expenses; i++) {
-    await owner.addExpense(g,
+    await owner.authorExpense(g,
         payer: a, owers: [a, b], total: 1000 + i, description: 'Item $i');
   }
   return (g: g, a: a, b: b);
