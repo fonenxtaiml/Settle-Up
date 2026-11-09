@@ -12,7 +12,6 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
-import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/core/version_vector.dart';
 import 'package:settle_up/sync/protocol/codec.dart';
@@ -119,13 +118,20 @@ void main() {
       'counter negative': (j) => {...j, 'counter': -4},
       'id as int': (j) => {...j, 'id': 42},
       'missing groupId': (j) => {...j}..remove('groupId'),
-      'payload as list': (j) => {...j, 'payload': [1, 2]},
+      'payload as list': (j) => {
+        ...j,
+        'payload': [1, 2],
+      },
       'payload as string': (j) => {...j, 'payload': 'x'},
       'hlc as number': (j) => {...j, 'hlc': 12},
-      'hlc of another device': (j) =>
-          {...j, 'hlc': const Hlc(kBaseMs, 0, 'someone-else').encode()},
-      'hlc with 16 digit millis': (j) =>
-          {...j, 'hlc': '1234567890123456-0000-$mallory'},
+      'hlc of another device': (j) => {
+        ...j,
+        'hlc': const Hlc(kBaseMs, 0, 'someone-else').encode(),
+      },
+      'hlc with 16 digit millis': (j) => {
+        ...j,
+        'hlc': '1234567890123456-0000-$mallory',
+      },
       'unknown entityType at schema 1': (j) => {...j, 'entityType': 'robot'},
       'unknown kind at schema 1': (j) => {...j, 'kind': 'explode'},
       'schemaVersion as string': (j) => {...j, 'schemaVersion': '2'},
@@ -185,8 +191,7 @@ void main() {
         'batch': 1,
         'total': 501,
         'ops': [
-          for (var i = 1; i <= 501; i++)
-            expenseJson(id: 'bulk-$i', counter: i),
+          for (var i = 1; i <= 501; i++) expenseJson(id: 'bulk-$i', counter: i),
         ],
         'more': false,
       });
@@ -266,32 +271,41 @@ void main() {
       await result;
     }
 
-    test('a later update for an expense of another group does not touch it',
-        () async {
-      // Priya's private group expense; Mallory (only in Goa trip) learns
-      // its id and writes an update for it inside Goa trip.
-      final other = await priya.seedGroup(expenses: 1, name: 'Private');
-      final target = priya.state.groups[other.g]!.expenses.values.single;
-      await crossGroupUpdate(
-          other, target.id, target.updatedHlc.millis + 60000);
-      final after = priya.state.groups[other.g]!.expenses[target.id];
-      expect(after, isNotNull);
-      expect(after!.description, target.description);
-      expect(after.isDeleted, isFalse);
-    });
+    test(
+      'a later update for an expense of another group does not touch it',
+      () async {
+        // Priya's private group expense; Mallory (only in Goa trip) learns
+        // its id and writes an update for it inside Goa trip.
+        final other = await priya.seedGroup(expenses: 1, name: 'Private');
+        final target = priya.state.groups[other.g]!.expenses.values.single;
+        await crossGroupUpdate(
+          other,
+          target.id,
+          target.updatedHlc.millis + 60000,
+        );
+        final after = priya.state.groups[other.g]!.expenses[target.id];
+        expect(after, isNotNull);
+        expect(after!.description, target.description);
+        expect(after.isDeleted, isFalse);
+      },
+    );
 
     test(
       'an earlier-stamped op for an expense id of another group cannot hide '
       'it from its own group',
-      skip: 'QA SECURITY-R1-04: a member of one group can hide an expense '
+      skip:
+          'QA SECURITY-R1-04: a member of one group can hide an expense '
           'of another group by reusing its id with an older HLC',
       () async {
         final other = await priya.seedGroup(expenses: 1, name: 'Private');
         final target = priya.state.groups[other.g]!.expenses.values.single;
         await crossGroupUpdate(other, target.id, 1);
         final after = priya.state.groups[other.g]!.expenses[target.id];
-        expect(after, isNotNull,
-            reason: 'the Goa trip op took ownership of the Private expense');
+        expect(
+          after,
+          isNotNull,
+          reason: 'the Goa trip op took ownership of the Private expense',
+        );
       },
     );
   });
@@ -318,8 +332,9 @@ void main() {
     test(
       'an op forged with this phone own device id and a huge counter cannot '
       'break the phone later ops',
-      skip: 'QA SECURITY-R1-01: forged own-device op poisons the local '
-          'counter (overflow to a negative counter breaks group sync)',
+      skip:
+          'QA SECURITY-R1-01: a forged op with this phone own device id '
+          'poisons its counter; later local ops never sync',
       () async {
         final (evil, result) = await attack();
         // Max int64: the next local counter wraps to a negative number.
@@ -343,22 +358,30 @@ void main() {
         expect(error?.code, ErrorCodes.badOp);
         // And in any case the phone must keep writing valid ops.
         await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
-        final mine = priya.opsOf(seed.g)
+        final mine = priya
+            .opsOf(seed.g)
             .where((o) => o.deviceId == priya.deviceId)
             .toList();
-        expect(mine.every((o) => o.counter >= 1), isTrue,
-            reason: 'counters: ${mine.map((o) => o.counter).toList()}');
+        expect(
+          mine.every((o) => o.counter >= 1),
+          isTrue,
+          reason: 'counters: ${mine.map((o) => o.counter).toList()}',
+        );
         final (ri, rr) = await syncPair(priya, alex);
         expect(ri.isSuccess, isTrue, reason: ri.message);
         expect(rr.isSuccess, isTrue, reason: rr.message);
+        // Today the wrapped (negative) counter is never above any version
+        // vector, so the new expense silently never leaves this phone.
+        expect(alex.canonical, priya.canonical);
       },
     );
 
     test(
       'an op forged with this phone own device id and a counter gap leaves '
       'every later local change unshared forever',
-      skip: 'QA SECURITY-R1-01: forged own-device op poisons the local '
-          'counter (overflow to a negative counter breaks group sync)',
+      skip:
+          'QA SECURITY-R1-01: a forged op with this phone own device id '
+          'poisons its counter; later local ops never sync',
       () async {
         final (evil, result) = await attack();
         await sendRawOps(evil, {
@@ -366,7 +389,11 @@ void main() {
           'batch': 1,
           'total': 1,
           'ops': [
-            expenseJson(id: 'forged-gap', device: priya.deviceId, counter: 1000),
+            expenseJson(
+              id: 'forged-gap',
+              device: priya.deviceId,
+              counter: 1000,
+            ),
           ],
           'more': false,
         });
@@ -378,9 +405,13 @@ void main() {
         expect(ri.isSuccess && rr.isSuccess, isTrue);
         expect(priya.canonical, alex.canonical);
         // Alex holds everything Priya wrote, so nothing is unshared.
-        expect(priya.snapshot.unsharedCounts, isEmpty,
-            reason: 'Priya next counter jumped past the forged 1000, so her '
-                'contiguous version vector never covers her own ops');
+        expect(
+          priya.snapshot.unsharedCounts,
+          isEmpty,
+          reason:
+              'Priya next counter jumped past the forged 1000, so her '
+              'contiguous version vector never covers her own ops',
+        );
       },
     );
   });
@@ -388,7 +419,8 @@ void main() {
   group('sizes', () {
     test(
       'a highly compressible 500 KB description is rejected (SPEC 5.16)',
-      skip: 'QA SECURITY-R1-02: remote ops bypass SPEC 5.16 text limits; '
+      skip:
+          'QA SECURITY-R1-02: remote ops bypass SPEC 5.16 text limits; '
           'gzip-compressible huge strings are stored',
       () async {
         final (evil, result) = await attack();
@@ -414,7 +446,8 @@ void main() {
 
     test(
       'many compressible ops cannot grow the op log without bound',
-      skip: 'QA SECURITY-R1-02: remote ops bypass SPEC 5.16 text limits; '
+      skip:
+          'QA SECURITY-R1-02: remote ops bypass SPEC 5.16 text limits; '
           'gzip-compressible huge strings are stored',
       () async {
         final (evil, result) = await attack();
@@ -439,7 +472,9 @@ void main() {
         await result;
         final stored = priya.opsOf(seed.g).where((o) => o.deviceId == mallory);
         final bytes = stored.fold<int>(
-            0, (n, o) => n + utf8.encode(jsonEncode(o.toJson())).length);
+          0,
+          (n, o) => n + utf8.encode(jsonEncode(o.toJson())).length,
+        );
         expect(bytes, lessThan(64 * 1024));
       },
     );
@@ -476,8 +511,9 @@ void main() {
     test('a gzip bomb in a sealed frame is refused as too large', () async {
       final (evil, result) = await attack();
       final bomb = utf8.encode(
-          '{"g":"${seed.g}","batch":1,"total":1,"more":false,"ops":[],'
-          '"pad":"${'0' * (9 << 20)}"}');
+        '{"g":"${seed.g}","batch":1,"total":1,"more":false,"ops":[],'
+        '"pad":"${'0' * (9 << 20)}"}',
+      );
       final gz = gzipEncode(bomb);
       expect(gz.length, lessThan(64 << 10));
       final plain = Uint8List(2 + gz.length)
@@ -491,28 +527,33 @@ void main() {
       await expectStillSyncs();
     });
 
-    test('a version vector with out of range counters is a bad frame',
-        () async {
-      final (evil, result) = await attack();
-      final body = utf8.encode(jsonEncode({
-        'g': seed.g,
-        'vv': {alex.deviceId: -1},
-      }));
-      final plain = Uint8List(2 + body.length)
-        ..[0] = MessageType.vv.code
-        ..setRange(2, 2 + body.length, body);
-      await evil.channel.send(await evil.keys!.cipher.seal(plain));
-      final e = await evil.until((m) => m is ErrorMessage);
-      expect((e as ErrorMessage?)?.code, ErrorCodes.badFrame);
-      await result;
-      await expectStillSyncs();
-    });
+    test(
+      'a version vector with out of range counters is a bad frame',
+      () async {
+        final (evil, result) = await attack();
+        final body = utf8.encode(
+          jsonEncode({
+            'g': seed.g,
+            'vv': {alex.deviceId: -1},
+          }),
+        );
+        final plain = Uint8List(2 + body.length)
+          ..[0] = MessageType.vv.code
+          ..setRange(2, 2 + body.length, body);
+        await evil.channel.send(await evil.keys!.cipher.seal(plain));
+        final e = await evil.until((m) => m is ErrorMessage);
+        expect((e as ErrorMessage?)?.code, ErrorCodes.badFrame);
+        await result;
+        await expectStillSyncs();
+      },
+    );
   });
 
   group('time', () {
     test(
       'an op stamped far in the future cannot freeze a field forever',
-      skip: 'QA SECURITY-R1-03: ops with an HLC far ahead of every clock '
+      skip:
+          'QA SECURITY-R1-03: ops with an HLC far ahead of every clock '
           'are accepted and win last-writer-wins permanently',
       () async {
         final target = priya.state.groups[seed.g]!.expenses.values.first;

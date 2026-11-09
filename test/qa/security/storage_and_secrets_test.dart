@@ -63,18 +63,30 @@ bool containsBytes(List<int> hay, List<int> needle) {
 final class FilePhone {
   FilePhone._(this.dir, this.store, this.settings, this.ledger, this.keys);
 
-  static Future<FilePhone> open(Directory dir, GroupKeyStore keys,
-      {String letter = 'f'}) async {
+  static Future<FilePhone> open(
+    Directory dir,
+    GroupKeyStore keys, {
+    String letter = 'f',
+  }) async {
     final store = SqliteOpStore('${dir.path}/settle_up.db');
     await store.open();
-    final settings = await KvSettingsRepository.open(store,
-        defaultDeviceName: 'Pixel 8', ids: PhoneIds(letter));
+    final settings = await KvSettingsRepository.open(
+      store,
+      defaultDeviceName: 'Pixel 8',
+      ids: PhoneIds(letter),
+    );
     if (settings.profile == null) {
       await settings.completeOnboarding(
-          displayName: 'Farah', homeCurrency: 'INR');
+        displayName: 'Farah',
+        homeCurrency: 'INR',
+      );
     }
     final ledger = await Ledger.open(
-        store: store, keys: keys, settings: settings, ids: PhoneIds(letter));
+      store: store,
+      keys: keys,
+      settings: settings,
+      ids: PhoneIds(letter),
+    );
     return FilePhone._(dir, store, settings, ledger, keys);
   }
 
@@ -92,9 +104,9 @@ final class FilePhone {
 
   /// Bytes of the database and its WAL/SHM side files.
   List<int> fileBytes() => [
-        for (final f in dir.listSync().whereType<File>())
-          if (f.path.contains('settle_up.db')) ...f.readAsBytesSync(),
-      ];
+    for (final f in dir.listSync().whereType<File>())
+      if (f.path.contains('settle_up.db')) ...f.readAsBytesSync(),
+  ];
 }
 
 void main() {
@@ -106,24 +118,28 @@ void main() {
     test('own group, joined group, sync records and settings', () async {
       final keys = MemoryGroupKeyStore();
       final phone = await FilePhone.open(dir, keys);
-      final g = await phone.ledger.createGroup(const NewGroup(
-        name: 'Goa trip',
-        type: GroupType.trip,
-        currency: 'INR',
-        newMemberNames: ['Priya'],
-      ));
+      final g = await phone.ledger.createGroup(
+        const NewGroup(
+          name: 'Goa trip',
+          type: GroupType.trip,
+          currency: 'INR',
+          newMemberNames: ['Priya'],
+        ),
+      );
       final gs = phone.ledger.current.state.groups[g]!;
       final a = gs.members.values.first.id;
-      await phone.ledger.addExpense(ExpenseDraft(
-        groupId: g,
-        description: secretText,
-        total: 1000,
-        currency: 'INR',
-        paidBy: SplitSpec.single(a, 1000),
-        owedBy: SplitSpec.equal(gs.members.keys.toList()),
-        category: 'food.dining',
-        date: utcFromMillis(kBaseMs),
-      ));
+      await phone.ledger.addExpense(
+        ExpenseDraft(
+          groupId: g,
+          description: secretText,
+          total: 1000,
+          currency: 'INR',
+          paidBy: SplitSpec.single(a, 1000),
+          owedBy: SplitSpec.equal(gs.members.keys.toList()),
+          category: 'food.dining',
+          date: utcFromMillis(kBaseMs),
+        ),
+      );
       // A joined group from an invite.
       final joinedKey = Uint8List.fromList(List.generate(32, (i) => 200 - i));
       final invite = InviteLink(
@@ -138,18 +154,20 @@ void main() {
       expect(join.alreadyMember, isFalse);
       // An invite generated for our own group (what the QR shows).
       final shown = await engine.inviteLinkFor(g, includeHost: false);
-      await phone.ledger.addSyncRecord(SyncRecord(
-        id: 'r1',
-        peerName: 'Priya',
-        transport: TransportKind.lan,
-        startedAt: utcFromMillis(kBaseMs),
-        endedAt: utcFromMillis(kBaseMs + 10),
-        sentOps: 0,
-        receivedOps: 0,
-        groupIds: [g],
-        outcome: SyncOutcome.failed,
-        error: 'authFailed: Bad AUTH mac',
-      ));
+      await phone.ledger.addSyncRecord(
+        SyncRecord(
+          id: 'r1',
+          peerName: 'Priya',
+          transport: TransportKind.lan,
+          startedAt: utcFromMillis(kBaseMs),
+          endedAt: utcFromMillis(kBaseMs + 10),
+          sentOps: 0,
+          receivedOps: 0,
+          groupIds: [g],
+          outcome: SyncOutcome.failed,
+          error: 'authFailed: Bad AUTH mac',
+        ),
+      );
       await engine.dispose();
       final ownKey = (await keys.all())[g]!;
       await phone.close();
@@ -159,8 +177,11 @@ void main() {
       for (final key in [ownKey, joinedKey]) {
         expect(containsBytes(bytes, key), isFalse, reason: 'raw key bytes');
         for (final form in keyForms(key)) {
-          expect(containsBytes(bytes, utf8.encode(form)), isFalse,
-              reason: 'key as text: $form');
+          expect(
+            containsBytes(bytes, utf8.encode(form)),
+            isFalse,
+            reason: 'key as text: $form',
+          );
         }
       }
       expect(containsBytes(bytes, utf8.encode('settleup://join')), isFalse);
@@ -182,8 +203,10 @@ void main() {
       expect(raw.keys, ['gk.g1']);
       // Malformed values are skipped, never surfaced.
       await const FlutterSecureStorage().write(key: 'gk.bad', value: '!!');
-      await const FlutterSecureStorage()
-          .write(key: 'gk.short', value: base64Url.encode([1, 2, 3]));
+      await const FlutterSecureStorage().write(
+        key: 'gk.short',
+        value: base64Url.encode([1, 2, 3]),
+      );
       expect((await store.all()).keys, ['g1']);
       await store.remove('g1');
       expect(await store.keyFor('g1'), isNull);
@@ -198,8 +221,12 @@ void main() {
       alex = await TestPhone.create('a', deviceName: 'Alex');
       priya = await TestPhone.create('b', deviceName: 'Priya', name: 'Priya');
       seed = await alex.seedGroup(expenses: 1);
-      await alex.addExpense(seed.g,
-          payer: seed.a, owers: [seed.a, seed.b], description: secretText);
+      await alex.addExpense(
+        seed.g,
+        payer: seed.a,
+        owers: [seed.a, seed.b],
+        description: secretText,
+      );
       await priya.join(alex, seed.g);
     });
 
@@ -231,10 +258,11 @@ void main() {
       // A stranger with the wrong key.
       final (ci, cr) = await channelPair();
       final s1 = SyncSession(
-          channel: cr,
-          store: priya.store,
-          role: SessionRole.responder,
-          timings: fastTimings);
+        channel: cr,
+        store: priya.store,
+        role: SessionRole.responder,
+        timings: fastTimings,
+      );
       final f1 = s1.run();
       final evil = EvilPeer(ci, initiator: true);
       try {
@@ -249,10 +277,11 @@ void main() {
       // A member sending a batch with a bad op that carries the secret.
       final (ci2, cr2) = await channelPair();
       final s2 = SyncSession(
-          channel: cr2,
-          store: priya.store,
-          role: SessionRole.responder,
-          timings: fastTimings);
+        channel: cr2,
+        store: priya.store,
+        role: SessionRole.responder,
+        timings: fastTimings,
+      );
       final f2 = s2.run();
       final evil2 = EvilPeer(ci2, initiator: true);
       await evil2.handshake({seed.g: key});
@@ -262,13 +291,15 @@ void main() {
         'id': 'x-$secretText',
         'groupId': groupIdOf(5),
       };
-      await evil2.sendSealed(OpsMessage(
-        groupId: seed.g,
-        batch: 1,
-        total: 1,
-        ops: [Operation.fromJson(bad)],
-        more: false,
-      ));
+      await evil2.sendSealed(
+        OpsMessage(
+          groupId: seed.g,
+          batch: 1,
+          total: 1,
+          ops: [Operation.fromJson(bad)],
+          more: false,
+        ),
+      );
       final r2 = await f2;
       expect(r2.failure, SyncFailure.protocolMismatch);
       await priya.ledger.addSyncRecord(r2.toRecord('bad-op'));
@@ -318,21 +349,24 @@ void main() {
       }
     });
 
-    test('Operation, InviteLink and session keys do not print secrets',
-        () async {
-      final key = await alex.keyOf(seed.g);
-      final invite = InviteLink(
+    test(
+      'Operation, InviteLink and session keys do not print secrets',
+      () async {
+        final key = await alex.keyOf(seed.g);
+        final invite = InviteLink(
           groupId: seed.g,
           groupKey: key,
           groupName: 'Goa',
           currency: 'INR',
-          fromName: 'Alex');
-      for (final text in ['$invite']) {
-        for (final form in keyForms(key)) {
-          expect(text, isNot(contains(form)));
+          fromName: 'Alex',
+        );
+        for (final text in ['$invite']) {
+          for (final form in keyForms(key)) {
+            expect(text, isNot(contains(form)));
+          }
         }
-      }
-    });
+      },
+    );
   });
 
   group('key loss and invites', () {
@@ -379,8 +413,7 @@ void main() {
       expect((await reopened.groupKeys())[seed.g], key);
     });
 
-    test('an invite for a group already held cannot replace its key',
-        () async {
+    test('an invite for a group already held cannot replace its key', () async {
       final key = await alex.keyOf(seed.g);
       final engine = DefaultSyncEngine(store: alex.store, transports: []);
       addTearDown(engine.dispose);
@@ -396,24 +429,26 @@ void main() {
       expect((await alex.ledger.groupKeys())[seed.g], key);
     });
 
-    test('a pending join created by an invite with a hostile name is inert',
-        () async {
-      final engine = DefaultSyncEngine(store: alex.store, transports: []);
-      addTearDown(engine.dispose);
-      final link = InviteLink(
-        groupId: groupIdOf(42),
-        groupKey: Uint8List(32)..[5] = 5,
-        groupName: '=cmd|calc‮',
-        currency: 'XXX',
-        fromName: 'Mallory',
-      ).encode();
-      final r = await engine.acceptInvite(link);
-      expect(r.alreadyMember, isFalse);
-      expect(alex.snapshot.pendingJoins[groupIdOf(42)], isNotNull);
-      // No group, member or op appears until a real create op arrives.
-      expect(alex.state.groups[groupIdOf(42)], isNull);
-      expect(alex.opCount(groupIdOf(42)), 0);
-    });
+    test(
+      'a pending join created by an invite with a hostile name is inert',
+      () async {
+        final engine = DefaultSyncEngine(store: alex.store, transports: []);
+        addTearDown(engine.dispose);
+        final link = InviteLink(
+          groupId: groupIdOf(42),
+          groupKey: Uint8List(32)..[5] = 5,
+          groupName: '=cmd|calc\u202E',
+          currency: 'XXX',
+          fromName: 'Mallory',
+        ).encode();
+        final r = await engine.acceptInvite(link);
+        expect(r.alreadyMember, isFalse);
+        expect(alex.snapshot.pendingJoins[groupIdOf(42)], isNotNull);
+        // No group, member or op appears until a real create op arrives.
+        expect(alex.state.groups[groupIdOf(42)], isNull);
+        expect(alex.opCount(groupIdOf(42)), 0);
+      },
+    );
   });
 }
 

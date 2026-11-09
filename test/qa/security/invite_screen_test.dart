@@ -34,9 +34,9 @@ void main() {
     shared.clear();
     TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
         .setMockMethodCallHandler(_shareChannel, (call) async {
-      shared.add(call.arguments);
-      return 'dev.fluttercommunity.plus/share/unavailable';
-    });
+          shared.add(call.arguments);
+          return 'dev.fluttercommunity.plus/share/unavailable';
+        });
   });
 
   tearDown(() async {
@@ -50,21 +50,24 @@ void main() {
     tester.view.physicalSize = const Size(412, 915) * 2;
     tester.view.devicePixelRatio = 2;
     addTearDown(tester.view.reset);
-    await tester.pumpWidget(ProviderScope(
-      overrides: [
-        settingsRepositoryProvider.overrideWithValue(alex.settings),
-        ledgerRepositoryProvider.overrideWithValue(alex.ledger),
-        syncEngineProvider.overrideWithValue(engine),
-        clockProvider.overrideWithValue(() => now),
-      ],
-      child: MaterialApp(
-        theme: AppTheme.light(),
-        home: InviteScreen(groupId: seed.g),
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          settingsRepositoryProvider.overrideWithValue(alex.settings),
+          ledgerRepositoryProvider.overrideWithValue(alex.ledger),
+          syncEngineProvider.overrideWithValue(engine),
+          clockProvider.overrideWithValue(() => now),
+        ],
+        child: MaterialApp(
+          theme: AppTheme.light(),
+          home: InviteScreen(groupId: seed.g),
+        ),
       ),
-    ));
+    );
     // inviteLinkFor is async (hosting is attempted, then given up).
-    await tester.runAsync(() => Future<void>.delayed(
-        const Duration(milliseconds: 50)));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
     await tester.pump();
     await tester.pump();
   }
@@ -74,23 +77,27 @@ void main() {
     return f.evaluate().isEmpty ? null : tester.widget<QrImageView>(f);
   }
 
-  testWidgets('the shared link is a valid invite for this group and key',
-      (tester) async {
+  testWidgets('the shared link is a valid invite for this group and key', (
+    tester,
+  ) async {
     await pump(tester);
     expect(qr(tester), isNotNull);
     await tester.tap(find.text('Share link'));
     await tester.pump();
     expect(shared, hasLength(1));
     final text = (shared.single! as Map)['text'] as String;
-    final link = InviteLink.tryParse(text.substring(text.indexOf('settleup:')))!;
+    final link = InviteLink.tryParse(
+      text.substring(text.indexOf('settleup:')),
+    )!;
     expect(link.groupId, seed.g);
     late List<int> key;
     await tester.runAsync(() async => key = await alex.keyOf(seed.g));
     expect(link.groupKey, key);
   });
 
-  testWidgets('the QR hides itself after 2 minutes and can be shown again',
-      (tester) async {
+  testWidgets('the QR hides itself after 2 minutes and can be shown again', (
+    tester,
+  ) async {
     await pump(tester);
     expect(qr(tester), isNotNull);
     now = now.add(const Duration(seconds: 119));
@@ -103,8 +110,9 @@ void main() {
     expect(find.textContaining('hidden'), findsOneWidget);
 
     await tester.tap(find.text('Show again'));
-    await tester.runAsync(() => Future<void>.delayed(
-        const Duration(milliseconds: 50)));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
     await tester.pump();
     await tester.pump();
     expect(qr(tester), isNotNull);
@@ -120,7 +128,8 @@ void main() {
 
   group(
     'share warning',
-    skip: 'QA SECURITY-R1-08: Share link sends the group key without the '
+    skip:
+        'QA SECURITY-R1-08: Share link sends the group key without the '
         'SPEC 8.6 warning',
     () {
       testWidgets('sharing the link asks first and warns who can see the '
@@ -137,4 +146,3 @@ void main() {
     },
   );
 }
-

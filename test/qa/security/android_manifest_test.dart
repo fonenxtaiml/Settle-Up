@@ -11,8 +11,8 @@ String _read(String path) => File(path).readAsStringSync();
 
 /// `<tag ...>` openings of [tag] with their attribute text.
 List<String> _openings(String xml, String tag) => [
-      for (final m in RegExp('<$tag\\b([^>]*)>').allMatches(xml)) m.group(1)!,
-    ];
+  for (final m in RegExp('<$tag\\b([^>]*)>').allMatches(xml)) m.group(1)!,
+];
 
 String _withoutComments(String xml) =>
     xml.replaceAll(RegExp(r'<!--[\s\S]*?-->'), '');
@@ -20,8 +20,7 @@ String _withoutComments(String xml) =>
 void main() {
   final xml = _withoutComments(_read(_manifest));
 
-  test('only the main activity is exported, and nothing else is declared',
-      () {
+  test('only the main activity is exported, and nothing else is declared', () {
     final activities = _openings(xml, 'activity');
     expect(activities, hasLength(1));
     expect(activities.single, contains('android:name=".MainActivity"'));
@@ -31,27 +30,29 @@ void main() {
     }
   });
 
-  test('VIEW intent filters accept only settleup://join and settleup://sync',
-      () {
-    final filters = RegExp(r'<intent-filter>([\s\S]*?)</intent-filter>')
-        .allMatches(xml)
-        .map((m) => m.group(1)!)
-        .toList();
-    final view = filters.where((f) => f.contains('action.VIEW')).toList();
-    expect(view, hasLength(1));
-    final data = _openings(view.single, 'data');
-    expect(data, hasLength(2));
-    final pairs = {
-      for (final d in data)
-        (
-          RegExp(r'android:scheme="([^"]*)"').firstMatch(d)?.group(1),
-          RegExp(r'android:host="([^"]*)"').firstMatch(d)?.group(1),
-        ),
-    };
-    expect(pairs, {('settleup', 'join'), ('settleup', 'sync')});
-    expect(view.single, isNot(contains('android:autoVerify')));
-    expect(xml, isNot(contains('android:scheme="http')));
-  });
+  test(
+    'VIEW intent filters accept only settleup://join and settleup://sync',
+    () {
+      final filters = RegExp(r'<intent-filter>([\s\S]*?)</intent-filter>')
+          .allMatches(xml)
+          .map((m) => m.group(1)!)
+          .toList();
+      final view = filters.where((f) => f.contains('action.VIEW')).toList();
+      expect(view, hasLength(1));
+      final data = _openings(view.single, 'data');
+      expect(data, hasLength(2));
+      final pairs = {
+        for (final d in data)
+          (
+            RegExp(r'android:scheme="([^"]*)"').firstMatch(d)?.group(1),
+            RegExp(r'android:host="([^"]*)"').firstMatch(d)?.group(1),
+          ),
+      };
+      expect(pairs, {('settleup', 'join'), ('settleup', 'sync')});
+      expect(view.single, isNot(contains('android:autoVerify')));
+      expect(xml, isNot(contains('android:scheme="http')));
+    },
+  );
 
   test('backup is off and cleartext is not opted into', () {
     final app = _openings(xml, 'application').single;
@@ -63,7 +64,8 @@ void main() {
 
   test(
     'API 31+ device-to-device transfer is excluded by dataExtractionRules',
-    skip: 'QA SECURITY-R1-07: no android:dataExtractionRules; on Android 12+ '
+    skip:
+        'QA SECURITY-R1-07: no android:dataExtractionRules; on Android 12+ '
         'allowBackup=false does not stop device-to-device transfer',
     () {
       final app = _openings(xml, 'application').single;
@@ -81,7 +83,11 @@ void main() {
             ?.group(1);
         expect(body, isNotNull, reason: section);
         for (final domain in ['database', 'sharedpref', 'file', 'root']) {
-          expect(body, contains('domain="$domain"'), reason: '$section $domain');
+          expect(
+            body,
+            contains('domain="$domain"'),
+            reason: '$section $domain',
+          );
         }
       }
     },
@@ -122,14 +128,17 @@ void main() {
   test(
     'the invite QR screen is protected from screenshots and the recents '
     'thumbnail',
-    skip: 'QA SECURITY-R1-09: invite QR (the group key) is captured in the '
+    skip:
+        'QA SECURITY-R1-09: invite QR (the group key) is captured in the '
         'recents thumbnail and screenshots; no FLAG_SECURE',
     () {
       final activity = _read(
-          'android/app/src/main/kotlin/app/settleup/settle_up/MainActivity.kt');
+        'android/app/src/main/kotlin/app/settleup/settle_up/MainActivity.kt',
+      );
       final invite = _read('lib/ui/screens/group/invite_screen.dart');
       expect(
-        activity.contains('FLAG_SECURE') || invite.contains('FLAG_SECURE') ||
+        activity.contains('FLAG_SECURE') ||
+            invite.contains('FLAG_SECURE') ||
             invite.contains('secure'),
         isTrue,
       );
