@@ -234,7 +234,7 @@ lib/
     screens/ onboarding/ home/ group/ expense/ settle/ activity/
              sync/ person/ settings/ search/ join/                   [WP-F]
     dev/     fake_ledger.dart fake_sync_engine.dart seed_data.dart   [WP-F]
-assets/google_fonts/            [WP-E]  Atkinson Hyperlegible Next 400/600/700/800 + OFL.txt
+assets/google_fonts/            [WP-E]  Familjen Grotesk 400/500/600/700 + OFL.txt (DESIGN Typography)
 test/
   core/ [WP-A]  data/ [WP-B]  sync/ [WP-C]  sync/lan/ [WP-D1]  sync/bluetooth/ [WP-D2]
   theme/ ui/widgets/ [WP-E]  ui/screens/ [WP-F]  architecture_test.dart [integrator]
@@ -3345,7 +3345,7 @@ iOS has no Nearby Connections (BLE and LAN only) and cannot create a hotspot fro
 
 ## 10. UI build notes (WP-E, WP-F)
 
-DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/theme/app_theme.dart` verbatim from DESIGN 8.1 and 8.2 (replace `google_fonts` `^8.2.1` guidance with `^9.0.0`). Bundle the Atkinson Hyperlegible Next static TTFs (Regular, SemiBold, Bold, ExtraBold) plus `OFL.txt` under `assets/google_fonts/` with the file names `google_fonts` expects (`AtkinsonHyperlegibleNext-Regular.ttf` and so on). If the files cannot be downloaded in the build sandbox, ship without them; `google_fonts` falls back to the platform font. Record that in the README, but never enable runtime fetching.
+DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/theme/app_theme.dart` verbatim from DESIGN 8.1 and 8.2 (replace `google_fonts` `^8.2.1` guidance with `^9.0.0`). Bundle the Familjen Grotesk static TTFs (Regular 400, Medium 500, SemiBold 600, Bold 700; the family and weights DESIGN.md specifies) plus `OFL.txt` under `assets/google_fonts/` with the file names `google_fonts` expects (`FamiljenGrotesk-Regular.ttf` and so on). `kFontFamily` in `lib/theme/app_theme.dart` names the family, and no other weight is used. If the files cannot be downloaded in the build sandbox, ship without them; `google_fonts` falls back to the platform font. Record that in the README, but never enable runtime fetching.
 
 ### 10.1 Routes (`lib/ui/router.dart`)
 
