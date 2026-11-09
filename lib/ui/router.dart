@@ -1,6 +1,8 @@
 // Routes (SPEC 10.1). A StatefulShellRoute keeps the Home, Activity and
 // Sync tabs alive; every other screen is pushed over the shell. Until the
 // profile exists, every location redirects to /onboarding.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -76,6 +78,22 @@ abstract final class Routes {
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
 
+/// Where a settleup://join or settleup://sync deep link opens, or null when
+/// [uri] is not one.
+String? _deepLinkTarget(Uri uri) {
+  if (uri.scheme != 'settleup' && uri.host != 'join' && uri.host != 'sync') {
+    return null;
+  }
+  if (uri.host == 'join') return Routes.join(uri.toString());
+  if (uri.host == 'sync') {
+    return Uri(
+      path: Routes.syncScan,
+      queryParameters: {'link': uri.toString()},
+    ).toString();
+  }
+  return null;
+}
+
 /// Rebuilt never; refreshes its redirect when the profile changes.
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = ValueNotifier<int>(0);
@@ -88,42 +106,73 @@ final routerProvider = Provider<GoRouter>((ref) {
 
   String? redirect(BuildContext context, GoRouterState state) {
     final uri = state.uri;
-    // settleup://join?... and settleup://sync?... deep links.
-    String? target;
-    if (uri.scheme == 'settleup' || uri.host == 'join' || uri.host == 'sync') {
-      if (uri.host == 'join') target = Routes.join(uri.toString());
-      if (uri.host == 'sync') {
-        target = Uri(
-          path: Routes.syncScan,
-          queryParameters: {'link': uri.toString()},
-        ).toString();
-      }
-    } else if (uri.path.startsWith('${Routes.joinPath}/') ||
-        (uri.path == Routes.syncScan && uri.queryParameters['link'] != null)) {
+    String? target = _deepLinkTarget(uri);
+    if (target == null &&
+        (uri.path.startsWith('${Routes.joinPath}/') ||
+            (uri.path == Routes.syncScan &&
+                uri.queryParameters['link'] != null))) {
       target = uri.toString();
     }
     final profile = ref.read(profileProvider);
-    if (profile.isLoading && !profile.hasValue) return target;
+    if (profile.isLoading && !profile.hasValue) {
+      // Not known yet whether onboarding is done: hold the link and wait
+      // on Home. Opening it now would start a sync (or an invitation)
+      // before a profile exists, and its follow-up screens are not link
+      // targets, so the link would be lost on the way to Onboarding.
+      if (target != null) {
+        pendingLink = target;
+        return Routes.home;
+      }
+      return null;
+    }
     final onboarded = profile.value != null;
     final atOnboarding = uri.path == Routes.onboarding;
     if (!onboarded) {
       if (target != null) pendingLink = target;
       return atOnboarding ? null : Routes.onboarding;
     }
-    if (atOnboarding) {
-      final link = pendingLink;
+    final link = pendingLink;
+    if (link != null) {
       pendingLink = null;
-      return link ?? Routes.home;
+      if (link != uri.toString()) return link;
     }
+    if (atOnboarding) return Routes.home;
     if (target != null && target != uri.toString()) return target;
     if (uri.path == '/' || uri.path.isEmpty) return Routes.home;
     return null;
+  }
+
+  // The platform hands a deep link over as go(), which replaces the whole
+  // stack: an Add expense, Settle up or Edit group draft under it would be
+  // disposed without its discard check. Once onboarded, a link that
+  // arrives over such a screen is pushed on top instead, so closing the
+  // invitation (or the sync) returns to the draft.
+  FutureOr<OnEnterResult> onEnter(
+    BuildContext context,
+    GoRouterState current,
+    GoRouterState next,
+    GoRouter router,
+  ) {
+    final target = _deepLinkTarget(next.uri);
+    if (target == null) return const Allow();
+    final profile = ref.read(profileProvider);
+    if (profile.value == null) return const Allow();
+    final here = current.uri.path;
+    const tabRoots = {Routes.home, Routes.activity, Routes.sync};
+    if (here.isEmpty ||
+        here == '/' ||
+        here == Routes.onboarding ||
+        tabRoots.contains(here)) {
+      return const Allow();
+    }
+    return Block.then(() => router.push<void>(target));
   }
 
   final router = GoRouter(
     navigatorKey: _rootKey,
     initialLocation: Routes.home,
     refreshListenable: refresh,
+    onEnter: onEnter,
     redirect: redirect,
     routes: [
       GoRoute(
