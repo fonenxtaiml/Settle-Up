@@ -8,6 +8,7 @@
 import '../hlc.dart';
 import '../ids.dart';
 import '../models.dart';
+import '../money.dart';
 import '../ops.dart';
 
 /// One LWW register: the value written by the op with the highest HLC.
@@ -120,6 +121,14 @@ MoneyBlock? parseMoney(Object? value) {
     return null;
   }
   if (block.currency.isEmpty || !block.isConsistent) return null;
+  // isConsistent sums in 64-bit ints, so a hostile block can balance only
+  // through overflow (4 * 2^62 + 5 == 5). The Ledger never writes a total
+  // above Money.maxMinor, and with every entry in 1..total no sum can wrap.
+  if (block.total > Money.maxMinor) return null;
+  bool inRange(int v) => v <= block.total;
+  if (!block.paid.values.every(inRange) || !block.owed.values.every(inRange)) {
+    return null;
+  }
   return block;
 }
 
