@@ -120,7 +120,9 @@ void main() {
         multiLine: true,
       ).firstMatch(_read('pubspec.yaml'))!.group(1)!;
       expect(version, matches(RegExp(r'^1\.0\.0\+[1-9][0-9]*$')));
-    }, skip: 'QA PLATFORM-R1-04: pubspec version is 0.1.0+1, not 1.0.0+N');
+      // 0.1.0 tester builds used versionCode 1.
+      expect(int.parse(version.split('+').last), greaterThanOrEqualTo(2));
+    });
   });
 
   group('launcher icon', () {
@@ -239,7 +241,17 @@ void main() {
       ]) {
         expect(readme, contains(word), reason: 'README lacks "$word"');
       }
-    }, skip: 'QA PLATFORM-R1-08: README.md is a single heading');
+      for (final word in [
+        'flutter analyze',
+        '--split-per-abi',
+        'flutter build appbundle',
+        'docs/qa.md',
+        'docs/qa/test-plan.md',
+        'jdk 17',
+      ]) {
+        expect(readme, contains(word), reason: 'README lacks "$word"');
+      }
+    });
 
     test('privacy policy and store listing are in the repo', () {
       final docs = Directory('docs')
@@ -257,6 +269,34 @@ void main() {
         isTrue,
         reason: 'no store listing text under docs/',
       );
-    }, skip: 'QA PLATFORM-R1-10: no privacy policy or store listing');
+    });
+
+    test('privacy policy covers what PLATFORM-R1-10 asks for', () {
+      final policy = _read('docs/PRIVACY.md').toLowerCase();
+      for (final topic in [
+        'no account',
+        'bluetooth',
+        'wi-fi',
+        'location',
+        'android 12l and older',
+        'camera',
+        'ml kit',
+        'clear storage',
+      ]) {
+        expect(policy, contains(topic), reason: 'PRIVACY.md lacks "$topic"');
+      }
+      final listing = _read('docs/STORE-LISTING.md').toLowerCase();
+      for (final topic in [
+        'short description',
+        'full description',
+        'data safety',
+        'access_fine_location',
+        'bluetooth_scan',
+        'camera',
+        'privacy policy url',
+      ]) {
+        expect(listing, contains(topic), reason: 'listing lacks "$topic"');
+      }
+    });
   });
 }

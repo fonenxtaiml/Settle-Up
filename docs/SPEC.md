@@ -234,7 +234,7 @@ lib/
     screens/ onboarding/ home/ group/ expense/ settle/ activity/
              sync/ person/ settings/ search/ join/                   [WP-F]
     dev/     fake_ledger.dart fake_sync_engine.dart seed_data.dart   [WP-F]
-assets/google_fonts/            [WP-E]  Atkinson Hyperlegible Next 400/600/700/800 + OFL.txt
+assets/google_fonts/            [WP-E]  Familjen Grotesk 400/500/600/700 + OFL.txt (DESIGN Typography)
 test/
   core/ [WP-A]  data/ [WP-B]  sync/ [WP-C]  sync/lan/ [WP-D1]  sync/bluetooth/ [WP-D2]
   theme/ ui/widgets/ [WP-E]  ui/screens/ [WP-F]  architecture_test.dart [integrator]
@@ -3384,6 +3384,8 @@ android {
 
 Add `xmlns:tools="http://schemas.android.com/tools"` on `<manifest>`. The `nearby_connections` plugin manifest declares `BLUETOOTH`, `BLUETOOTH_ADMIN` and `ACCESS_COARSE_LOCATION` without `maxSdkVersion`, so put `tools:node="replace"` on our capped declarations (`BLUETOOTH`, `BLUETOOTH_ADMIN`, both location permissions) to keep the caps after manifest merge. **Verify on a real API 31/32 device and an API 34+ device:** the plugin README (Google's page was unreachable from the sandbox) lists `BLUETOOTH_SCAN` without `neverForLocation` and `ACCESS_FINE_LOCATION` for API 29 to 31. We keep `neverForLocation` so BLE scanning works on API 33+ without location, and request location on API ≤ 32 (8.10). If Nearby discovery returns nothing on API 31+, remove the flag and request `locationWhenInUse` on every API level for `nearby` and `ble` (and lift the location `maxSdkVersion`). Record the result in `docs/QA.md`. On `<application>`: `android:allowBackup="false"` and `android:fullBackupContent="false"` (a restored op log with a cloned device id would fork counters, see 7.4), plus `android:dataExtractionRules="@xml/data_extraction_rules"`. For targetSdk 31+ `allowBackup="false"` no longer stops device-to-device transfer (new phone setup by cable or Wi-Fi), so `res/xml/data_extraction_rules.xml` excludes every domain (`root`, `file`, `database`, `sharedpref`, `external` and the `device_*` domains) in both `<cloud-backup>` and `<device-transfer>`. A new phone joins its groups again with an invite. Add a `<intent-filter>` for the `settleup` scheme (hosts `join`, `sync`) on the main activity, so invite links open the app. `nearby_connections` 4.3.0 pins AGP 7.4.2 in its own buildscript. If the Gradle build rejects it, WP-D2 reports it, and the integrator vendors the plugin under `third_party/nearby_connections` with an updated build file (do not fork the Dart API).
 
+No usage metrics leave the phone (docs/PRIVACY.md): `mobile_scanner` bundles ML Kit barcode scanning, whose Firebase data transport would upload usage events through the `cct` backend. The app manifest declares `com.google.android.datatransport.runtime.backends.TransportBackendDiscovery` with `tools:node="merge"` and removes its `backend:com.google.android.datatransport.cct.CctBackendFactory` meta-data (`tools:node="remove"`), so the transport runtime has no backend and drops every event. Do not remove the transport services themselves (a scheduled job for a missing service throws). Any new dependency that adds analytics or crash reporting must be removed the same way or disclosed in PRIVACY.md and docs/STORE-LISTING.md.
+
 ### 9.2 iOS
 
 `ios/Podfile`: `platform :ios, '15.0'`. `Info.plist`:
@@ -3404,7 +3406,7 @@ iOS has no Nearby Connections (BLE and LAN only) and cannot create a hotspot fro
 
 ## 10. UI build notes (WP-E, WP-F)
 
-DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/theme/app_theme.dart` verbatim from DESIGN 8.1 and 8.2 (replace `google_fonts` `^8.2.1` guidance with `^9.0.0`). Bundle the Atkinson Hyperlegible Next static TTFs (Regular, SemiBold, Bold, ExtraBold) plus `OFL.txt` under `assets/google_fonts/` with the file names `google_fonts` expects (`AtkinsonHyperlegibleNext-Regular.ttf` and so on). If the files cannot be downloaded in the build sandbox, ship without them; `google_fonts` falls back to the platform font. Record that in the README, but never enable runtime fetching.
+DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/theme/app_theme.dart` verbatim from DESIGN 8.1 and 8.2 (replace `google_fonts` `^8.2.1` guidance with `^9.0.0`). Bundle the Familjen Grotesk static TTFs (Regular 400, Medium 500, SemiBold 600, Bold 700; the family and weights DESIGN.md specifies) plus `OFL.txt` under `assets/google_fonts/` with the file names `google_fonts` expects (`FamiljenGrotesk-Regular.ttf` and so on). `kFontFamily` in `lib/theme/app_theme.dart` names the family, and no other weight is used. If the files cannot be downloaded in the build sandbox, ship without them; `google_fonts` falls back to the platform font. Record that in the README, but never enable runtime fetching.
 
 ### 10.1 Routes (`lib/ui/router.dart`)
 

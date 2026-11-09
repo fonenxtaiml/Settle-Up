@@ -13,8 +13,10 @@ import '../../widgets/widgets.dart';
 import '../common.dart';
 import '../csv_share.dart';
 import '../pickers.dart';
+import '../../app_version.dart';
 
-const String appVersion = '1.0.0 (1)';
+// The version of the running build (pubspec.yaml via the Flutter tool).
+export '../../app_version.dart' show appVersion;
 
 String themeLabel(AppThemeMode m) => switch (m) {
   AppThemeMode.system => S.themeSystem,

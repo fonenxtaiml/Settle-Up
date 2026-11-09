@@ -1,5 +1,89 @@
 # Settle Up
 
+An expense-splitting app that works with no internet. Groups, expenses and
+payments live on the phone, and two phones sync directly over Wi-Fi or a
+hotspot (TCP + mDNS), Google Nearby Connections or Bluetooth LE, encrypted
+with the group keys (X25519 handshake, AES-256-GCM). Flutter, Android
+first.
+
+| Document | What it is |
+| --- | --- |
+| [docs/SPEC.md](docs/SPEC.md) | Build specification: data model, op log, sync protocol, platform setup. |
+| [docs/design/DESIGN.md](docs/design/DESIGN.md) | The approved "Point to Point" design; screens in `docs/design/point-to-point/`. |
+| [docs/QA.md](docs/QA.md) | Manual checklist for the radios and permissions on real phones. |
+| [docs/qa/TEST-PLAN.md](docs/qa/TEST-PLAN.md) | QA test plan: what the automated suites cover and what needs a device. |
+| [docs/PRIVACY.md](docs/PRIVACY.md) | Privacy policy (the Play listing links to it). |
+| [docs/STORE-LISTING.md](docs/STORE-LISTING.md) | Play store text, Data safety answers, permission justifications. |
+| [docs/release-notes.md](docs/release-notes.md) | What changed in each release. |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Branches and pull requests. |
+
+## Prerequisites
+
+- Flutter 3.47.x (stable) with Dart 3.13. Check with `flutter --version`.
+- Android SDK with platform 37 (`compileSdk 37`, `targetSdk 36`, `minSdk
+  26`) and the build tools Flutter asks for; `flutter doctor` lists what
+  is missing.
+- JDK 17 or newer (the Android build targets Java 17; JDK 21 works).
+- For sync testing: two Android phones (8.0 or newer). An emulator has no
+  Bluetooth or Nearby Connections.
+
+## Run
+
+```sh
+flutter pub get
+flutter run                      # on a connected phone (debug build)
+flutter run --release            # closer to what testers get
+```
+
+The demo world (groups "Goa trip", "Flat 4B" and "Cabin weekend" with
+balances, in-memory fakes, no real storage or radios) is a compile-time
+switch:
+
+```sh
+flutter run --dart-define=SETTLEUP_FAKE=true
+```
+
+Leave `SETTLEUP_FAKE` out of every build you hand to anyone: it replaces
+the database and sync with fakes and nothing it shows is saved.
+
+## Test and analyze
+
+```sh
+flutter analyze                  # must report "No issues found!"
+flutter test                     # the whole suite, no device needed
+flutter test test/core           # one folder
+flutter test --run-skipped test/qa   # also run QA repro tests still skipped
+```
+
+Golden images live in `test/ui/screens/goldens/`. After an intended visual
+change, regenerate them with
+`flutter test --update-goldens test/ui/screens/screens_golden_test.dart`
+and review the PNG diff before committing. The radio checks that need real
+phones are in [docs/QA.md](docs/QA.md).
+
+## Build
+
+```sh
+flutter build apk --release                  # one APK for all ABIs
+flutter build apk --release --split-per-abi  # smaller APKs, one per ABI
+flutter build appbundle --release            # .aab for Google Play
+```
+
+Outputs: `build/app/outputs/flutter-apk/app-release.apk` (or
+`app-arm64-v8a-release.apk` and friends with `--split-per-abi`) and
+`build/app/outputs/bundle/release/app-release.aab`. Most phones need the
+`arm64-v8a` APK. With `--split-per-abi`, Flutter adds `1000 x` an ABI
+number to the versionCode of each APK.
+
+### Version
+
+`version:` in `pubspec.yaml` (`1.0.0+2`) is the only place the version is
+set: Gradle takes versionName and versionCode from it, and Settings >
+About shows the same `1.0.0 (2)` from the build. For every APK given to
+testers or uploaded to Play, raise the number after `+` (Android refuses
+to update to a versionCode it already has), and add an entry to
+[docs/release-notes.md](docs/release-notes.md).
+
 ## Release signing
 
 Release APKs and app bundles are signed with the upload key named in
