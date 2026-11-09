@@ -1,186 +1,220 @@
 // lib/theme/tokens.dart
-// Design tokens for Settle Up. Source of truth: docs/design/DESIGN.md.
-// Widgets read colors via Theme.of(context).colorScheme and context.money,
-// never from Palette directly.
+// Design tokens for the "Point to Point" direction
+// (docs/design/DESIGN.md and docs/design/point-to-point-direction.md).
+//
+// Ink on cool stone. Colour only ever means money direction: Lagoon is
+// money coming to you, Kiln is money you pay. Every action is ink.
 import 'package:flutter/material.dart';
 
-/// Raw named palette (section 2.2 to 2.4).
+/// Raw colour values. Widgets read colours from the [ColorScheme] and
+/// [MoneyColors]; only the theme should touch this class.
 abstract final class Palette {
-  // Brand
-  static const plumb = Color(0xFF3A3478);
-  static const plumbInk = Color(0xFF1D1B2E);
-  static const vial = Color(0xFFF2C230);
-  static const fog = Color(0xFFF7F7FA);
-  static const night = Color(0xFF16151F);
+  // Light.
+  static const ink = Color(0xFF16191D);
+  static const onInk = Color(0xFFFFFFFF);
+  static const stone = Color(0xFFEEF0EF); // background
+  static const card = Color(0xFFFFFFFF); // grouped lists
+  static const stoneDeep = Color(0xFFE4E7E6); // nav bar, tonal button
+  static const stoneDeeper = Color(0xFFD9DDDC); // nav indicator, selection
+  static const inkSecondary = Color(0xFF5A6066);
+  static const hairline = Color(0xFFDCE0DF);
+  // 3:1 on stone. DESIGN.md's front matter still lists #8A9096; the
+  // direction doc raised it to #767D83 in its accessibility pass.
+  static const outline = Color(0xFF767D83);
+  static const lagoon = Color(0xFF0B5C8E);
+  static const lagoonContainer = Color(0xFFE2EEF6);
+  static const kiln = Color(0xFFA3460B);
+  static const kilnContainer = Color(0xFFFBEADF);
 
-  // Money, light
-  static const fern = Color(0xFF1B6B3A);
-  static const brick = Color(0xFFA63A1C);
-  static const pewter = Color(0xFF5E5B70);
-
-  // Money, dark
-  static const fernDark = Color(0xFF7DDA97);
-  static const brickDark = Color(0xFFFFA284);
-  static const pewterDark = Color(0xFFB5B2C6);
+  // Dark.
+  static const inkDark = Color(0xFFE9EBEC);
+  static const onInkDark = Color(0xFF0F1316);
+  static const stoneDark = Color(0xFF0F1316);
+  static const cardDark = Color(0xFF171C20);
+  static const stoneDeepDark = Color(0xFF222A2F);
+  static const stoneDeeperDark = Color(0xFF36424B);
+  static const inkSecondaryDark = Color(0xFFA1A8AE);
+  static const hairlineDark = Color(0xFF263036);
+  static const outlineDark = Color(0xFF6B7379);
+  static const lagoonDark = Color(0xFF86BDEB);
+  static const lagoonContainerDark = Color(0xFF16324A);
+  static const kilnDark = Color(0xFFF2A673);
+  static const kilnContainerDark = Color(0xFF44270F);
 }
 
-/// 4 pt spacing grid (section 4.2).
+/// 4 pt spacing grid (DESIGN.md "spacing").
 abstract final class Space {
-  static const double x1 = 4;
-  static const double x2 = 8;
-  static const double x3 = 12;
-  static const double x4 = 16;
-  static const double x5 = 20;
-  static const double x6 = 24;
-  static const double x8 = 32;
-  static const double x10 = 40;
-  static const double x12 = 48;
-  static const double x16 = 64;
+  static const double xs = 4;
+  static const double sm = 8;
+  static const double md = 12;
+  static const double lg = 16;
+  static const double gutter = 20;
+  static const double xl = 24;
+  static const double xxl = 32;
 
-  static const double gutter = x4;
-  static const double rowInset = 72; // divider start: 16 + 40 avatar + 16
+  /// Side gutter for containers (grouped lists, buttons, cards).
+  static const double screen = 16;
+
+  /// Side gutter for free text, so headings line up with text in cards.
+  static const double text = 20;
+
+  /// Section heading: 18 above, 8 below.
+  static const double sectionTop = 18;
+  static const double sectionBottom = 8;
+
+  /// Row content inset inside a grouped list.
+  static const double rowInset = 16;
+
+  /// Divider start for rows with a 40 dp avatar: 16 + 40 + 14.
+  static const double avatarRowInset = 70;
 }
 
-/// Radius follows hierarchy (section 4.1).
+/// Corner radii: grouped lists large, inputs medium, controls full pills.
 abstract final class Radii {
-  static const double input = 12;
-  static const double key = 14;
-  static const double button = 14;
-  static const double fab = 20;
-  static const double hero = 24;
-  static const double sheet = 28;
+  static const double sm = 8; // category chip, checkbox-adjacent bits
+  static const double md = 12; // inputs, pickers, QR tile
+  static const double lg = 20; // grouped lists and cards
+  static const double fab = 16; // extended FAB, as in M3
+  static const double chip = 10; // split-method chips
+  static const double full = 999;
 }
 
-/// Motion (section 4.4).
-abstract final class Motion {
-  static const quick = Duration(milliseconds: 120);
-  static const standard = Duration(milliseconds: 240);
-  static const emphasis = Duration(milliseconds: 420);
-  static const signature = Duration(milliseconds: 700);
-
-  static const enter = Curves.easeOutCubic;
-  static const exit = Curves.easeInCubic;
-
-  /// Bubble spring: slightly underdamped, one small overshoot.
-  static const bubbleSpring = SpringDescription(
-    mass: 1,
-    stiffness: 180,
-    damping: 14,
-  );
-}
-
-/// Sizes used by components (section 5).
+/// Fixed sizes taken from the reference renders.
 abstract final class Sizes {
-  static const double avatarSm = 24;
-  static const double avatarMd = 32;
-  static const double avatarLg = 40;
-  static const double avatarXl = 56;
-  static const double rowMin1 = 64;
-  static const double rowMin2 = 72;
-  static const double keypadKey = 64;
-  static const double buttonHeight = 52;
-  static const double vialHeight = 16;
-  static const double bubble = 20;
+  static const double rowMin = 62; // two-line list row
+  static const double rowMinDense = 58;
+  static const double avatar = 40;
+  static const double avatarSmall = 32;
+  static const double avatarTiny = 26;
+  static const double avatarHero = 56;
+  static const Size tetherInline = Size(26, 10);
+  static const double tetherRowLine = 56;
+  static const double buttonBlock = 52;
+  static const double button = 48;
+  static const double buttonSmall = 36;
+  static const double fab = 56;
+  static const double navBar = 80;
+  static const double appBar = 64;
+  static const double qr = 124;
+  static const double minTap = 48;
 }
 
-/// Use on any TextStyle that shows money: `style.tabular`.
-extension TabularFigures on TextStyle {
-  TextStyle get tabular =>
-      copyWith(fontFeatures: const [FontFeature.tabularFigures()]);
+/// Motion (direction doc, "Motion moment"). Compositor properties only.
+abstract final class Motion {
+  /// The ink dot travelling along the tether on Settle up.
+  static const travel = Duration(milliseconds: 280);
+  static const travelCurve = Curves.easeOutCubic;
+
+  /// The receiving ring filling when the dot arrives.
+  static const fill = Duration(milliseconds: 120);
+
+  /// "Now" to "After" crossfade; also the only motion under reduce-motion.
+  static const crossfade = Duration(milliseconds: 150);
+
+  /// One loop of the sync dots travelling along the dashed line.
+  static const syncLoop = Duration(milliseconds: 1400);
 }
 
-/// Money semantics (section 2.3 and 2.4). Always pair with a sign and a word.
+/// Which way money moves, from the viewer's point of view.
+enum MoneyDirection {
+  /// Money coming to you (Lagoon, "+").
+  owed,
+
+  /// Money you pay (Kiln, "−").
+  owe,
+
+  /// Nothing outstanding (secondary ink, "settled", slack tether).
+  settled,
+
+  /// An amount between other people, or a plain total (ink, no sign).
+  neutral;
+
+  /// Direction of a signed balance: + owed to you, − you owe, 0 settled.
+  static MoneyDirection of(int minor) => minor > 0
+      ? MoneyDirection.owed
+      : minor < 0
+      ? MoneyDirection.owe
+      : MoneyDirection.settled;
+}
+
+/// Money colours. Kept out of [ColorScheme] so Material widgets never pick
+/// Lagoon or Kiln up by themselves.
 @immutable
 class MoneyColors extends ThemeExtension<MoneyColors> {
   const MoneyColors({
     required this.owed,
     required this.owedContainer,
-    required this.onOwedContainer,
     required this.owe,
     required this.oweContainer,
-    required this.onOweContainer,
     required this.settled,
     required this.settledContainer,
-    required this.vial,
-    required this.onVial,
-    required this.vialTrack,
+    required this.neutral,
   });
 
   final Color owed;
   final Color owedContainer;
-  final Color onOwedContainer;
   final Color owe;
   final Color oweContainer;
-  final Color onOweContainer;
   final Color settled;
   final Color settledContainer;
-  final Color vial;
-  final Color onVial;
-  final Color vialTrack;
+
+  /// Ink, for amounts that belong to other people.
+  final Color neutral;
 
   static const light = MoneyColors(
-    owed: Palette.fern,
-    owedContainer: Color(0xFFD7F0DD),
-    onOwedContainer: Color(0xFF0A3A1C),
-    owe: Palette.brick,
-    oweContainer: Color(0xFFFBE2D9),
-    onOweContainer: Color(0xFF4A1405),
-    settled: Palette.pewter,
-    settledContainer: Color(0xFFE6E5EC),
-    vial: Palette.vial,
-    onVial: Palette.plumbInk,
-    vialTrack: Color(0xFFDCDCE6),
+    owed: Palette.lagoon,
+    owedContainer: Palette.lagoonContainer,
+    owe: Palette.kiln,
+    oweContainer: Palette.kilnContainer,
+    settled: Palette.inkSecondary,
+    settledContainer: Palette.stoneDeep,
+    neutral: Palette.ink,
   );
 
   static const dark = MoneyColors(
-    owed: Palette.fernDark,
-    owedContainer: Color(0xFF1C4A2B),
-    onOwedContainer: Color(0xFFC9F2D3),
-    owe: Palette.brickDark,
-    oweContainer: Color(0xFF5C2412),
-    onOweContainer: Color(0xFFFFDCD0),
-    settled: Palette.pewterDark,
-    settledContainer: Color(0xFF2C2A38),
-    vial: Palette.vial,
-    onVial: Palette.plumbInk,
-    vialTrack: Color(0xFF373544),
+    owed: Palette.lagoonDark,
+    owedContainer: Palette.lagoonContainerDark,
+    owe: Palette.kilnDark,
+    oweContainer: Palette.kilnContainerDark,
+    settled: Palette.inkSecondaryDark,
+    settledContainer: Palette.stoneDeepDark,
+    neutral: Palette.inkDark,
   );
 
-  /// Color for a signed balance in minor units (>0 owed to you, <0 you owe).
-  Color forBalance(int minorUnits) => minorUnits > 0
-      ? owed
-      : minorUnits < 0
-      ? owe
-      : settled;
+  Color forDirection(MoneyDirection d) => switch (d) {
+    MoneyDirection.owed => owed,
+    MoneyDirection.owe => owe,
+    MoneyDirection.settled => settled,
+    MoneyDirection.neutral => neutral,
+  };
+
+  Color containerFor(MoneyDirection d) => switch (d) {
+    MoneyDirection.owed => owedContainer,
+    MoneyDirection.owe => oweContainer,
+    MoneyDirection.settled || MoneyDirection.neutral => settledContainer,
+  };
+
+  /// Colour of a signed balance (+ owed, − owe, 0 settled).
+  Color forBalance(int minor) => forDirection(MoneyDirection.of(minor));
 
   @override
   MoneyColors copyWith({
     Color? owed,
     Color? owedContainer,
-    Color? onOwedContainer,
     Color? owe,
     Color? oweContainer,
-    Color? onOweContainer,
     Color? settled,
     Color? settledContainer,
-    Color? vial,
-    Color? onVial,
-    Color? vialTrack,
-  }) {
-    return MoneyColors(
-      owed: owed ?? this.owed,
-      owedContainer: owedContainer ?? this.owedContainer,
-      onOwedContainer: onOwedContainer ?? this.onOwedContainer,
-      owe: owe ?? this.owe,
-      oweContainer: oweContainer ?? this.oweContainer,
-      onOweContainer: onOweContainer ?? this.onOweContainer,
-      settled: settled ?? this.settled,
-      settledContainer: settledContainer ?? this.settledContainer,
-      vial: vial ?? this.vial,
-      onVial: onVial ?? this.onVial,
-      vialTrack: vialTrack ?? this.vialTrack,
-    );
-  }
+    Color? neutral,
+  }) => MoneyColors(
+    owed: owed ?? this.owed,
+    owedContainer: owedContainer ?? this.owedContainer,
+    owe: owe ?? this.owe,
+    oweContainer: oweContainer ?? this.oweContainer,
+    settled: settled ?? this.settled,
+    settledContainer: settledContainer ?? this.settledContainer,
+    neutral: neutral ?? this.neutral,
+  );
 
   @override
   MoneyColors lerp(ThemeExtension<MoneyColors>? other, double t) {
@@ -188,100 +222,21 @@ class MoneyColors extends ThemeExtension<MoneyColors> {
     return MoneyColors(
       owed: Color.lerp(owed, other.owed, t)!,
       owedContainer: Color.lerp(owedContainer, other.owedContainer, t)!,
-      onOwedContainer: Color.lerp(onOwedContainer, other.onOwedContainer, t)!,
       owe: Color.lerp(owe, other.owe, t)!,
       oweContainer: Color.lerp(oweContainer, other.oweContainer, t)!,
-      onOweContainer: Color.lerp(onOweContainer, other.onOweContainer, t)!,
       settled: Color.lerp(settled, other.settled, t)!,
       settledContainer: Color.lerp(
         settledContainer,
         other.settledContainer,
         t,
       )!,
-      vial: Color.lerp(vial, other.vial, t)!,
-      onVial: Color.lerp(onVial, other.onVial, t)!,
-      vialTrack: Color.lerp(vialTrack, other.vialTrack, t)!,
+      neutral: Color.lerp(neutral, other.neutral, t)!,
     );
   }
 }
 
-extension MoneyThemeX on BuildContext {
-  MoneyColors get money => Theme.of(this).extension<MoneyColors>()!;
-}
-
-/// Avatar tones (section 2.6). No red or green hues.
-@immutable
-class AvatarTone {
-  const AvatarTone(this.lightBg, this.lightFg, this.darkBg, this.darkFg);
-  final Color lightBg;
-  final Color lightFg;
-  final Color darkBg;
-  final Color darkFg;
-
-  Color background(Brightness b) => b == Brightness.dark ? darkBg : lightBg;
-  Color foreground(Brightness b) => b == Brightness.dark ? darkFg : lightFg;
-}
-
-abstract final class AvatarTones {
-  static const all = <AvatarTone>[
-    AvatarTone(
-      Color(0xFFE3E0FA),
-      Color(0xFF221D52),
-      Color(0xFF3A3478),
-      Color(0xFFE3E0FA),
-    ), // violet
-    AvatarTone(
-      Color(0xFFF6E2A6),
-      Color(0xFF3D2E00),
-      Color(0xFF5A4500),
-      Color(0xFFF6E2A6),
-    ), // ochre
-    AvatarTone(
-      Color(0xFFD6E6F7),
-      Color(0xFF0F2C4A),
-      Color(0xFF1E4670),
-      Color(0xFFD6E6F7),
-    ), // sky
-    AvatarTone(
-      Color(0xFFF1DDF0),
-      Color(0xFF4A1846),
-      Color(0xFF66285F),
-      Color(0xFFF1DDF0),
-    ), // orchid
-    AvatarTone(
-      Color(0xFFEDE3D3),
-      Color(0xFF3B2C17),
-      Color(0xFF56442A),
-      Color(0xFFEDE3D3),
-    ), // sand
-    AvatarTone(
-      Color(0xFFDEE1E8),
-      Color(0xFF22283A),
-      Color(0xFF3B4256),
-      Color(0xFFDEE1E8),
-    ), // slate
-    AvatarTone(
-      Color(0xFFD9DEFA),
-      Color(0xFF1A2869),
-      Color(0xFF2F3F8F),
-      Color(0xFFD9DEFA),
-    ), // cornflower
-    AvatarTone(
-      Color(0xFFE6E2DF),
-      Color(0xFF33302D),
-      Color(0xFF4D4844),
-      Color(0xFFE6E2DF),
-    ), // stone
-  ];
-
-  /// Stable across runs, platforms and devices (FNV-1a 32-bit).
-  /// Do not use String.hashCode here.
-  static AvatarTone forId(String id) {
-    var hash = 0x811C9DC5;
-    for (final unit in id.codeUnits) {
-      hash ^= unit;
-      hash = (hash * 0x01000193) & 0xFFFFFFFF;
-    }
-    return all[hash % all.length];
-  }
+extension MoneyColorsContext on BuildContext {
+  /// The theme's [MoneyColors]; falls back to the light set.
+  MoneyColors get money =>
+      Theme.of(this).extension<MoneyColors>() ?? MoneyColors.light;
 }

@@ -1,7 +1,8 @@
 // Date and time labels for rows, headers and the sync chip (DESIGN 5.3, 5.8,
 // 6.7). Model DateTimes are UTC; everything here displays local time.
 //
-// Copy follows DESIGN 7: "Today", "Yesterday", "Mon 4 Mar", "5 min ago".
+// Copy follows the Point to Point renders: "Today", "Sat, 8 Nov",
+// "Today, 9 Nov", "5 min ago", "9:12 pm".
 import 'package:intl/intl.dart';
 
 abstract final class DateLabels {
@@ -19,8 +20,8 @@ abstract final class DateLabels {
 
   static bool isSameDay(DateTime a, DateTime b) => daysBetween(a, b) == 0;
 
-  /// Date group header: "Today", "Yesterday", "Mon 4 Mar", and the year
-  /// when it is not the current one ("Mon 4 Mar 2025").
+  /// Date group header: "Today", "Yesterday", "Sat, 8 Nov", and the year
+  /// when it is not the current one ("Tue, 4 Mar 2025").
   static String dayHeader(DateTime date, {DateTime? now, String? locale}) {
     final n = now ?? DateTime.now();
     final days = daysBetween(date, n);
@@ -28,9 +29,20 @@ abstract final class DateLabels {
     if (days == 1) return 'Yesterday';
     final local = date.toLocal();
     final pattern = local.year == n.toLocal().year
-        ? 'EEE d MMM'
-        : 'EEE d MMM y';
+        ? 'EEE, d MMM'
+        : 'EEE, d MMM y';
     return DateFormat(pattern, locale).format(local);
+  }
+
+  /// Picker value: "Today, 9 Nov", "Yesterday, 8 Nov", "Sat, 1 Nov"
+  /// (with the year when it is not the current one).
+  static String pickerDate(DateTime date, {DateTime? now, String? locale}) {
+    final n = now ?? DateTime.now();
+    final days = daysBetween(date, n);
+    final short = shortDate(date, now: n, locale: locale);
+    if (days == 0) return 'Today, $short';
+    if (days == 1) return 'Yesterday, $short';
+    return dayHeader(date, now: n, locale: locale);
   }
 
   /// Short date for meta phrases: "4 Mar" ("4 Mar 2025" in another year).
@@ -40,6 +52,10 @@ abstract final class DateLabels {
     final pattern = local.year == n.toLocal().year ? 'd MMM' : 'd MMM y';
     return DateFormat(pattern, locale).format(local);
   }
+
+  /// 12 h clock in lower case, as Indian English writes it: "9:12 pm".
+  static String clock12(DateTime date, {String? locale}) =>
+      DateFormat('h:mm a', locale).format(date.toLocal()).toLowerCase();
 
   /// 24 h clock: "14:02".
   static String time(DateTime date, {String? locale}) =>

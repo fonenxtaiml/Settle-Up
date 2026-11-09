@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
 
+import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/money_format.dart';
 import 'kit_strings.dart';
-import 'level_vial.dart';
 import 'money_text.dart';
+import 'tether.dart';
 
-/// Overall/group balance hero (DESIGN 5.1).
+/// Home hero (render 1): the answer first. A sentence with an inline
+/// tether in the direction colour, the signed overall amount in ink at
+/// display size, then a two-column split: "Coming to you" and "You owe".
+///
+/// [mainCurrency] drives the big number and the split; other currencies
+/// with a balance get a "Plus €12.00 owed to you" line underneath. Place it
+/// with a 20 dp side gutter so it lines up with text inside cards.
 class BalanceHero extends StatelessWidget {
   const BalanceHero({
     super.key,
@@ -17,181 +24,230 @@ class BalanceHero extends StatelessWidget {
     this.onTap,
   });
 
-  final Map<String, int> net; // currency -> minor
-  final Map<String, int> owedToMe;
-  final Map<String, int> iOwe;
-  final String mainCurrency; // drives the vial
+  final Map<String, int> net; // currency -> minor, + you're owed
+  final Map<String, int> owedToMe; // currency -> minor, >= 0
+  final Map<String, int> iOwe; // currency -> minor, >= 0
+  final String mainCurrency;
   final VoidCallback? onTap;
-
-  /// Non-zero nets, main currency first, then by |amount| desc, then code.
-  static List<MapEntry<String, int>> orderedNets(
-    Map<String, int> net,
-    String mainCurrency,
-  ) {
-    final list = net.entries.where((e) => e.value != 0).toList()
-      ..sort((a, b) {
-        if (a.key == mainCurrency) return -1;
-        if (b.key == mainCurrency) return 1;
-        final c = b.value.abs().compareTo(a.value.abs());
-        return c != 0 ? c : a.key.compareTo(b.key);
-      });
-    return list;
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final text = theme.textTheme;
-    final nets = orderedNets(net, mainCurrency);
-    final settled = nets.isEmpty;
-    final lead = settled ? null : nets.first;
-    final others = settled ? const <MapEntry<String, int>>[] : nets.skip(1);
+    final money = context.money;
+    final main = net[mainCurrency] ?? 0;
+    final d = MoneyDirection.of(main);
+    final sentence = switch (d) {
+      MoneyDirection.owed => KitStrings.heroOwed,
+      MoneyDirection.owe => KitStrings.heroOwe,
+      _ => KitStrings.heroSettled,
+    };
+    final color = money.forDirection(d);
+    final coming = (owedToMe[mainCurrency] ?? 0).abs();
+    final owing = (iOwe[mainCurrency] ?? 0).abs();
 
-    final o = owedToMe[mainCurrency] ?? 0;
-    final i = iOwe[mainCurrency] ?? 0;
-    final position = LevelVial.positionFor(owedToMe: o, iOwe: i);
+    final others =
+        net.entries.where((e) => e.key != mainCurrency && e.value != 0).toList()
+          ..sort((a, b) => b.value.abs().compareTo(a.value.abs()));
 
-    final String sentence;
-    final String spoken;
-    if (lead == null) {
-      sentence = KitStrings.heroSettled;
-      spoken = sentence;
-    } else {
-      sentence = lead.value > 0
-          ? KitStrings.heroOwedLead
-          : KitStrings.heroOweLead;
-      spoken = '$sentence ${MoneyFormat.spoken(lead.value, lead.key)}';
-    }
+    final captionStyle = theme.textTheme.bodySmall!.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
 
-    final secondary = text.bodyMedium!.copyWith(color: scheme.onSurfaceVariant);
-    final lines = <Widget>[
-      Text(
-        sentence,
-        style: settled
-            ? text.headlineSmall
-            : text.bodyLarge!.copyWith(color: scheme.onSurfaceVariant),
-      ),
-      if (lead != null) ...[
-        const SizedBox(height: Space.x1),
-        // Scale down only to stop overflow, never below bodyLarge size
-        // (DESIGN 3.4): the amount line may also wrap to its own line.
-        _HeroAmount(minor: lead.value, currency: lead.key),
-      ],
-      for (final e in others)
-        Padding(
-          padding: const EdgeInsets.only(top: Space.x1),
-          child: Text.rich(
-            TextSpan(children: _plusLine(context, e)),
-            style: text.bodyLarge!.copyWith(color: scheme.onSurfaceVariant),
+    Widget column(String caption, int minor, MoneyDirection dir) => Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(caption, style: captionStyle),
+        Text(
+          MoneyFormat.format(
+            dir == MoneyDirection.owe ? -minor : minor,
+            mainCurrency,
+            signed: true,
+          ),
+          maxLines: 1,
+          style: AppType.amount(context).copyWith(
+            color: minor == 0 ? money.settled : money.forDirection(dir),
           ),
         ),
-      SizedBox(height: settled ? Space.x5 : Space.x4),
-      LevelVial(position: settled ? 0 : position, settled: settled),
-      if (!settled && i > 0 && o > 0) ...[
-        const SizedBox(height: Space.x4),
-        Text.rich(
-          _withAmount(
-            KitStrings.heroOweTotal(_marker),
-            MoneyFormat.format(i, mainCurrency),
-            context.money.owe,
-          ),
-          style: secondary,
+      ],
+    );
+
+    final spoken = [
+      sentence,
+      MoneyFormat.spoken(main, mainCurrency),
+      '${KitStrings.comingToYou} ${MoneyFormat.spoken(coming, mainCurrency)}',
+      '${KitStrings.youOweColumn} ${MoneyFormat.spoken(owing, mainCurrency)}',
+      for (final o in others) _otherLine(o.key, o.value),
+    ].join('. ');
+
+    final content = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            TetherGlyph(direction: d, color: color),
+            const SizedBox(width: Space.sm),
+            Flexible(
+              child: Text(
+                sentence,
+                style: theme.textTheme.titleMedium!.copyWith(color: color),
+              ),
+            ),
+          ],
         ),
         const SizedBox(height: 2),
-        Text.rich(
-          _withAmount(
-            KitStrings.heroOwedTotal(_marker),
-            MoneyFormat.format(o, mainCurrency),
-            context.money.owed,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: MoneyText(
+            minor: main,
+            currency: mainCurrency,
+            style: MoneyTextStyle.hero,
+            colored: false,
+            color: d == MoneyDirection.settled ? money.settled : null,
           ),
-          style: secondary,
         ),
+        // The hero's smaller "+₹" sits on the baseline and deepens the
+        // line box (render 1), hence 22 rather than 12.
+        const SizedBox(height: 22),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: column(
+                    KitStrings.comingToYou,
+                    coming,
+                    MoneyDirection.owed,
+                  ),
+                ),
+              ),
+              VerticalDivider(width: 1, color: scheme.outlineVariant),
+              const SizedBox(width: Space.lg),
+              Expanded(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: column(
+                    KitStrings.youOweColumn,
+                    owing,
+                    MoneyDirection.owe,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        for (final o in others) ...[
+          const SizedBox(height: Space.sm),
+          Text(_otherLine(o.key, o.value), style: captionStyle),
+        ],
       ],
-    ];
-
-    final panel = Padding(
-      padding: const EdgeInsets.all(Space.x5),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: lines,
-      ),
     );
 
     return Semantics(
-      label: spoken,
+      container: true,
       button: onTap != null,
-      onTap: onTap,
+      label: spoken,
       excludeSemantics: true,
-      child: Material(
-        color: scheme.surfaceContainer,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(Radii.hero),
-        ),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(onTap: onTap, child: panel),
-      ),
+      child: onTap == null
+          ? content
+          : InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(Radii.md),
+              child: content,
+            ),
     );
   }
 
-  static const String _marker = '\u0000';
-
-  /// Splits a sentence template at [_marker] and puts [amount] there in
-  /// [amountColor] with tabular figures.
-  static TextSpan _withAmount(
-    String template,
-    String amount,
-    Color amountColor,
-  ) {
-    final parts = template.split(_marker);
-    return TextSpan(
-      children: [
-        TextSpan(text: parts.first),
-        TextSpan(
-          text: amount,
-          style: TextStyle(
-            color: amountColor,
-            fontFeatures: const [FontFeature.tabularFigures()],
-          ),
-        ),
-        if (parts.length > 1) TextSpan(text: parts[1]),
-      ],
-    );
-  }
-
-  List<InlineSpan> _plusLine(BuildContext context, MapEntry<String, int> e) {
-    final template = e.value > 0
-        ? KitStrings.heroPlusOwed(_marker)
-        : KitStrings.heroPlusOwe(_marker);
-    return _withAmount(
-      template,
-      MoneyFormat.format(e.value.abs(), e.key),
-      context.money.forBalance(e.value),
-    ).children!;
+  static String _otherLine(String currency, int minor) {
+    final amount = MoneyFormat.format(minor.abs(), currency);
+    return minor > 0
+        ? KitStrings.plusOtherOwed(amount)
+        : KitStrings.plusOtherOwe(amount);
   }
 }
 
-class _HeroAmount extends StatelessWidget {
-  const _HeroAmount({required this.minor, required this.currency});
+/// Group position (render 2): "You owe in this group" with a tether, the
+/// signed amount at 46 dp in ink, and an optional explanation sentence
+/// ("You paid ₹6,000 and your share is ₹6,840."). Actions go below it in
+/// the screen.
+class GroupBalanceHero extends StatelessWidget {
+  const GroupBalanceHero({
+    super.key,
+    required this.minor,
+    required this.currency,
+    this.detail,
+    this.label,
+  });
 
+  /// Signed: + you're owed in this group, − you owe.
   final int minor;
   final String currency;
+  final String? detail;
+
+  /// Overrides the default sentence.
+  final String? label;
 
   @override
   Widget build(BuildContext context) {
-    final style = MoneyText.styleFor(context, MoneyTextStyle.hero, minor);
-    return Align(
-      alignment: AlignmentDirectional.centerStart,
-      child: FittedBox(
-        fit: BoxFit.scaleDown,
-        alignment: AlignmentDirectional.centerStart,
-        child: Text(
-          MoneyFormat.format(minor.abs(), currency),
-          style: style,
-          maxLines: 1,
-          softWrap: false,
-        ),
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final d = MoneyDirection.of(minor);
+    final color = context.money.forDirection(d);
+    final sentence =
+        label ??
+        switch (d) {
+          MoneyDirection.owed => KitStrings.groupOwed,
+          MoneyDirection.owe => KitStrings.groupOwe,
+          _ => KitStrings.groupSettled,
+        };
+    return Semantics(
+      container: true,
+      label: [
+        sentence,
+        MoneyFormat.spoken(minor, currency),
+        ?detail,
+      ].join('. '),
+      excludeSemantics: true,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              TetherGlyph(direction: d, color: color),
+              const SizedBox(width: Space.sm),
+              Flexible(
+                child: Text(
+                  sentence,
+                  style: theme.textTheme.titleSmall!.copyWith(color: color),
+                ),
+              ),
+            ],
+          ),
+          FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: AlignmentDirectional.centerStart,
+            child: MoneyText(
+              minor: minor,
+              currency: currency,
+              style: MoneyTextStyle.headline,
+              colored: false,
+              color: d == MoneyDirection.settled ? context.money.settled : null,
+            ),
+          ),
+          if (detail != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: Text(
+                detail!,
+                style: theme.textTheme.bodyMedium!.copyWith(
+                  color: scheme.onSurfaceVariant,
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }

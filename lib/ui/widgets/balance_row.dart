@@ -1,26 +1,37 @@
 import 'package:flutter/material.dart';
 
-import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/money_format.dart';
 import 'kit_strings.dart';
+import 'list_row.dart';
 import 'money_text.dart';
 import 'person_avatar.dart';
-import 'row_layout.dart';
 
-enum BalanceRowKind { person, group, member }
+enum BalanceRowKind {
+  /// A person on Home: avatar, "owes you" / "you owe" / "settled up".
+  person,
 
-/// Person / group / group-member row with signed amount + direction word
-/// (DESIGN 5.2). Uses the largest-|amount| currency, "+N more" for others.
+  /// A group on Home: no leading tile, "you're owed" / "you owe".
+  group,
+
+  /// A group member in a group's balances: third person, "gets back" /
+  /// "owes", in ink (it is not money moving to or from you).
+  member,
+}
+
+/// Person, group or group-member row with the trailing balance block
+/// (render 1). Uses the largest-|amount| currency and "+N more" for others.
+/// Groups have names, people have faces: group rows never get a leading
+/// tile.
 class BalanceRow extends StatelessWidget {
   const BalanceRow({
     super.key,
     required this.kind,
-    required this.id, // personId / groupId / memberId (avatar tone seed)
+    required this.id, // personId / groupId / memberId
     required this.title,
     required this.subtitle,
     required this.net,
-    this.emoji,
+    this.isMe = false,
     this.isPlaceholder = false,
     this.onTap,
     this.onLongPress,
@@ -31,131 +42,91 @@ class BalanceRow extends StatelessWidget {
   final String title;
   final String subtitle;
   final Map<String, int> net; // + = owes you / you're owed / gets back
-  final String? emoji;
+  final bool isMe; // member rows: you, as the filled avatar
   final bool isPlaceholder;
   final VoidCallback? onTap;
   final VoidCallback? onLongPress;
 
-  /// The currency shown on the row: largest |amount|, ties by code.
-  static MapEntry<String, int>? leadingEntry(Map<String, int> net) {
-    MapEntry<String, int>? best;
-    for (final e in net.entries) {
-      if (e.value == 0) continue;
-      if (best == null ||
-          e.value.abs() > best.value.abs() ||
-          (e.value.abs() == best.value.abs() &&
-              e.key.compareTo(best.key) < 0)) {
-        best = e;
-      }
-    }
-    return best;
+  /// The currency with the largest absolute balance (ties by code), or
+  /// null when everything is zero.
+  static MapEntry<String, int>? mainEntry(Map<String, int> net) {
+    final nonZero = net.entries.where((e) => e.value != 0).toList()
+      ..sort((a, b) {
+        final c = b.value.abs().compareTo(a.value.abs());
+        return c != 0 ? c : a.key.compareTo(b.key);
+      });
+    return nonZero.isEmpty ? null : nonZero.first;
   }
 
-  /// Fixed direction word for [kind] and the sign of [minor] (DESIGN 7.2).
-  static String directionWord(BalanceRowKind kind, int minor) {
-    if (minor == 0) return KitStrings.even;
-    final positive = minor > 0;
+  static String wordFor(BalanceRowKind kind, int minor) {
+    if (minor == 0) return KitStrings.settledUp;
     return switch (kind) {
       BalanceRowKind.person =>
-        positive ? KitStrings.owesYou : KitStrings.youOwe,
+        minor > 0 ? KitStrings.owesYou : KitStrings.youOwe,
       BalanceRowKind.group =>
-        positive ? KitStrings.youreOwed : KitStrings.youOwe,
-      BalanceRowKind.member => positive ? KitStrings.getsBack : KitStrings.owes,
+        minor > 0 ? KitStrings.youreOwed : KitStrings.youOwe,
+      BalanceRowKind.member =>
+        minor > 0 ? KitStrings.getsBack : KitStrings.owes,
     };
-  }
-
-  String _semantics(MapEntry<String, int>? lead, int more) {
-    final parts = <String>[title];
-    if (lead == null) {
-      parts.add(KitStrings.even);
-    } else {
-      final amount = MoneyFormat.spoken(lead.value, lead.key);
-      final positive = lead.value > 0;
-      parts.add(switch (kind) {
-        BalanceRowKind.person =>
-          positive ? 'owes you $amount' : 'you owe $amount',
-        BalanceRowKind.group =>
-          positive ? "you're owed $amount" : 'you owe $amount',
-        BalanceRowKind.member =>
-          positive ? 'gets back $amount' : 'owes $amount',
-      });
-      if (more > 0) parts.add(KitStrings.moreCurrencies(more));
-    }
-    if (subtitle.isNotEmpty) parts.add(subtitle);
-    if (isPlaceholder) parts.add(KitStrings.notOnSettleUp);
-    return parts.join(', ');
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    final money = context.money;
-    final lead = leadingEntry(net);
-    final more = net.entries
-        .where((e) => e.value != 0 && e.key != lead?.key)
+    final main = mainEntry(net);
+    final currency =
+        main?.key ??
+        (net.keys.isEmpty ? 'INR' : (net.keys.toList()..sort()).first);
+    final minor = main?.value ?? 0;
+    final others = net.entries
+        .where((e) => e.value != 0 && e.key != main?.key)
         .length;
+    final word = wordFor(kind, minor);
+    final direction = minor == 0
+        ? MoneyDirection.settled
+        : kind == BalanceRowKind.member
+        ? MoneyDirection.neutral
+        : MoneyDirection.of(minor);
+    final memberValue = kind == BalanceRowKind.member ? minor.abs() : minor;
+
+    final trailing = BalanceTrailing(
+      word: word,
+      minor: memberValue,
+      currency: currency,
+      direction: direction,
+      footnote: others > 0 ? KitStrings.moreCurrencies(others) : null,
+    );
 
     final leading = kind == BalanceRowKind.group
-        ? GroupGlyph(id: id, name: title, emoji: emoji)
-        : PersonAvatar(id: id, name: title, isPlaceholder: isPlaceholder);
+        ? null
+        : PersonAvatar(
+            id: id,
+            name: title,
+            isMe: isMe,
+            isPlaceholder: isPlaceholder,
+          );
 
-    final Widget trailing;
-    if (lead == null) {
-      trailing = Text(
-        KitStrings.even,
-        style: theme.textTheme.labelLarge!.copyWith(color: money.settled),
-      );
-    } else {
-      trailing = TrailingColumn(
-        children: [
-          MoneyText(minor: lead.value, currency: lead.key),
-          Text(
-            directionWord(kind, lead.value),
-            style: MoneyStyles.direction(context, lead.value),
-          ),
-          if (more > 0)
-            Padding(
-              padding: const EdgeInsets.only(top: 2),
-              child: Text(
-                KitStrings.moreCurrencies(more),
-                style: theme.textTheme.bodySmall!.copyWith(
-                  color: scheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-        ],
-      );
-    }
+    final spoken = [
+      title,
+      subtitle,
+      if (minor == 0) word else '$word ${MoneyFormat.spoken(minor, currency)}',
+      if (others > 0) KitStrings.moreCurrencies(others),
+      if (isPlaceholder) KitStrings.notOnSettleUp,
+    ].join(', ');
 
     return Semantics(
-      label: _semantics(lead, more),
+      container: true,
       button: onTap != null,
+      label: spoken,
+      excludeSemantics: true,
       onTap: onTap,
       onLongPress: onLongPress,
-      excludeSemantics: true,
-      child: InkWell(
+      child: KitListRow(
+        title: title,
+        subtitle: subtitle,
+        leading: leading,
+        trailing: trailing,
         onTap: onTap,
         onLongPress: onLongPress,
-        child: KitRow(
-          leading: leading,
-          title: Text(
-            title,
-            style: theme.textTheme.titleMedium,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          subtitle: Text(
-            subtitle,
-            style: theme.textTheme.bodyMedium!.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-          ),
-          trailing: trailing,
-          minHeight: Sizes.rowMin2,
-        ),
       ),
     );
   }

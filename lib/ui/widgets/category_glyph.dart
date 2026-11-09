@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 
-/// Category glyph disc (DESIGN 5.3); maps Categories ids to icons.
+/// Category icon (render 2): a bare 24 dp Material Rounded icon in
+/// secondary ink, no disc or tile behind it. Maps Categories ids (SPEC 5.9)
+/// to icons; decorative for screen readers (the row names the expense).
 class CategoryGlyph extends StatelessWidget {
-  const CategoryGlyph({super.key, required this.categoryId, this.size = 40});
+  const CategoryGlyph({
+    super.key,
+    required this.categoryId,
+    this.size = 24,
+    this.color,
+  });
 
   final String categoryId;
   final double size;
+
+  /// Defaults to secondary ink.
+  final Color? color;
 
   static const Map<String, IconData> _icons = {
     'entertainment': Icons.theater_comedy_rounded,
@@ -33,7 +43,7 @@ class CategoryGlyph extends StatelessWidget {
     'life.insurance': Icons.health_and_safety_rounded,
     'life.medical': Icons.medical_services_rounded,
     'life.taxes': Icons.request_quote_rounded,
-    'transport': Icons.commute_rounded,
+    'transport': Icons.two_wheeler_rounded,
     'transport.bicycle': Icons.pedal_bike_rounded,
     'transport.bus_train': Icons.train_rounded,
     'transport.car': Icons.directions_car_rounded,
@@ -70,22 +80,11 @@ class CategoryGlyph extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
-    final isPayment = categoryId == 'payment';
     return ExcludeSemantics(
-      child: SizedBox.square(
-        dimension: size,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            color: isPayment ? scheme.primary : scheme.surfaceContainerHigh,
-          ),
-          child: Icon(
-            iconFor(categoryId),
-            size: size * 0.6,
-            color: isPayment ? scheme.onPrimary : scheme.onSurfaceVariant,
-          ),
-        ),
+      child: Icon(
+        iconFor(categoryId),
+        size: size,
+        color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
       ),
     );
   }

@@ -32,8 +32,23 @@ void main() {
       expect(MoneyFormat.format(999999999, 'GBP'), '£9,999,999.99');
       expect(
         MoneyFormat.format(123456789, 'INR', signed: true),
-        '+₹1,234,567.89',
+        '+₹12,34,567.89',
       );
+    });
+
+    test('INR uses lakh grouping and drops whole-rupee paise', () {
+      expect(MoneyFormat.format(425000, 'INR'), '₹4,250');
+      expect(MoneyFormat.format(12000000, 'INR'), '₹1,20,000');
+      expect(MoneyFormat.format(1000000000 - 1, 'INR'), '₹99,99,999.99');
+      expect(MoneyFormat.format(-84000, 'INR'), '−₹840');
+      expect(MoneyFormat.format(509000, 'INR', signed: true), '+₹5,090');
+      expect(MoneyFormat.format(0, 'INR'), '₹0');
+      expect(MoneyFormat.format(123450, 'INR'), '₹1,234.50');
+      expect(MoneyFormat.format(5, 'INR'), '₹0.05');
+    });
+
+    test('an explicit locale overrides the lakh grouping', () {
+      expect(MoneyFormat.format(12000000, 'INR', locale: 'en'), '₹120,000');
     });
 
     test('unknown codes fall back to the code as symbol', () {
@@ -52,6 +67,7 @@ void main() {
       expect(MoneyFormat.spoken(-840, 'GBP'), '8.40 GBP');
       expect(MoneyFormat.spoken(500, 'JPY'), '500 JPY');
       expect(MoneyFormat.spoken(7, 'EUR'), '0.07 EUR');
+      expect(MoneyFormat.spoken(-84000, 'INR'), '840.00 INR');
     });
   });
 }

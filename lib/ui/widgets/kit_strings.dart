@@ -1,41 +1,46 @@
-// Copy used inside the design-system widgets (DESIGN.md section 7).
+// Copy used inside the design-system widgets.
 //
 // Screens keep their copy in lib/ui/strings.dart (owned by ui-screens).
 // The widget kit cannot depend on that file, so the few phrases the
 // widgets render themselves live here, written to the same rules: sentence
-// case, fixed direction words, "this phone" rather than "device".
+// case, amounts from the user's view with a direction word, "this phone"
+// rather than "device", never "offline".
 import '../format/money_format.dart';
 
 abstract final class KitStrings {
-  // Direction words (DESIGN 7.2). Fixed everywhere.
+  // Direction words (DESIGN.md "Do's and Don'ts"). Fixed everywhere.
   static const owesYou = 'owes you';
   static const youOwe = 'you owe';
   static const youreOwed = "you're owed";
-  static const even = 'even';
+  static const settledUp = 'settled up';
+  static const settled = 'settled';
   static const youLent = 'you lent';
   static const youBorrowed = 'you borrowed';
   static const notInvolved = 'not involved';
+  static const received = 'received';
+  static const paid = 'paid';
   static const getsBack = 'gets back';
   static const owes = 'owes';
 
-  // Level vial end words.
-  static const vialOwe = 'owe';
-  static const vialOwed = 'owed';
+  // Balance hero (Home).
+  static const heroOwed = "You're owed overall";
+  static const heroOwe = 'You owe overall';
+  static const heroSettled = "You're all settled up";
+  static const comingToYou = 'Coming to you';
+  static const youOweColumn = 'You owe';
+  static String plusOtherOwed(String amount) => 'Plus $amount owed to you';
+  static String plusOtherOwe(String amount) => 'Plus $amount you owe';
 
-  // Balance hero.
-  static const heroOwedLead = 'Overall, you are owed';
-  static const heroOweLead = 'Overall, you owe';
-  static const heroSettled = "You're all even";
-  static String heroOweTotal(String amount) => 'You owe $amount in total.';
-  static String heroOwedTotal(String amount) =>
-      'You are owed $amount in total.';
-  static String heroPlusOwed(String amount) => 'Plus $amount owed to you';
-  static String heroPlusOwe(String amount) => 'Plus $amount you owe';
+  // Group position hero.
+  static const groupOwe = 'You owe in this group';
+  static const groupOwed = "You're owed in this group";
+  static const groupSettled = "You're settled up in this group";
 
   static String moreCurrencies(int n) => '+$n more';
 
   // Expense rows.
-  static String paid(String payer, String amount) => '$payer paid $amount';
+  static String paidAmount(String payer, String amount) =>
+      '$payer paid $amount';
   static String peoplePaid(int n, String amount) => '$n people paid $amount';
   static String paymentTitle(String from, String to) => '$from paid $to';
   static const payment = 'Payment';
@@ -43,55 +48,94 @@ abstract final class KitStrings {
   static const restore = 'Restore';
   static const deleted = 'deleted';
   static const someone = 'Someone';
+  static const you = 'You';
+
+  // Payment methods.
+  static const upi = 'UPI';
+  static const cash = 'Cash';
+  static const bank = 'Bank';
+  static const other = 'Other';
+  static const paymentMethod = 'Payment method';
+
+  // Suggested payments.
+  static const suggestedPayments = 'Suggested payments';
+  static const simplifyDebts = 'Simplify debts';
+  static String pays(String from, String to) =>
+      from == you ? 'You pay $to' : '$from pays $to';
+
+  /// First name for sentences: "Priya Sharma" -> "Priya".
+  static String firstName(String name) {
+    final t = name.trim();
+    final i = t.indexOf(RegExp(r'\s'));
+    return i < 0 ? t : t.substring(0, i);
+  }
 
   // Avatar.
   static const notOnSettleUp = 'not on Settle Up yet';
 
-  // Split selector and remainder.
+  // Add expense.
+  static const amount = 'Amount';
+  static const description = 'Description';
+  static const indianRupees = 'Indian rupees';
   static const splitEqually = 'Equally';
-  static const splitAmounts = 'Amounts';
+  static const splitExact = 'Exact amounts';
   static const splitPercent = 'Percent';
   static const splitShares = 'Shares';
   static const splitAdjust = 'Adjust';
-  static String leftToAssign(String amount) => '$amount left to assign';
-  static String allAssigned(String amount) => 'All $amount assigned';
-  static String tooMuch(String amount) =>
-      "$amount too much. Lower someone's share.";
+  static const splitMethod = 'Split method';
+  static const notInThisExpense = 'not in this expense';
+  static String leftToSplit(String amount) => '$amount left to split';
+  static String tooMuch(String amount) => '$amount too much';
+  static String changeCategory(String label) =>
+      'Category: $label. Change category';
 
-  // Sync chip (DESIGN 5.8). Never "offline".
+  // Before/after table.
+  static const now = 'Now';
+  static const after = 'After';
+  static const balance = 'Balance';
+
+  // Sync (never "offline").
   static const onThisPhone = 'On this phone';
   static String syncedAgo(String ago) => 'Synced $ago';
   static const synced = 'Synced';
+  static const allShared = 'Everything is shared';
   static String changesToShare(int n) =>
       n == 1 ? '1 change to share' : '$n changes to share';
+  static String lastSyncedWith(String peer, String ago) =>
+      'Last synced with $peer $ago';
+  static String lastSynced(String ago) => 'Last synced $ago';
+  static const neverSynced = 'Not synced with another phone yet';
   static String syncingWith(String name) => 'Syncing with $name';
   static const syncing = 'Syncing';
   static const syncStopped = 'Sync stopped';
-
-  // Keypad.
-  static const amount = 'Amount';
-  static const deleteDigit = 'Delete';
-  static const changeCurrency = 'Change currency';
-
-  // Nearby sheet (DESIGN 5.9).
-  static const phonesNearby = 'Phones nearby';
-  static const searching = 'Searching by Wi-Fi and Bluetooth';
-  static const unknownPhone = 'Unknown phone';
+  static const syncStoppedBody = 'Nothing was lost. Try again when close by.';
   static const sync = 'Sync';
+  static const openSync = 'Open sync';
   static const pair = 'Pair';
+  static const thisPhone = 'This phone';
+  static const nearbyPhones = 'Nearby phones';
+  static const looking = 'Looking';
+  static const unknownPhone = 'Unknown phone';
   static const wifi = 'Wi-Fi';
   static const bluetooth = 'Bluetooth';
   static String shares(String groups) => 'shares $groups';
   static const noSharedGroups = 'no shared groups';
-  static const cantSeeThem = "Can't see them?";
-  static const cantSeeThemBody =
-      'Make sure they opened Sync and tapped "Make this phone visible".';
-  static const showMyQr = 'Show my QR code';
-  static const scanQr = 'Scan a QR code';
-  static String checkCode(String name, String code) =>
-      "Check that $name's phone shows $code";
+  static String syncWith(String name) => 'Sync with $name';
+  static String pairWith(String name) => 'Pair with $name';
 
-  /// Screen-reader amount without plus/minus words (DESIGN 3.4).
+  // Host card.
+  static const makeVisible = 'Make this phone visible';
+  static const friendsScan = 'Friends scan this to sync with you';
+  static const orConnectTo = 'Or connect to';
+  static const hotspot = 'Hotspot';
+  static const qrLabel = 'QR code to sync with this phone';
+
+  // Navigation.
+  static const home = 'Home';
+  static const activity = 'Activity';
+  static const addExpense = 'Add expense';
+
+  /// Screen-reader amount without plus/minus words.
   static String spokenAmount(int minor, String currency) =>
       MoneyFormat.spoken(minor, currency);
 }

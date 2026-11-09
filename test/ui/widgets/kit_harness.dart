@@ -84,7 +84,9 @@ Expense testExpense({
   ExpenseKind kind = ExpenseKind.expense,
   required Map<String, int> paid,
   required Map<String, int> owed,
-  String currency = 'GBP',
+  String currency = 'INR',
+  PaymentMethod paymentMethod = PaymentMethod.upi,
+  DateTime? date,
 }) {
   final total = paid.values.fold(0, (a, b) => a + b);
   return Expense(
@@ -93,7 +95,7 @@ Expense testExpense({
     kind: kind,
     description: description,
     category: kind == ExpenseKind.payment ? 'payment' : category,
-    date: DateTime.utc(2026, 11, 9, 12),
+    date: date ?? DateTime.utc(2026, 11, 9, 12),
     notes: '',
     money: MoneyBlock(
       total: total,
@@ -106,30 +108,30 @@ Expense testExpense({
     createdBy: paid.keys.first,
     createdAt: DateTime.utc(2026, 11, 9, 12),
     updatedHlc: const Hlc(0, 0, 'device'),
-    paymentMethod: kind == ExpenseKind.payment ? PaymentMethod.cash : null,
+    paymentMethod: kind == ExpenseKind.payment ? paymentMethod : null,
   );
 }
 
-/// Loads the bundled Atkinson Hyperlegible Next weights and the Material
-/// icon font so goldens render real glyphs instead of test boxes.
+/// Loads the bundled Familjen Grotesk weights and the Material icon font
+/// so goldens render real glyphs instead of test boxes.
 Future<void> loadRealFonts() async {
   const files = {
-    'regular': 'AtkinsonHyperlegibleNext-Regular.ttf',
-    '600': 'AtkinsonHyperlegibleNext-SemiBold.ttf',
-    '700': 'AtkinsonHyperlegibleNext-Bold.ttf',
-    '800': 'AtkinsonHyperlegibleNext-ExtraBold.ttf',
+    'regular': 'FamiljenGrotesk-Regular.ttf',
+    '500': 'FamiljenGrotesk-Medium.ttf',
+    '600': 'FamiljenGrotesk-SemiBold.ttf',
+    '700': 'FamiljenGrotesk-Bold.ttf',
   };
   Future<ByteData> asset(String name) =>
       rootBundle.load('assets/google_fonts/$name');
 
   // The family-variant names google_fonts asks the engine for...
   for (final e in files.entries) {
-    final loader = FontLoader('AtkinsonHyperlegibleNext_${e.key}')
+    final loader = FontLoader('FamiljenGrotesk_${e.key}')
       ..addFont(asset(e.value));
     await loader.load();
   }
   // ...and the fallback family it lists, with every weight.
-  final fallback = FontLoader('AtkinsonHyperlegibleNext');
+  final fallback = FontLoader('FamiljenGrotesk');
   for (final f in files.values) {
     fallback.addFont(asset(f));
   }

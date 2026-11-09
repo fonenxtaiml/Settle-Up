@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
-import 'level_vial.dart';
+import 'tether.dart';
 
-/// Empty state with static vial (DESIGN 5.7).
+/// Empty state: a slack tether (two rings, nothing owed, nothing moving),
+/// a headline, one sentence and at most one primary action. Centred, at
+/// most 320 dp wide. No illustration beyond the brand device.
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,
@@ -27,33 +29,35 @@ class EmptyState extends StatelessWidget {
         constraints: const BoxConstraints(maxWidth: 320),
         child: Padding(
           padding: const EdgeInsets.symmetric(
-            horizontal: Space.x4,
-            vertical: Space.x8,
+            horizontal: Space.gutter,
+            vertical: Space.xl,
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // The brand device at rest: a short vial, bubble between the
-              // marks, nothing animated.
-              const SizedBox(
-                width: Sizes.rowMin2 * 2,
-                child: LevelVial(
-                  position: 0,
-                  height: 20,
-                  showEndLabels: false,
-                  animate: false,
+              ExcludeSemantics(
+                child: CustomPaint(
+                  size: const Size(112, 24),
+                  painter: TetherPainter(
+                    from: TetherPoint.ring,
+                    to: TetherPoint.ring,
+                    line: TetherLine.slack,
+                    color: scheme.outline,
+                    strokeWidth: 2,
+                    pointRadius: 9,
+                  ),
                 ),
               ),
-              const SizedBox(height: Space.x6),
+              const SizedBox(height: Space.xl),
               Semantics(
                 header: true,
                 child: Text(
                   headline,
                   textAlign: TextAlign.center,
-                  style: theme.textTheme.headlineSmall,
+                  style: theme.textTheme.titleLarge,
                 ),
               ),
-              const SizedBox(height: Space.x2),
+              const SizedBox(height: Space.sm),
               Text(
                 body,
                 textAlign: TextAlign.center,
@@ -62,7 +66,7 @@ class EmptyState extends StatelessWidget {
                 ),
               ),
               if (actionLabel != null) ...[
-                const SizedBox(height: Space.x6),
+                const SizedBox(height: Space.xl),
                 FilledButton(onPressed: onAction, child: Text(actionLabel!)),
               ],
             ],
