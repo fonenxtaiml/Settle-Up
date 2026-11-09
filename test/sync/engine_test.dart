@@ -262,7 +262,14 @@ void main() {
   });
 
   test('bad links are invalidCode', () async {
-    for (final bad in ['hello', 'settleup://sync?v=9', 'settleup://join?v=1']) {
+    for (final bad in [
+      'hello',
+      'settleup://sync?v=9',
+      'settleup://join?v=1',
+      // Scanned garbage: percent escapes that are not UTF-8.
+      'settleup://sync?v=1&h=%FF&d=x',
+      'settleup://join?v=1&g=%C3&k=AA&n=x&c=y',
+    ]) {
       await expectLater(
         alex.engine.syncWithLink(bad),
         throwsA(isA<SyncException>()

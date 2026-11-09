@@ -142,4 +142,16 @@ void main() {
           isNull);
     });
   });
+
+  test('percent escapes that are not UTF-8 give null, not a throw', () {
+    for (final s in [
+      'settleup://join?v=1&g=%C3&k=AA&n=x&c=y',
+      'settleup://join?v=1&g=g&k=${'A' * 43}&n=%FF&c=INR',
+      'settleup://sync?v=1&h=%FF&d=x',
+      'settleup://sync?v=1&h=1.2.3.4:1&d=%E2%82',
+    ]) {
+      expect(InviteLink.tryParse(s), isNull, reason: s);
+      expect(ConnectLink.tryParse(s), isNull, reason: s);
+    }
+  });
 }

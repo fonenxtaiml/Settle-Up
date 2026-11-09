@@ -55,11 +55,12 @@ final class InviteLink {
     if (uri == null || uri.scheme != 'settleup' || uri.host != 'join') {
       return null;
     }
-    final q = uri.queryParameters;
-    if (q['v'] != '1') return null;
-    final g = q['g'], k = q['k'], n = q['n'], c = q['c'];
-    if (g == null || k == null || n == null || c == null) return null;
     try {
+      // Decoding throws on percent escapes that are not UTF-8.
+      final q = uri.queryParameters;
+      if (q['v'] != '1') return null;
+      final g = q['g'], k = q['k'], n = q['n'], c = q['c'];
+      if (g == null || k == null || n == null || c == null) return null;
       final key = _unb64(k);
       if (key.length != 32) return null;
       return InviteLink(
@@ -106,7 +107,13 @@ final class ConnectLink {
     if (uri == null || uri.scheme != 'settleup' || uri.host != 'sync') {
       return null;
     }
-    final q = uri.queryParametersAll;
+    final Map<String, List<String>> q;
+    try {
+      // Decoding throws on percent escapes that are not UTF-8.
+      q = uri.queryParametersAll;
+    } on FormatException {
+      return null;
+    }
     if (q['v']?.first != '1') return null;
     final hosts = q['h'] ?? const [];
     final d = q['d']?.first;
