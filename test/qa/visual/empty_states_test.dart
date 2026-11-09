@@ -102,7 +102,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-12: Search "no results" overflows and hides Clear search',
-    skip: true, // QA VISUAL-R1-12: EmptyState in a non-scrolling Center
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
