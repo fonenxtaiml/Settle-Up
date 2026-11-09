@@ -22,6 +22,7 @@ import 'package:settle_up/sync/transport/nearby/nearby_api.dart';
 import 'package:settle_up/sync/transport/nearby/nearby_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 import 'package:settle_up/ui/dev/fake_settings.dart';
+import 'package:settle_up/ui/screens/sync/radios.dart';
 
 import '../../sync/bluetooth/support/fake_ble.dart';
 import '../../sync/bluetooth/support/fake_nearby.dart';
@@ -537,12 +538,216 @@ void main() {
       },
     );
   });
+  round2();
+}
+
+/// [ScriptedPlatform] with Android's status semantics: permission_handler's
+/// status() never returns permanentlyDenied on Android (only request() can
+/// tell), so a permanently denied permission reads as plain denied.
+final class _AndroidStatusPlatform implements PermissionPlatform {
+  _AndroidStatusPlatform(this.inner);
+
+  final ScriptedPlatform inner;
+
+  @override
+  PermissionOs get os => inner.os;
+  @override
+  Future<int> androidSdkInt() => inner.androidSdkInt();
+  @override
+  Future<PermissionStatus> status(Permission p) async {
+    final s = await inner.status(p);
+    return s == PermissionStatus.permanentlyDenied
+        ? PermissionStatus.denied
+        : s;
+  }
+
+  @override
+  Future<Map<Permission, PermissionStatus>> request(List<Permission> p) =>
+      inner.request(p);
+  @override
+  Future<RadioState> bluetooth() => inner.bluetooth();
+  @override
+  Future<bool> locationServiceOn() => inner.locationServiceOn();
+  @override
+  Future<bool> hasLanInterface() => inner.hasLanInterface();
+}
+
+// QA PLATFORM round 2.
+void round2() {
+  group('round 2', () {
+    // PLATFORM-R1-11 (reopened): the permanently denied verdict from a
+    // request is lost on the next status-only check, so the Sync tab's
+    // resume re-check turns "Open settings" back into "Allow".
+    test('PLATFORM-R1-11: a permanently denied request is still reported by '
+        'the next check on Android', () async {
+      final scripted = ScriptedPlatform(sdk: 34);
+      for (final p in [
+        Permission.bluetoothScan,
+        Permission.bluetoothAdvertise,
+        Permission.bluetoothConnect,
+      ]) {
+        scripted.answers[p] = PermissionStatus.permanentlyDenied;
+      }
+      final perms = NearbyPermissions(
+        platform: _AndroidStatusPlatform(scripted),
+      );
+      expect(
+        await perms.request(TransportKind.ble),
+        TransportAvailability.permissionPermanentlyDenied,
+      );
+      expect(
+        await perms.check(TransportKind.ble),
+        TransportAvailability.permissionPermanentlyDenied,
+        reason:
+            'Android status() says "denied" for a permanently denied '
+            'permission; the wrapper must remember what request() said',
+      );
+    }, skip: 'PLATFORM-R1-11: check() forgets permanentlyDenied on Android');
+
+    // PLATFORM-R2-01: on API 26-30 a BLE scan needs the location service
+    // switch on. With Bluetooth on and location off, availability says
+    // radioOff, and the Sync tab says "Bluetooth is off" with a button to
+    // the Bluetooth settings, where Bluetooth is already on.
+    for (final sdk in [26, 29, 30]) {
+      test('PLATFORM-R2-01: API $sdk, Bluetooth on, location switch off: the '
+          'Sync tab does not say Bluetooth is off', () async {
+        final platform = ScriptedPlatform(sdk: sdk)..locationOn = false;
+        for (final p in _manifestNames.keys) {
+          platform.statuses[p] = PermissionStatus.granted;
+        }
+        final settings = FakeSettingsRepository();
+        final ledger = await Ledger.open(
+          store: MemoryOpStore(),
+          keys: MemoryGroupKeyStore(),
+          settings: settings,
+        );
+        final engine = DefaultSyncEngine(
+          store: ledger,
+          transports: [
+            _transport(TransportKind.lan, platform),
+            _transport(TransportKind.nearby, platform),
+            _transport(TransportKind.ble, platform),
+          ],
+        );
+        addTearDown(engine.dispose);
+        expect(platform.radio, RadioState.on);
+        final issues = radioIssues(await engine.availability());
+        expect(
+          issues,
+          isNot(contains(RadioIssue.bluetoothOff)),
+          reason:
+              'Bluetooth is on; the fix is the location switch. '
+              'Issues were $issues',
+        );
+      }, skip: 'PLATFORM-R2-01: location off is shown as "Bluetooth is off"');
+    }
+
+    test('Bluetooth really off on API 34: the Sync tab says so', () async {
+      final platform = ScriptedPlatform(sdk: 34)..radio = RadioState.off;
+      for (final p in _manifestNames.keys) {
+        platform.statuses[p] = PermissionStatus.granted;
+      }
+      final ble = _transport(TransportKind.ble, platform);
+      addTearDown(ble.dispose);
+      expect(radioIssues({TransportKind.ble: await ble.availability()}), [
+        RadioIssue.bluetoothOff,
+      ]);
+    });
+
+    test('Nearby API_UNAVAILABLE is remembered across discovery and '
+        'connect, without calling the plugin again', () async {
+      final platform = ScriptedPlatform(sdk: 34);
+      for (final p in _manifestNames.keys) {
+        platform.statuses[p] = PermissionStatus.granted;
+      }
+      final api = _CountingNoPlayServicesNearby();
+      final nearby = NearbyTransport(
+        permissions: NearbyPermissions(platform: platform),
+        api: api,
+        isAndroid: true,
+      );
+      addTearDown(nearby.dispose);
+      // First failure from discovery (not advertising).
+      final sub = nearby.discover().listen((_) {}, onError: (Object _) {});
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      await sub.cancel();
+      expect(await nearby.availability(), TransportAvailability.unsupported);
+      expect(
+        await nearby.requestPermissions(),
+        TransportAvailability.unsupported,
+      );
+      final before = api.calls;
+      await expectLater(
+        nearby.connect(
+          const DiscoveredPeer(
+            kind: TransportKind.nearby,
+            address: 'ep1',
+            name: 'x',
+          ),
+          timeout: const Duration(seconds: 1),
+        ),
+        throwsA(anything),
+      );
+      expect(api.calls, before, reason: 'no plugin call once unavailable');
+    });
+
+    test('an ordinary Nearby failure (already advertising) does not mark '
+        'Nearby unsupported', () async {
+      expect(
+        isNearbyApiUnavailable(
+          PlatformException(
+            code: 'Failure',
+            message: '8001: STATUS_ALREADY_ADVERTISING',
+          ),
+        ),
+        isFalse,
+      );
+      expect(
+        isNearbyApiUnavailable(
+          PlatformException(
+            code: 'Failure',
+            message: '8034: MISSING_PERMISSION_ACCESS_FINE_LOCATION',
+          ),
+        ),
+        isFalse,
+      );
+      expect(isNearbyApiUnavailable(StateError('17: x')), isFalse);
+      expect(
+        isNearbyApiUnavailable(
+          PlatformException(code: 'Failure', message: '17: API: Nearby'),
+        ),
+        isTrue,
+      );
+    });
+  });
+}
+
+final class _CountingNoPlayServicesNearby extends _NoPlayServicesNearby {
+  int calls = 0;
+
+  @override
+  Future<void> startAdvertising(String endpointName) {
+    calls++;
+    return super.startAdvertising(endpointName);
+  }
+
+  @override
+  Future<void> startDiscovery(String endpointName) {
+    calls++;
+    return super.startDiscovery(endpointName);
+  }
+
+  @override
+  Future<void> requestConnection(String endpointName, String endpointId) {
+    calls++;
+    return super.requestConnection(endpointName, endpointId);
+  }
 }
 
 /// What nearby_connections does on a phone without Google Play services:
 /// every ConnectionsClient call fails with ApiException 17
 /// (API_UNAVAILABLE), surfaced as a PlatformException.
-final class _NoPlayServicesNearby implements NearbyApi {
+base class _NoPlayServicesNearby implements NearbyApi {
   final StreamController<NearbyEvent> _events = StreamController.broadcast();
 
   static PlatformException get _unavailable => PlatformException(
