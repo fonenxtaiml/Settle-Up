@@ -109,8 +109,6 @@ void main() {
 
   testWidgets(
     'QA MONEY-R1-01: picking the USD payment records USD, not INR',
-    // testWidgets only takes a bool skip; the id is in the name.
-    skip: true, // QA MONEY-R1-01: Settle up ignores the picked currency
     (tester) async {
       await world(tester);
       final c = await pumpReal(tester, p);
@@ -132,7 +130,6 @@ void main() {
 
   testWidgets(
     'QA MONEY-R1-01: the "Who is paying?" list honours the picked currency',
-    skip: true, // QA MONEY-R1-01: Settle up ignores the picked currency
     (tester) async {
       await world(tester);
       final c = await pumpReal(tester, p);

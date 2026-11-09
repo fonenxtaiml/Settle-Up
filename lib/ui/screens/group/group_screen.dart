@@ -260,7 +260,12 @@ class _GroupBody extends ConsumerWidget {
                   fromIsMe: t.from == myId,
                   toIsMe: t.to == myId,
                   onTap: () => context.push(
-                    Routes.settle(groupId: g.groupId, from: t.from, to: t.to),
+                    Routes.settle(
+                      groupId: g.groupId,
+                      from: t.from,
+                      to: t.to,
+                      currency: t.currency,
+                    ),
                   ),
                 ),
             ],
