@@ -41,15 +41,15 @@ final class KvSettingsRepository implements SettingsRepository {
     var device = deviceFromJson(deviceJson);
     if (device == null) {
       final name = defaultDeviceName.trim();
-      final recovered = storedDevice == null
-          ? null
-          : await _recoverDeviceId(store);
-      if (storedDevice != null) {
+      // A missing or unreadable row on a phone that already wrote ops
+      // keeps its id (a fresh install has no hlc.last).
+      final recovered = await _recoverDeviceId(store);
+      if (storedDevice != null || recovered != null) {
         developer.log(
           recovered == null
               ? 'Unreadable device row and no clock to recover it from: '
                   'this phone gets a new device id'
-              : 'Unreadable device row: kept device id $recovered',
+              : 'Lost device row: kept device id $recovered',
           name: 'settle_up.data',
         );
       }
