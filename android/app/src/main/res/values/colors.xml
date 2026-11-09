@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Point to Point tokens (lib/theme/tokens.dart) used before Flutter draws
+     its first frame. Night values are in values-night/colors.xml. -->
+<resources>
+    <!-- Palette.stone: the launcher icon is always ink on stone. -->
+    <color name="ic_launcher_background">#FFEEF0EF</color>
+    <!-- Palette.stone / Palette.ink -->
+    <color name="launch_background">#FFEEF0EF</color>
+    <color name="launch_mark">#FF16191D</color>
+</resources>
