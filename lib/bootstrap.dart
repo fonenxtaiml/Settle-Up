@@ -4,15 +4,19 @@
 // Run with --dart-define=SETTLEUP_FAKE=true for the in-memory fakes seeded
 // with the demo world (Goa trip, Flat 4B, Cabin weekend).
 import 'dart:developer' as developer;
-import 'dart:io' show Platform;
+import 'dart:io' show FileSystemException, Platform;
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/services.dart'
+    show MissingPluginException, PlatformException;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' show SqliteException;
 
 import 'data/kv_settings_repository.dart';
 import 'data/ledger.dart';
+import 'data/schema.dart' show SchemaTooNewError;
 import 'data/secure_group_key_store.dart';
 import 'data/sqlite_op_store.dart';
 import 'sync/default_sync_engine.dart';
@@ -26,6 +30,7 @@ import 'ui/dev/fake_settings.dart';
 import 'ui/dev/fake_sync_engine.dart';
 import 'ui/dev/seed_data.dart';
 import 'ui/providers.dart';
+import 'ui/screens/startup/startup_error_screen.dart' show StartupFailure;
 
 /// True when the app was built with --dart-define=SETTLEUP_FAKE=true.
 const bool kUseFakes = bool.fromEnvironment('SETTLEUP_FAKE');
@@ -34,35 +39,58 @@ Future<List<Override>> bootstrap() async =>
     kUseFakes ? fakeOverrides() : realOverrides();
 
 /// The production wiring (SPEC 4.2): the SQLite op log, the ledger and the
-/// sync engine with every transport this platform supports.
+/// sync engine with every transport this platform supports. Throws when the
+/// data folder or the database can't be opened; main() shows the startup
+/// error screen then.
 Future<List<Override>> realOverrides() async {
   final dir = await getApplicationSupportDirectory();
   final store = SqliteOpStore(p.join(dir.path, 'settle_up.db'));
   await store.open();
-  final settings = await KvSettingsRepository.open(
-    store,
-    defaultDeviceName: await _deviceName(),
-  );
-  final ledger = await Ledger.open(
-    store: store,
-    keys: SecureGroupKeyStore(),
-    settings: settings,
-  );
-  final permissions = NearbyPermissions();
-  final engine = DefaultSyncEngine(
-    store: ledger,
-    transports: [
-      LanTransport(permissions: permissions),
-      if (Platform.isAndroid) NearbyTransport(permissions: permissions),
-      BleTransport(permissions: permissions),
-    ],
-  );
+  // From here on a failure closes the file again, so a retry from the
+  // startup error screen opens it afresh.
+  final KvSettingsRepository settings;
+  final Ledger ledger;
+  final DefaultSyncEngine engine;
+  try {
+    settings = await KvSettingsRepository.open(
+      store,
+      defaultDeviceName: await _deviceName(),
+    );
+    ledger = await Ledger.open(
+      store: store,
+      keys: SecureGroupKeyStore(),
+      settings: settings,
+    );
+    final permissions = NearbyPermissions();
+    engine = DefaultSyncEngine(
+      store: ledger,
+      transports: [
+        LanTransport(permissions: permissions),
+        if (Platform.isAndroid) NearbyTransport(permissions: permissions),
+        BleTransport(permissions: permissions),
+      ],
+    );
+  } catch (_) {
+    await store.close();
+    rethrow;
+  }
   return [
     settingsRepositoryProvider.overrideWithValue(settings),
     ledgerRepositoryProvider.overrideWithValue(ledger),
     syncEngineProvider.overrideWithValue(engine),
   ];
 }
+
+/// Maps an exception thrown by [bootstrap] to what the startup error screen
+/// tells the user.
+StartupFailure classifyStartupError(Object error) => switch (error) {
+  SchemaTooNewError() => StartupFailure.tooNew,
+  SqliteException() => StartupFailure.database,
+  PlatformException() ||
+  MissingPluginException() ||
+  FileSystemException() => StartupFailure.storage,
+  _ => StartupFailure.other,
+};
 
 /// A friendly default phone name such as "Pixel 8"; the user can rename it
 /// in Settings.

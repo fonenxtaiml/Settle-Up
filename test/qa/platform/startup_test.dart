@@ -214,7 +214,6 @@ void main() {
         expect(find.byType(Text), findsWidgets);
       });
     },
-    skip: 'QA PLATFORM-R1-01: main() has no error handling around bootstrap()',
   );
 
   group('main() startup', () {

@@ -528,4 +528,19 @@ abstract final class S {
   static const errCancelled = 'Sync cancelled.';
   static const errInternal = 'Something went wrong on this phone. Try again.';
   static const errGeneric = 'That did not work. Try again.';
+
+  // Startup error screen (shown when the data on this phone can't be opened).
+  static const startupTitle = "Settle Up couldn't start";
+  static const startupStorage =
+      "This phone didn't give Settle Up a place to keep its data. "
+      'Restart the phone, then try again.';
+  static const startupDatabase =
+      "Settle Up couldn't open the expenses saved on this phone.";
+  static const startupTooNew =
+      'Your expenses were saved by a newer version of Settle Up. '
+      'Install the latest version to open them.';
+  static const startupGeneric = 'Something went wrong while opening the app.';
+  static const startupKept =
+      'Your data stays on this phone as it is. Nothing has been deleted.';
+  static const startupRetry = 'Try again';
 }
