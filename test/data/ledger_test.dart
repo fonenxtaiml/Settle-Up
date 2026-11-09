@@ -738,8 +738,9 @@ void main() {
       addTearDown(p.ledger.close);
       final t = await trip(p);
       flaky.failNext = true;
-      await expectLater(
-          p.ledger.addExpense(draft(t.g, [t.me])), throwsA(isA<StateError>()));
+      // A store error reaches the UI as storageFailed (DATA-R1-07).
+      await expectLater(p.ledger.addExpense(draft(t.g, [t.me])),
+          throwsA(_storageFailed));
       expect(p.opsOf(t.g), hasLength(4));
       await p.ledger.addExpense(draft(t.g, [t.me]));
       expect(p.opsOf(t.g).map((o) => o.counter), [1, 2, 3, 4, 5]);
@@ -753,7 +754,7 @@ void main() {
       await expectLater(
           p.ledger.createGroup(const NewGroup(
               name: 'X', type: GroupType.trip, currency: 'INR')),
-          throwsStateError);
+          throwsA(_storageFailed));
       expect(await p.ledger.groupKeys(), isEmpty);
       expect(await p.keys.all(), isEmpty);
     });
@@ -1200,6 +1201,9 @@ void main() {
     });
   });
 }
+
+final Matcher _storageFailed = isA<LedgerException>()
+    .having((e) => e.code, 'code', LedgerErrorCode.storageFailed);
 
 /// MemoryOpStore whose next insertAll can be made to fail.
 final class _FlakyStore implements OpStore {

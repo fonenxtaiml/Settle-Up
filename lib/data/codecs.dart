@@ -4,6 +4,8 @@
 // None of these are synced, so the format is local to this package. Every
 // decoder returns null for malformed input instead of throwing: a corrupt
 // row must not stop the app from starting.
+import 'dart:convert';
+
 import '../core/models.dart';
 
 Map<String, Object?> syncRecordToJson(SyncRecord r) => {
@@ -98,4 +100,20 @@ AppSettings settingsFromJson(Object? json) {
         enumByName(SplitMethod.values, json['defaultSplit'], d.defaultSplit),
     simplifyByDefault: simplify is bool ? simplify : d.simplifyByDefault,
   );
+}
+
+/// The `purged.<groupId>` kv value: device id -> highest counter removed.
+/// Empty (never null) for a missing or malformed value.
+Map<String, int> purgedMark(String? json) {
+  if (json == null) return {};
+  try {
+    final m = jsonDecode(json);
+    if (m is! Map) return {};
+    return {
+      for (final e in m.entries)
+        if (e.key is String && e.value is int) e.key as String: e.value as int,
+    };
+  } on FormatException {
+    return {};
+  }
 }
