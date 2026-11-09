@@ -135,7 +135,7 @@ Also verify (SPEC 9.1):
 | P2 | Deny Nearby devices twice ("Don't ask again"). The Bluetooth row offers "Open settings", not another dialog. | | |
 | P3 | Location services switched **off** on API ≤ 32: the Bluetooth row says the radio needs location on, instead of finding nothing silently. | | n/a |
 | P4 | `BLUETOOTH_SCAN` is declared `neverForLocation`. Nearby Connections discovery finds the other phone. **If it finds nothing on API 31+**, record it here; the fix is to drop the flag and request location for nearby and ble on every API level (SPEC 9.1). | | |
-| P5 | `adb shell dumpsys package app.settleup.settle_up | grep permission`: `BLUETOOTH`, `BLUETOOTH_ADMIN` capped at 30, both location permissions capped at 32 after manifest merge. | | |
+| P5 | `adb shell dumpsys package app.settleup.settleup | grep permission`: `BLUETOOTH`, `BLUETOOTH_ADMIN` capped at 30, both location permissions capped at 32 after manifest merge. | | |
 | P6 | Settings, Apps, Settle Up, Backup: app data is excluded (allowBackup off). | | |
 | P7 | Tap a `settleup://join?...` link in a chat app: Settle Up opens on the join screen. | | |
 
