@@ -5,7 +5,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
-import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/sync/crypto/aead.dart';
 import 'package:settle_up/sync/protocol/codec.dart';
 import 'package:settle_up/sync/protocol/messages.dart';
