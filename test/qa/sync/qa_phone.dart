@@ -392,6 +392,48 @@ final class CuttableChannel implements FrameChannel {
   }
 }
 
+/// Delegates to a [MemoryTransport], but every connect first waits [delay]
+/// (a slow Nearby or BLE dial, or a LAN route that hangs before failing).
+final class SlowConnectTransport implements SyncTransport, HostingDetails {
+  SlowConnectTransport(this.inner, this.delay);
+  final MemoryTransport inner;
+  final Duration delay;
+
+  @override
+  Future<List<String>> hostAddresses() => inner.hostAddresses();
+  @override
+  Future<String?> wifiName() => inner.wifiName();
+  @override
+  bool isLinkHost(String address) => inner.isLinkHost(address);
+  @override
+  TransportKind get kind => inner.kind;
+  @override
+  Future<TransportAvailability> availability() => inner.availability();
+  @override
+  Future<TransportAvailability> requestPermissions() =>
+      inner.requestPermissions();
+  @override
+  Future<void> startAdvertising(AdvertiseInfo info) =>
+      inner.startAdvertising(info);
+  @override
+  Future<void> stopAdvertising() => inner.stopAdvertising();
+  @override
+  Stream<FrameChannel> get inbound => inner.inbound;
+  @override
+  Stream<DiscoveredPeer> discover() => inner.discover();
+  @override
+  Future<FrameChannel> connect(
+    DiscoveredPeer peer, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    await Future<void>.delayed(delay);
+    return inner.connect(peer, timeout: timeout);
+  }
+
+  @override
+  Future<void> dispose() => inner.dispose();
+}
+
 /// Returns [first] once (the device id), then delegates.
 final class _FirstId implements IdGenerator {
   _FirstId(this.first, this.rest);
