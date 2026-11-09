@@ -236,9 +236,6 @@ void main() {
         expect(rules, contains('<device-transfer>'));
         expect(rules, contains('<exclude'));
       },
-      skip:
-          'QA PLATFORM-R1-03: no dataExtractionRules; device-to-device '
-          'transfer clones the device id',
     );
   });
 
