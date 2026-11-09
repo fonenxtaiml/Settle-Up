@@ -1,0 +1,194 @@
+// Person: where you stand with one friend overall and in each shared
+// group, with Settle up per group, a 1:1 expense and a reminder.
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:share_plus/share_plus.dart';
+
+import '../../../core/balances.dart';
+import '../../../core/ids.dart';
+import '../../../theme/tokens.dart';
+import '../../format/money_format.dart';
+import '../../providers.dart';
+import '../../router.dart';
+import '../../strings.dart';
+import '../../widgets/widgets.dart';
+import '../common.dart';
+import '../home/home_screen.dart' show personSubtitle;
+
+class PersonScreen extends ConsumerWidget {
+  const PersonScreen({super.key, required this.personId});
+
+  final PersonId personId;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final people = ref.watch(peopleBalancesProvider).value;
+    final snap = ref.watch(ledgerProvider).value;
+    final profile = ref.watch(profileProvider).value;
+    final matches = people?.where((p) => p.personId == personId);
+    final person = matches == null || matches.isEmpty ? null : matches.first;
+    if (person == null || snap == null || profile == null) {
+      return Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(),
+          title: const SizedBox(),
+        ),
+        body: const SizedBox.shrink(),
+      );
+    }
+    final me = profile.personId;
+    final first = firstName(person.displayName);
+    final main = BalanceRow.mainEntry(person.net);
+    final currency = main?.key ?? profile.homeCurrency;
+    final total = main?.value ?? 0;
+    final label = total > 0
+        ? S.personOwesYou(first)
+        : total < 0
+        ? S.youOwePerson(first)
+        : S.settledWith(first);
+
+    // Per group: my pair balance with them, from the suggested payments.
+    final rows =
+        <
+          ({
+            String groupId,
+            String name,
+            Map<String, int> net,
+            String? from,
+            String? to,
+          })
+        >[];
+    for (final gid in person.groupIds) {
+      final g = snap.state.groups[gid];
+      if (g == null || g.group == null) continue;
+      final mine = myMemberIn(g, me);
+      final theirs = g.memberForPerson(personId);
+      if (mine == null || theirs == null) continue;
+      final other = g.resolve(theirs.id);
+      final net = <String, int>{};
+      String? from;
+      String? to;
+      for (final t in BalanceCalculator.suggestedTransfers(g)) {
+        if (t.from == mine && t.to == other) {
+          net[t.currency] = (net[t.currency] ?? 0) - t.amount;
+          (from, to) = (mine, other);
+        } else if (t.from == other && t.to == mine) {
+          net[t.currency] = (net[t.currency] ?? 0) + t.amount;
+          (from, to) = (other, mine);
+        }
+      }
+      rows.add((
+        groupId: gid,
+        name: g.group!.isDirect ? S.justYouTwo : g.group!.name,
+        net: net.isEmpty ? {g.group!.currency: 0} : net,
+        from: from,
+        to: to,
+      ));
+    }
+    final settleTarget = rows.where((r) => r.from != null).toList();
+
+    return Scaffold(
+      appBar: screenAppBar(
+        leading: const BackArrow(),
+        title: AppBarTitle(
+          person.displayName,
+          subtitle: personSubtitle(person, snap.state),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: Space.xxl),
+        children: [
+          textGutter(
+            GroupBalanceHero(minor: total, currency: currency, label: label),
+          ),
+          const SizedBox(height: 14),
+          textGutter(
+            Row(
+              children: [
+                Expanded(
+                  child: FilledButton(
+                    onPressed: settleTarget.isEmpty
+                        ? null
+                        : () => context.push(
+                            Routes.settle(
+                              groupId: settleTarget.first.groupId,
+                              from: settleTarget.first.from,
+                              to: settleTarget.first.to,
+                            ),
+                          ),
+                    child: const Text(S.settleUp),
+                  ),
+                ),
+                const SizedBox(width: Space.sm),
+                Expanded(
+                  child: FilledButton.tonal(
+                    onPressed: () =>
+                        context.push(Routes.newExpense(personId: personId)),
+                    child: const Text(S.addExpense),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          gutter(
+            ListSection(
+              title: S.inGroups,
+              children: [
+                for (final r in rows)
+                  KitListRow(
+                    title: r.name,
+                    trailing: _trailing(r.net),
+                    onTap: () => r.from == null
+                        ? context.push(Routes.group(r.groupId))
+                        : context.push(
+                            Routes.settle(
+                              groupId: r.groupId,
+                              from: r.from,
+                              to: r.to,
+                            ),
+                          ),
+                  ),
+              ],
+            ),
+          ),
+          if (total > 0)
+            gutter(
+              Padding(
+                padding: const EdgeInsets.only(top: Space.md),
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: TextLink(
+                    S.remind,
+                    onPressed: () => SharePlus.instance.share(
+                      ShareParams(
+                        text: S.remindText(
+                          first,
+                          MoneyFormat.format(total, currency),
+                          rows
+                              .where((r) => (r.net[currency] ?? 0) > 0)
+                              .map((r) => r.name)
+                              .join(', '),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  static Widget _trailing(Map<String, int> net) {
+    final main = BalanceRow.mainEntry(net);
+    final currency = main?.key ?? net.keys.first;
+    final v = main?.value ?? 0;
+    return BalanceTrailing(
+      word: BalanceRow.wordFor(BalanceRowKind.person, v),
+      minor: v,
+      currency: currency,
+    );
+  }
+}
