@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/strings.dart';
 
@@ -263,4 +264,46 @@ void main() {
     }
     await w.shutdown(tester);
   }, skip: true); // QA UIFLOW-R1-03
+
+  testWidgets('UIFLOW-R1-19: Members lets you remove someone who still owes '
+      'money (SPEC 6.7: the UI blocks Remove when the net is non-zero)', (
+    tester,
+  ) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup(people: const ['Priya']);
+    final me = w.member(gid, 'Arjun');
+    final priya = w.member(gid, 'Priya');
+    await w.ledger.addExpense(
+      ExpenseDraft(
+        groupId: gid,
+        description: 'Flight',
+        total: 800000,
+        currency: 'INR',
+        paidBy: SplitSpec.single(me, 800000),
+        owedBy: SplitSpec.equal([me, priya]),
+        category: 'general',
+        date: qaNow.toUtc(),
+      ),
+    );
+    await pumpReal(tester, w);
+    w.push(Routes.members(gid));
+    await qaSettle(tester);
+    await qaTap(tester, find.text('Priya'));
+    final remove = find.descendant(
+      of: find.byType(BottomSheet),
+      matching: find.text(S.remove),
+    );
+    if (remove.evaluate().isNotEmpty) {
+      await qaTap(tester, remove);
+      final confirm = find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(S.remove),
+      );
+      if (confirm.evaluate().isNotEmpty) await qaTap(tester, confirm);
+    }
+    // Expected: Priya (owes ₹4,000) is still a member.
+    expect(w.group(gid).members[priya]!.isRemoved, isFalse);
+    await w.shutdown(tester);
+  }, skip: true); // QA UIFLOW-R1-19
 }

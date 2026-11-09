@@ -37,6 +37,36 @@ void main() {
     await w.shutdown(tester);
   });
 
+  testWidgets('Home People row opens the person; Settle up there opens the '
+      'pair in the right group', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup(people: const ['Priya']);
+    final me = w.member(gid, 'Arjun');
+    await w.ledger.addExpense(
+      ExpenseDraft(
+        groupId: gid,
+        description: 'Dinner',
+        total: 60000,
+        currency: 'INR',
+        paidBy: SplitSpec.single(me, 60000),
+        owedBy: SplitSpec.equal([me, w.member(gid, 'Priya')]),
+        category: 'general',
+        date: qaNow.toUtc(),
+      ),
+    );
+    await pumpReal(tester, w);
+    final row = find.text('Priya');
+    await qaReveal(tester, row);
+    await qaTap(tester, row.first);
+    expect(w.location, startsWith('/people/'));
+    expect(find.text(S.personOwesYou('Priya')), findsOneWidget);
+    await qaTap(tester, find.widgetWithText(FilledButton, S.settleUp));
+    expect(w.location, startsWith('/settle'));
+    expect(find.text(S.recordPayment('₹300')), findsOneWidget);
+    await w.shutdown(tester);
+  });
+
   testWidgets('UIFLOW-R1-15: with only a 1:1 balance left (the shared group '
       'was deleted) Home shows "Start your first group" and hides the debt',
       (tester) async {
