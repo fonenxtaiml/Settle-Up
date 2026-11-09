@@ -125,9 +125,6 @@ void main() {
   test(
     'the invite QR screen is protected from screenshots and the recents '
     'thumbnail',
-    skip:
-        'QA SECURITY-R1-09: invite QR (the group key) is captured in the '
-        'recents thumbnail and screenshots; no FLAG_SECURE',
     () {
       final activity = _read(
         'android/app/src/main/kotlin/app/settleup/settle_up/MainActivity.kt',
