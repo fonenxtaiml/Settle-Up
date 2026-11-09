@@ -122,8 +122,6 @@ void main() {
     test(
       'user_version 0 with the v1 tables already present is adopted, '
       'not a startup crash',
-      skip: 'QA DATA-R1-03: migrate() runs CREATE TABLE without IF NOT '
-          'EXISTS on a user_version 0 file that already has the tables',
       () async {
         final s = SqliteOpStore(path);
         await s.open();
