@@ -26,6 +26,7 @@ import 'ui/dev/fake_settings.dart';
 import 'ui/dev/fake_sync_engine.dart';
 import 'ui/dev/seed_data.dart';
 import 'ui/providers.dart';
+import 'ui/startup.dart';
 
 /// True when the app was built with --dart-define=SETTLEUP_FAKE=true.
 const bool kUseFakes = bool.fromEnvironment('SETTLEUP_FAKE');
@@ -35,9 +36,37 @@ Future<List<Override>> bootstrap() async =>
 
 /// The production wiring (SPEC 4.2): the SQLite op log, the ledger and the
 /// sync engine with every transport this platform supports.
+///
+/// Never throws: if the data cannot be opened (a database from a newer app
+/// version, an unreadable file, a full disk on first launch) it returns a
+/// [StartupFailure] override instead, which the app shows with Try again.
+/// The database file is never deleted or rewritten here.
 Future<List<Override>> realOverrides() async {
+  SqliteOpStore? store;
+  try {
+    return await _realOverrides((s) => store = s);
+  } on Object catch (e, st) {
+    developer.log(
+      'Startup failed',
+      name: 'settle_up',
+      error: e,
+      stackTrace: st,
+    );
+    try {
+      await store?.close();
+    } on Object catch (_) {
+      // Already closed or never opened.
+    }
+    return [startupFailureProvider.overrideWithValue(StartupFailure.from(e))];
+  }
+}
+
+Future<List<Override>> _realOverrides(
+  void Function(SqliteOpStore) opened,
+) async {
   final dir = await getApplicationSupportDirectory();
   final store = SqliteOpStore(p.join(dir.path, 'settle_up.db'));
+  opened(store);
   await store.open();
   final settings = await KvSettingsRepository.open(
     store,

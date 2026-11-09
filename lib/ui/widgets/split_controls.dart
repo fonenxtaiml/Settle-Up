@@ -294,9 +294,14 @@ class SplitSummaryBar extends StatelessWidget {
     required this.summary,
     required this.leftMinor,
     required this.currency,
+    this.problem,
   });
 
   final String summary;
+
+  /// Why Save is off when no amount says it ("Pick at least one person").
+  /// Shown in place of the remainder, in the error colour.
+  final String? problem;
 
   /// Total minus assigned: 0 when done, negative when over-assigned.
   final int leftMinor;
@@ -314,21 +319,30 @@ class SplitSummaryBar extends StatelessWidget {
     final strong = theme.textTheme.titleSmall!
         .copyWith(fontSize: 14, color: over ? scheme.error : scheme.onSurface)
         .tabular;
-    final right = Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: amount, style: strong),
-          TextSpan(
-            text: over ? ' too much' : ' left to split',
-            style: over ? base.copyWith(color: scheme.error) : base,
-          ),
-        ],
-      ),
-      textAlign: TextAlign.end,
-    );
-    final spoken = over
-        ? KitStrings.tooMuch(MoneyFormat.spoken(leftMinor.abs(), currency))
-        : KitStrings.leftToSplit(MoneyFormat.spoken(leftMinor, currency));
+    final problem = this.problem;
+    final right = problem != null
+        ? Text(
+            problem,
+            textAlign: TextAlign.end,
+            style: base.copyWith(color: scheme.error),
+          )
+        : Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: amount, style: strong),
+                TextSpan(
+                  text: over ? ' too much' : ' left to split',
+                  style: over ? base.copyWith(color: scheme.error) : base,
+                ),
+              ],
+            ),
+            textAlign: TextAlign.end,
+          );
+    final spoken =
+        problem ??
+        (over
+            ? KitStrings.tooMuch(MoneyFormat.spoken(leftMinor.abs(), currency))
+            : KitStrings.leftToSplit(MoneyFormat.spoken(leftMinor, currency)));
     return Semantics(
       liveRegion: true,
       container: true,
@@ -348,7 +362,7 @@ class SplitSummaryBar extends StatelessWidget {
                 children: [
                   Expanded(child: Text(summary, style: base)),
                   const SizedBox(width: Space.sm),
-                  right,
+                  if (problem != null) Flexible(child: right) else right,
                 ],
               ),
       ),

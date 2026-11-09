@@ -80,10 +80,7 @@ class LabeledTextField extends StatelessWidget {
                     // 12 dp label of render 3.
                     floatingLabelStyle: theme.textTheme.labelSmall!
                         .withWeight(FontWeight.w500)
-                        .copyWith(
-                          fontSize: 16,
-                          color: scheme.onSurfaceVariant,
-                        ),
+                        .copyWith(fontSize: 16, color: scheme.onSurfaceVariant),
                     hintText: hintText,
                     hintStyle: valueStyle.copyWith(
                       color: scheme.onSurfaceVariant,

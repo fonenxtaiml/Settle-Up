@@ -228,7 +228,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-09: Home sync card is a tap target with no label',
-    skip: true, // QA VISUAL-R1-09: SyncBanner InkWell has no semantics label
     (tester) async {
       final handle = tester.ensureSemantics();
       late VisualWorld w;
@@ -248,7 +247,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-10: TextLink ("Share link") is a 32 dp tap target',
-    skip: true, // QA VISUAL-R1-10: kTextLinkHeight 32 < 48 dp
     (tester) async {
       final handle = tester.ensureSemantics();
       late VisualWorld w;
@@ -268,7 +266,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-11: a payment between others shows "not involved ₹0"',
-    skip: true, // QA VISUAL-R1-11: detail screen shows a ₹0 amount
     (tester) async {
       final handle = tester.ensureSemantics();
       late VisualWorld w;

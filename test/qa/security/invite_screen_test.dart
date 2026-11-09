@@ -84,6 +84,17 @@ void main() {
     expect(qr(tester), isNotNull);
     await tester.tap(find.text('Share link'));
     await tester.pump();
+    await tester.pump();
+    // SECURITY-R1-08: the link is shared only after the warning is
+    // confirmed.
+    await tester.tap(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text('Share link'),
+      ),
+    );
+    await tester.pump();
+    await tester.pump();
     expect(shared, hasLength(1));
     final text = (shared.single! as Map)['text'] as String;
     final link = InviteLink.tryParse(
@@ -128,9 +139,6 @@ void main() {
 
   group(
     'share warning',
-    skip:
-        'QA SECURITY-R1-08: Share link sends the group key without the '
-        'SPEC 8.6 warning',
     () {
       testWidgets('sharing the link asks first and warns who can see the '
           'group', (tester) async {

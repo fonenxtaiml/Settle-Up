@@ -2,14 +2,17 @@
 // copy, snack bars, confirmations and small ledger lookups.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/balances.dart';
 import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
+import '../../core/models.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
+import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
 import '../widgets/widgets.dart';
@@ -49,16 +52,26 @@ PreferredSizeWidget screenAppBar({
   ],
 );
 
-/// Back arrow that pops, or goes to [fallback] when nothing is below.
+/// Back arrow that pops, or goes Home when nothing is below (a screen
+/// opened by a deep link).
 class BackArrow extends StatelessWidget {
   const BackArrow({super.key, this.close = false, this.onPressed});
 
   final bool close;
   final VoidCallback? onPressed;
 
+  static void _back(BuildContext context) {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.maybePop();
+    } else {
+      GoRouter.of(context).go(Routes.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => IconButton(
-    onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
+    onPressed: onPressed ?? () => _back(context),
     tooltip: close ? S.close : S.back,
     icon: Icon(close ? Icons.close_rounded : Icons.arrow_back_rounded),
   );
@@ -83,7 +96,7 @@ class AsyncBody<T> extends StatelessWidget {
     _ => const Center(
       child: SizedBox.square(
         dimension: 24,
-        child: CircularProgressIndicator(strokeWidth: 2.5),
+        child: KitSpinner(strokeWidth: 2.5),
       ),
     ),
   };
@@ -162,6 +175,7 @@ Future<bool> confirmAction(
   required String title,
   required String body,
   required String confirmLabel,
+  String cancelLabel = S.cancel,
 }) async {
   final ok = await showDialog<bool>(
     context: context,
@@ -171,7 +185,7 @@ Future<bool> confirmAction(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text(S.cancel),
+          child: Text(cancelLabel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
@@ -191,6 +205,7 @@ Future<String?> promptText(
   String? hint,
   String? helper,
   String confirmLabel = S.save,
+  int? maxLength,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -199,6 +214,7 @@ Future<String?> promptText(
     hint: hint,
     helper: helper,
     confirmLabel: confirmLabel,
+    maxLength: maxLength,
   ),
 );
 
@@ -209,6 +225,7 @@ class _TextPrompt extends StatefulWidget {
     required this.confirmLabel,
     this.hint,
     this.helper,
+    this.maxLength,
   });
 
   final String title;
@@ -217,12 +234,19 @@ class _TextPrompt extends StatefulWidget {
   final String? helper;
   final String confirmLabel;
 
+  /// Caps the text (and the initial value) at this many characters.
+  final int? maxLength;
+
   @override
   State<_TextPrompt> createState() => _TextPromptState();
 }
 
 class _TextPromptState extends State<_TextPrompt> {
-  late final _controller = TextEditingController(text: widget.initial);
+  late final _controller = TextEditingController(
+    text: widget.maxLength == null
+        ? widget.initial
+        : widget.initial.characters.take(widget.maxLength!).toString(),
+  );
 
   @override
   void dispose() {
@@ -242,6 +266,7 @@ class _TextPromptState extends State<_TextPrompt> {
     content: TextField(
       controller: _controller,
       autofocus: true,
+      maxLength: widget.maxLength,
       textCapitalization: TextCapitalization.words,
       decoration: InputDecoration(
         hintText: widget.hint,
@@ -369,3 +394,52 @@ String groupCurrency(GroupState g) => g.group?.currency ?? 'INR';
 /// True when the member is [me] after resolving merges.
 bool isMeIn(GroupState g, MemberId member, PersonId me) =>
     g.resolve(member) == myMemberIn(g, me);
+
+final _duplicates = Expando<Set<ExpenseId>>('possibleDuplicatePayments');
+
+/// SPEC 7.2: payments that look like a second record of the same handover:
+/// another live payment with the same from, to, currency and amount within
+/// 24 h. Both are kept; the UI only hints. Cached per [GroupState].
+Set<ExpenseId> possibleDuplicatePayments(GroupState g) =>
+    _duplicates[g] ??= _findDuplicatePayments(g);
+
+Set<ExpenseId> _findDuplicatePayments(GroupState g) {
+  const window = Duration(hours: 24);
+  final byKey = <String, List<Expense>>{};
+  for (final e in g.liveExpenses) {
+    if (!e.isPayment) continue;
+    final key =
+        '${g.resolve(e.payer)}|${g.resolve(e.receiver)}|'
+        '${e.money.currency}|${e.money.total}';
+    (byKey[key] ??= []).add(e);
+  }
+  final out = <ExpenseId>{};
+  for (final list in byKey.values) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.date.compareTo(b.date));
+    for (var i = 1; i < list.length; i++) {
+      if (list[i].date.difference(list[i - 1].date).abs() <= window) {
+        out
+          ..add(list[i].id)
+          ..add(list[i - 1].id);
+      }
+    }
+  }
+  return out;
+}
+
+/// SPEC 5.16: member display names are 1..40 characters.
+const int kMemberNameMax = 40;
+
+/// The existing name [candidate] would duplicate (case and spaces
+/// ignored: "priya " is "Priya"), or null.
+String? duplicateName(String candidate, Iterable<String> existing) {
+  String key(String n) =>
+      n.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  final k = key(candidate);
+  if (k.isEmpty) return null;
+  for (final e in existing) {
+    if (key(e) == k) return e.trim();
+  }
+  return null;
+}

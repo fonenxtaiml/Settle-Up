@@ -15,6 +15,7 @@ import 'package:settle_up/data/ledger.dart';
 import 'package:settle_up/main.dart' as app;
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/ui/providers.dart';
+import 'package:settle_up/ui/startup.dart';
 
 const _pathChannel = MethodChannel('plugins.flutter.io/path_provider');
 const _secureChannel = MethodChannel(
@@ -139,24 +140,31 @@ void main() {
       },
     );
 
-    test('path_provider failure propagates out of realOverrides', () async {
-      // Documents the input to the main() finding below: bootstrap itself
-      // does not degrade, so main() must catch.
+    test('path_provider failure is reported as a startup failure', () async {
+      // DATA-R1-02: realOverrides never throws; the failure reaches the UI.
       _mockPaths(
         error: PlatformException(code: 'IO', message: 'no dir'),
       );
       _mockSecureStorage();
-      await expectLater(realOverrides(), throwsA(isA<PlatformException>()));
+      final container = ProviderContainer(overrides: await realOverrides());
+      addTearDown(container.dispose);
+      expect(
+        container.read(startupFailureProvider)?.error,
+        isA<PlatformException>(),
+      );
     });
 
     test(
-      'a database file that is not SQLite propagates out of realOverrides',
+      'a database file that is not SQLite is reported as a startup failure',
       () async {
         _mockPaths(dir: tmp);
         _mockSecureStorage();
-        File('${tmp.path}/settle_up.db')
-            .writeAsBytesSync(Uint8List.fromList(List.filled(4096, 0x42)));
-        await expectLater(realOverrides(), throwsA(anything));
+        final bytes = Uint8List.fromList(List.filled(4096, 0x42));
+        File('${tmp.path}/settle_up.db').writeAsBytesSync(bytes);
+        final container = ProviderContainer(overrides: await realOverrides());
+        addTearDown(container.dispose);
+        expect(container.read(startupFailureProvider), isNotNull);
+        expect(File('${tmp.path}/settle_up.db').readAsBytesSync(), bytes);
       },
     );
   });

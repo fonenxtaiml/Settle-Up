@@ -12,6 +12,7 @@ import '../../../core/models.dart';
 import '../../../core/ops.dart';
 import '../../../data/repositories.dart';
 import '../../../sync/sync_engine.dart';
+import '../../../sync/transport/transport.dart';
 import '../../../theme/tokens.dart';
 import '../../format/dates.dart';
 import '../../providers.dart';
@@ -19,6 +20,7 @@ import '../../router.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import 'radios.dart';
 
 /// "yesterday at 9:12 pm", "today at 8:05 am", "Sat, 1 Nov at 6:40 pm".
 String whenLabel(DateTime at, DateTime now) {
@@ -84,22 +86,69 @@ class SyncScreen extends ConsumerStatefulWidget {
   ConsumerState<SyncScreen> createState() => _SyncScreenState();
 }
 
-class _SyncScreenState extends ConsumerState<SyncScreen> {
+class _SyncScreenState extends ConsumerState<SyncScreen>
+    with WidgetsBindingObserver {
   late final _engine = ref.read(syncEngineProvider);
+
+  /// What each transport can do now; empty until first checked.
+  Map<TransportKind, TransportAvailability> _radios = const {};
 
   @override
   void initState() {
     super.initState();
-    unawaited(_engine.startDiscovery().catchError((Object _) {}));
+    WidgetsBinding.instance.addObserver(this);
+    // Ask for Bluetooth / Nearby first (SPEC 8.10): without the grant the
+    // engine skips both transports.
+    unawaited(_discover());
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     unawaited(_engine.stopDiscovery().catchError((Object _) {}));
     super.dispose();
   }
 
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // Back from the settings page: check again, and look again if a
+    // transport has just become ready.
+    if (state == AppLifecycleState.resumed) unawaited(_recheck());
+  }
+
+  Future<void> _recheck() async {
+    Map<TransportKind, TransportAvailability> now;
+    try {
+      now = await _engine.availability();
+    } on Object catch (_) {
+      return;
+    }
+    if (!mounted) return;
+    final gained = now.entries.any(
+      (e) =>
+          e.value == TransportAvailability.ready &&
+          _radios[e.key] != TransportAvailability.ready,
+    );
+    setState(() => _radios = now);
+    if (gained) {
+      unawaited(_engine.startDiscovery().catchError((Object _) {}));
+    }
+  }
+
+  Future<void> _prepare() async {
+    final r = await prepareRadios(_engine);
+    if (mounted) setState(() => _radios = r);
+  }
+
+  Future<void> _discover() async {
+    await _prepare();
+    if (!mounted) return;
+    await _engine.startDiscovery().catchError((Object _) {});
+  }
+
   Future<void> _toggleVisible(bool on) async {
+    if (on) await _prepare();
+    if (!mounted) return;
     await runGuarded(context, () async {
       if (on) {
         await _engine.startHosting();
@@ -193,6 +242,15 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
             const SizedBox(height: 14),
             gutter(_SessionStrip(session: session)),
           ],
+          if (radioIssues(_radios).isNotEmpty) ...[
+            const SizedBox(height: 14),
+            gutter(
+              RadioIssuesCard(
+                issues: radioIssues(_radios),
+                onAllow: () => unawaited(_discover()),
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           gutter(
             _HostCard(host: status.host, onVisibleChanged: _toggleVisible),
@@ -217,9 +275,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen> {
                   ? const LookingIndicator(label: S.looking)
                   : TextLink(
                       S.lookAgain,
-                      onPressed: () => unawaited(
-                        _engine.startDiscovery().catchError((Object _) {}),
-                      ),
+                      onPressed: () => unawaited(_discover()),
                     ),
             ),
           ),
@@ -333,7 +389,7 @@ class _SessionStrip extends StatelessWidget {
     final Widget icon = switch (session) {
       SessionActive() => const SizedBox.square(
         dimension: 20,
-        child: CircularProgressIndicator(strokeWidth: 2),
+        child: KitSpinner(),
       ),
       SessionFailed() => Icon(Icons.error_outline_rounded, color: scheme.error),
       _ => const Icon(Icons.check_rounded),

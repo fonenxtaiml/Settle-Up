@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../theme/app_theme.dart';
 import 'providers.dart';
 import 'router.dart';
+import 'startup.dart';
 import 'strings.dart';
 import 'widgets/widgets.dart';
 
@@ -21,6 +22,13 @@ class SettleUpApp extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final failure = ref.watch(startupFailureProvider);
+    if (failure != null) {
+      return StartupErrorApp(
+        failure: failure,
+        onRetry: ref.watch(startupRetryProvider),
+      );
+    }
     final settings =
         ref.watch(appSettingsProvider).value ?? const AppSettings();
     final router = ref.watch(routerProvider);

@@ -211,28 +211,44 @@ class ExpenseDetailScreen extends ConsumerWidget {
           ),
           const SizedBox(height: Space.lg),
           textGutter(
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: MoneyText(
-                    minor: e.money.total,
-                    currency: currency,
-                    style: MoneyTextStyle.headline,
-                    signed: false,
-                    colored: false,
+            // The 46 dp total scales down to fit beside "you lent ...",
+            // as the balance heroes do; it is never cut.
+            LayoutBuilder(
+              builder: (context, constraints) => Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.bottomStart,
+                      child: MoneyText(
+                        minor: e.money.total,
+                        currency: currency,
+                        style: MoneyTextStyle.headline,
+                        signed: false,
+                        colored: false,
+                      ),
+                    ),
                   ),
-                ),
-                if (myId != null)
-                  BalanceTrailing(
-                    word: word,
-                    minor: impact,
-                    currency: currency,
-                    direction: e.isPayment
-                        ? MoneyDirection.neutral
-                        : MoneyDirection.of(impact),
-                  ),
-              ],
+                  if (myId != null) ...[
+                    const SizedBox(width: Space.sm),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth * 0.45,
+                      ),
+                      child: BalanceTrailing(
+                        word: word,
+                        // "not involved" alone, as in the rows: no ₹0.
+                        minor: word == KitStrings.notInvolved ? null : impact,
+                        currency: currency,
+                        direction: e.isPayment
+                            ? MoneyDirection.neutral
+                            : MoneyDirection.of(impact),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           if (!e.isPayment) ...[
@@ -340,9 +356,14 @@ class _PersonAmountRow extends StatelessWidget {
       size: Sizes.avatarSmall,
       isMe: isMe,
     ),
-    trailing: Text(
-      MoneyFormat.format(minor, currency),
-      style: AppType.amount(context),
+    trailing: FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerEnd,
+      child: Text(
+        MoneyFormat.format(minor, currency),
+        maxLines: 1,
+        style: AppType.amount(context),
+      ),
     ),
   );
 }

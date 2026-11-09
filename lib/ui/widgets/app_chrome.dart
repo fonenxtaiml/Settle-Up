@@ -115,10 +115,14 @@ class AppNavigationBar extends StatelessWidget {
 /// App bar title with an optional subline (render 2, 4): "Goa trip" over
 /// "6 people, ₹38,400 spent".
 class AppBarTitle extends StatelessWidget {
-  const AppBarTitle(this.title, {super.key, this.subtitle});
+  const AppBarTitle(this.title, {super.key, this.subtitle, this.shortSubtitle});
 
   final String title;
   final String? subtitle;
+
+  /// Shown instead of [subtitle] when that does not fit on one line (at
+  /// large text): the part worth keeping, e.g. "₹1,20,000.50 spent".
+  final String? shortSubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -136,13 +140,30 @@ class AppBarTitle extends StatelessWidget {
             style: theme.textTheme.titleLarge,
           ),
           if (subtitle != null)
-            Text(
-              subtitle!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall!.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final style = theme.textTheme.bodySmall!.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                );
+                var text = subtitle!;
+                final short = shortSubtitle;
+                if (short != null && constraints.hasBoundedWidth) {
+                  final painter = TextPainter(
+                    text: TextSpan(text: text, style: style),
+                    maxLines: 1,
+                    textDirection: Directionality.of(context),
+                    textScaler: MediaQuery.textScalerOf(context),
+                  )..layout(maxWidth: constraints.maxWidth);
+                  if (painter.didExceedMaxLines) text = short;
+                  painter.dispose();
+                }
+                return Text(
+                  text,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: style,
+                );
+              },
             ),
         ],
       ),

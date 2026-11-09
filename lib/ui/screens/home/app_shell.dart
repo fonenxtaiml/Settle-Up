@@ -17,13 +17,21 @@ class AppShell extends ConsumerWidget {
     final pending = ref.watch(
       ledgerProvider.select((s) => s.value?.totalUnshared ?? 0),
     );
-    return Scaffold(
-      body: shell,
-      bottomNavigationBar: AppNavigationBar(
-        selectedIndex: shell.currentIndex,
-        pendingCount: pending,
-        onDestinationSelected: (i) =>
-            shell.goBranch(i, initialLocation: i == shell.currentIndex),
+    // Android back on Activity or Sync goes to Home first (Material
+    // navigation bar behaviour); only back on Home leaves the app.
+    return PopScope(
+      canPop: shell.currentIndex == 0,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) shell.goBranch(0);
+      },
+      child: Scaffold(
+        body: shell,
+        bottomNavigationBar: AppNavigationBar(
+          selectedIndex: shell.currentIndex,
+          pendingCount: pending,
+          onDestinationSelected: (i) =>
+              shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        ),
       ),
     );
   }

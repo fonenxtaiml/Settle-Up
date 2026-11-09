@@ -174,8 +174,6 @@ void main() {
 
     test(
       'a database from a newer app version does not crash startup',
-      skip: 'QA DATA-R1-02: realOverrides() throws StateError and main() '
-          'has no error handling, so the app never reaches runApp',
       () async {
         final s = SqliteOpStore(path);
         await s.open();
@@ -192,8 +190,6 @@ void main() {
 
     test(
       'an unreadable database file does not crash startup',
-      skip: 'QA DATA-R1-02: realOverrides() throws SqliteException and '
-          'main() has no error handling, so the app never reaches runApp',
       () async {
         File(path).writeAsStringSync('garbage ' * 1000);
         await expectLater(realOverrides(), completes);

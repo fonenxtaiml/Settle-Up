@@ -188,7 +188,7 @@ class SessionView extends ConsumerWidget {
                   : current
                   ? const Padding(
                       padding: EdgeInsets.all(3),
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: KitSpinner(),
                     )
                   : Icon(
                       Icons.circle_outlined,
