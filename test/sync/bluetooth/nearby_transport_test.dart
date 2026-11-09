@@ -19,11 +19,12 @@ import 'support/fake_permissions.dart';
 
 const Duration _rediscover = Duration(milliseconds: 100);
 
-String token(int n) => n.toRadixString(16).padLeft(16, '0');
+String token(int n) => 'T${n.toRadixString(36).padLeft(3, '0')}';
 
 AdvertiseInfo info(String letter, String name, [List<String>? tokens]) =>
     AdvertiseInfo(
       deviceId: '${letter * 8}-0000-7000-8000-000000000001',
+      advertId: letter * 8,
       deviceName: name,
       groupTokens: tokens ?? [token(1)],
     );
@@ -90,7 +91,7 @@ void main() {
       expect(peer.kind, TransportKind.nearby);
       expect(peer.address, 'B');
       expect(peer.name, "Priya's Pixel");
-      expect(peer.deviceIdPrefix, 'bbbbbbbb');
+      expect(peer.advertId, 'bbbbbbbb');
       expect(peer.groupTokens, {token(1), token(2)});
     });
 
@@ -161,7 +162,7 @@ void main() {
       await b.startAdvertising(info('b', 'Priya'));
       expect(api.count('startAdvertising'), 1);
       expect(api.count('stopAdvertising'), 0);
-      expect(b.advertisedName, startsWith('1|bbbbbbbb|Priya|'));
+      expect(b.advertisedName, startsWith('2|bbbbbbbb||Priya|'));
     });
 
     test('new tokens update the name in place; open channels stay',
