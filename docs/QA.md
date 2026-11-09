@@ -243,8 +243,10 @@ in the result log, with the phone models.
   retries a full queue after 20 ms, up to 50 times. Look for
   `notify ... failed 50 times` in logs during big syncs.
 - **Gradle:** `nearby_connections` 4.3.0 pins AGP 7.4.2 in its own build
-  script. If `flutter build apk` fails on that plugin, record the error;
-  the integrator vendors the plugin (SPEC 9.1).
+  script. `flutter build apk --debug` succeeded on the Bluetooth branch
+  (2026-11-09) with only a "migrate to Built-in Kotlin" warning for some
+  plugins. If a later build fails on that plugin, record the error; the
+  integrator vendors the plugin (SPEC 9.1).
 
 ---
 
