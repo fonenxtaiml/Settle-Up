@@ -24,6 +24,7 @@ class KitListRow extends StatelessWidget {
     this.subtitleTrailing,
     this.keepTrailingBeside = false,
     this.subtitleLines = 1,
+    this.stackTrailing = false,
   });
 
   final String title;
@@ -48,11 +49,17 @@ class KitListRow extends StatelessWidget {
   /// ("Sam paid ¥5,000") take two, so the amount is never cut off.
   final int subtitleLines;
 
+  /// Put [trailing] under the text, end-aligned, below the large-text
+  /// threshold too: rows that measured that their text has no room beside
+  /// it ([ExpenseRow] on a small phone at 1.3x) stack early.
+  final bool stackTrailing;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final large = isLargeText(context);
-    final stacked = large && trailing != null && !keepTrailingBeside;
+    final stacked =
+        (large || stackTrailing) && trailing != null && !keepTrailingBeside;
     final maxLines = large ? 3 : 1;
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
