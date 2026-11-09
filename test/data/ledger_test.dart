@@ -1014,6 +1014,62 @@ void main() {
           reason: 'the skewed op still sorts last');
     });
 
+    group('a local write after a peer whose clock is ahead (SYNC-R1-01)',
+        () {
+      late ({GroupId g, MemberId me, MemberId sam, MemberId priya}) t;
+      setUp(() async {
+        t = await trip();
+        await b.ledger.registerJoinedGroup(
+            t.g, (await a.ledger.groupKeys())[t.g]!, 'Goa');
+        await b.pull(a, t.g);
+      });
+
+      test('renaming what the ahead phone renamed takes effect', () async {
+        a.clock.advance(2 * 3600 * 1000);
+        await a.ledger.renameMember(t.g, t.sam, 'Sam (A)');
+        await a.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (A)'));
+        await b.pull(a, t.g);
+        expect(b.ledger.clockSkewDetected, isTrue);
+
+        await b.ledger.renameMember(t.g, t.sam, 'Sam (B)');
+        await b.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (B)'));
+        expect(b.group(t.g).members[t.sam]!.displayName, 'Sam (B)');
+        expect(b.group(t.g).group!.name, 'Goa (B)');
+        // Persisted and monotonic: a restart keeps the clock past it.
+        await b.restart();
+        await b.ledger.renameMember(t.g, t.sam, 'Sam (B2)');
+        expect(b.group(t.g).members[t.sam]!.displayName, 'Sam (B2)');
+
+        await a.pull(b, t.g);
+        expect(a.group(t.g).members[t.sam]!.displayName, 'Sam (B2)');
+        expect(a.group(t.g).group!.name, 'Goa (B)');
+      });
+
+      test('restoring an expense the ahead phone deleted takes effect',
+          () async {
+        final e = await b.ledger.addExpense(draft(t.g, [t.me, t.sam]));
+        await a.pull(b, t.g);
+        a.clock.advance(26 * 3600 * 1000); // a day ahead
+        await a.ledger.deleteExpense(e);
+        await b.pull(a, t.g);
+        expect(b.group(t.g).liveExpenses.map((x) => x.id), isNot(contains(e)));
+        await b.ledger.restoreExpense(e);
+        expect(b.group(t.g).liveExpenses.map((x) => x.id), contains(e));
+        await b.ledger.deleteExpense(e);
+        expect(b.group(t.g).liveExpenses.map((x) => x.id), isNot(contains(e)));
+      });
+
+      test('a stamp more than 7 days ahead is not adopted', () async {
+        a.clock.advance(HlcClock.maxAdoptDriftMs + 3600 * 1000);
+        await a.ledger.renameMember(t.g, t.sam, 'Sam (A)');
+        await b.pull(a, t.g);
+        await b.ledger.renameMember(t.g, t.sam, 'Sam (B)');
+        final mine = b.snap.ops.where((o) => o.deviceId == b.deviceId).last;
+        expect(mine.hlc.millis, lessThan(kBaseMs + 3600 * 1000),
+            reason: 'a clock that far off is not followed');
+      });
+    });
+
     group('applyRemote rejects the whole batch on a bad op', () {
       late ({GroupId g, MemberId me, MemberId sam, MemberId priya}) t;
       late List<Operation> good;

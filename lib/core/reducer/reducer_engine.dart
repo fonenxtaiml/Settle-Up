@@ -127,6 +127,11 @@ final class ReducerEngine {
     return changed;
   }
 
+  /// Max HLC over the ops applied to one entity of [groupId], or null when
+  /// none was.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      _entities[_EntityKey(groupId, type, id)]?.maxHlc;
+
   Set<String> applyAll(Iterable<Operation> ops) => {
         for (final op in ops)
           if (apply(op)) op.entityId,
