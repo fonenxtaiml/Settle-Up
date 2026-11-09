@@ -1,0 +1,521 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Point to Point</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Familjen+Grotesk:wght@400..700&display=block">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,300..700,0..1,0&display=block">
+<style>
+:root {
+  --primary: #16191D; --on-primary: #FFFFFF;
+  --bg: #EEF0EF; --surface: #FFFFFF; --sc: #E4E7E6; --sch: #D9DDDC;
+  --ink: #16191D; --ink2: #5A6066; --hair: #DCE0DF; --outline: #767D83;
+  --owed: #0B5C8E; --owed-c: #E2EEF6; --owe: #A3460B; --owe-c: #FBEADF;
+  --settled: #5A6066; --scrim-shadow: 0 1px 2px rgba(22,25,29,.18), 0 6px 16px rgba(22,25,29,.16);
+  --focus: #0B5C8E;
+}
+.dark {
+  --primary: #E9EBEC; --on-primary: #0F1316;
+  --bg: #0F1316; --surface: #171C20; --sc: #222A2F; --sch: #36424B;
+  --ink: #E9EBEC; --ink2: #A1A8AE; --hair: #263036; --outline: #6B7379;
+  --owed: #86BDEB; --owed-c: #16324A; --owe: #F2A673; --owe-c: #44270F;
+  --settled: #A1A8AE; --scrim-shadow: 0 1px 2px rgba(0,0,0,.5), 0 6px 16px rgba(0,0,0,.4);
+  --focus: #86BDEB;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { -webkit-font-smoothing: antialiased; }
+body { background: #C9CDCC; font-family: "Familjen Grotesk", system-ui, sans-serif; padding: 40px; display: flex; flex-wrap: wrap; gap: 40px; }
+button { font: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+ul { list-style: none; }
+a { color: inherit; text-decoration: none; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+input { font: inherit; color: inherit; background: none; border: 0; outline: none; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
+.ms { font-family: "Material Symbols Rounded"; font-weight: normal; font-style: normal; font-size: 24px; line-height: 1; display: inline-block; white-space: nowrap; font-variation-settings: "FILL" 0, "wght" 400, "GRAD" 0, "opsz" 24; -webkit-font-feature-settings: "liga"; font-feature-settings: "liga"; }
+.ms.fill { font-variation-settings: "FILL" 1, "wght" 400, "GRAD" 0, "opsz" 24; }
+.num { font-variant-numeric: tabular-nums; }
+
+.phone { width: 412px; height: 915px; position: relative; overflow: hidden; background: var(--bg); color: var(--ink); display: flex; flex-direction: column; flex: none; }
+
+/* system chrome */
+.statusbar { height: 36px; flex: none; display: flex; align-items: center; justify-content: space-between; padding: 0 22px 0 26px; font-size: 14px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.statusbar .icons { display: flex; gap: 4px; align-items: center; }
+.statusbar .ms { font-size: 17px; }
+.gesture { position: absolute; left: 0; right: 0; bottom: 0; height: 24px; display: flex; align-items: center; justify-content: center; z-index: 30; pointer-events: none; }
+.gesture::after { content: ""; width: 108px; height: 4px; border-radius: 2px; background: var(--ink); opacity: .45; }
+
+/* app bar */
+.appbar { height: 64px; flex: none; display: flex; align-items: center; gap: 4px; padding: 0 8px 0 20px; }
+.appbar.has-nav { padding-left: 4px; }
+.appbar h1, .appbar .t { font-size: 22px; line-height: 28px; font-weight: 600; flex: 1; min-width: 0; text-wrap: balance; }
+.appbar .t small { display: block; font-size: 13px; line-height: 18px; font-weight: 400; color: var(--ink2); }
+.iconbtn { width: 48px; height: 48px; border-radius: 999px; display: grid; place-items: center; flex: none; }
+.iconbtn .ms { font-size: 24px; }
+
+/* avatars */
+.av { width: 40px; height: 40px; border-radius: 999px; flex: none; display: grid; place-items: center; font-size: 14px; font-weight: 600; background: var(--sc); color: var(--ink); }
+.av.me { background: var(--primary); color: var(--on-primary); }
+.av.sm { width: 32px; height: 32px; font-size: 12px; }
+.av.ring { background: var(--surface); box-shadow: inset 0 0 0 1.5px var(--ink); }
+
+/* content */
+.content { flex: 1; min-height: 0; overflow: hidden; padding: 0 16px; display: flex; flex-direction: column; }
+.section-h { font-size: 16px; line-height: 22px; font-weight: 600; padding: 18px 4px 8px; display: flex; justify-content: space-between; align-items: baseline; text-wrap: balance; }
+.section-h a, .linkbtn { font-size: 14px; font-weight: 600; color: var(--ink); text-decoration: underline; text-decoration-color: var(--outline); text-underline-offset: 3px; }
+.list { background: var(--surface); border-radius: 20px; overflow: hidden; }
+.row { display: flex; align-items: center; gap: 14px; min-height: 62px; padding: 9px 16px; position: relative; }
+.row + .row::before { content: ""; position: absolute; top: 0; right: 0; left: 16px; height: 1px; background: var(--hair); }
+.row.has-av + .row.has-av::before { left: 70px; }
+.row .main { flex: 1; min-width: 0; }
+.row .title { font-size: 16px; line-height: 22px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .sub { font-size: 13px; line-height: 18px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.row .lead-ic { width: 24px; color: var(--ink2); flex: none; display: grid; place-items: center; }
+
+/* balance trailing block */
+.bal { text-align: right; flex: none; display: flex; flex-direction: column; align-items: flex-end; }
+.bal .w { font-size: 13px; line-height: 18px; font-weight: 500; display: inline-flex; align-items: center; gap: 5px; }
+.bal .a { font-size: 17px; line-height: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.owed { color: var(--owed); }
+.owe { color: var(--owe); }
+.settled { color: var(--settled); }
+.neutral { color: var(--ink); }
+.neutral .w { color: var(--ink2); }
+
+/* tether glyph (inline) */
+.tg { width: 26px; height: 10px; flex: none; overflow: visible; }
+
+/* hero */
+.hero { padding: 4px 4px 0; }
+.hero .lbl { font-size: 16px; line-height: 22px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.hero .big { font-size: 62px; line-height: 62px; font-weight: 600; font-variant-numeric: tabular-nums; margin-top: 2px; }
+.big .cur { font-size: .6em; font-weight: 500; margin-right: 2px; }
+.hero .split { display: flex; margin-top: 12px; }
+.hero .split > div { flex: 1; padding: 2px 0; }
+.hero .split > div + div { border-left: 1px solid var(--hair); padding-left: 16px; }
+.hero .split .c { font-size: 13px; line-height: 18px; color: var(--ink2); }
+.hero .split .v { font-size: 17px; line-height: 22px; font-weight: 600; font-variant-numeric: tabular-nums; }
+
+/* sync strip */
+.strip { margin-top: 16px; background: var(--surface); border-radius: 20px; display: flex; align-items: center; gap: 12px; padding: 12px 12px 12px 16px; }
+.strip .main { flex: 1; min-width: 0; }
+.strip .title { font-size: 15px; line-height: 20px; font-weight: 600; }
+.strip .sub { font-size: 13px; line-height: 18px; color: var(--ink2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* buttons */
+.btn { height: 48px; border-radius: 999px; padding: 0 22px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 15px; font-weight: 600; white-space: nowrap; }
+.btn .ms { font-size: 20px; }
+.btn.primary { background: var(--primary); color: var(--on-primary); }
+.btn.tonal { background: var(--sc); color: var(--ink); }
+.btn.outlined { box-shadow: inset 0 0 0 1px var(--outline); color: var(--ink); }
+.btn.small { height: 36px; padding: 0 16px; font-size: 14px; }
+.btn.block { width: 100%; height: 52px; }
+
+/* FAB */
+.fab { position: absolute; right: 16px; bottom: 104px; height: 56px; padding: 0 20px 0 16px; border-radius: 16px; background: var(--primary); color: var(--on-primary); display: flex; align-items: center; gap: 10px; font-size: 15px; font-weight: 600; box-shadow: var(--scrim-shadow); z-index: 20; }
+.fab.nonav { bottom: 40px; }
+
+/* navigation bar */
+.navbar { height: 80px; flex: none; background: var(--sc); display: flex; padding: 12px 8px 16px; margin-bottom: 24px; position: relative; z-index: 10; }
+.navbar::after { content: ""; position: absolute; left: 0; right: 0; bottom: -24px; height: 24px; background: var(--sc); }
+.nav-i { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; font-size: 12px; line-height: 16px; font-weight: 600; color: var(--ink2); }
+.nav-i .pill { width: 64px; height: 32px; border-radius: 999px; display: grid; place-items: center; position: relative; }
+.nav-i[aria-current="page"] { color: var(--ink); }
+.nav-i[aria-current="page"] .pill { background: var(--sch); }
+.nav-i[aria-current="page"] .ms { font-variation-settings: "FILL" 1, "wght" 500, "GRAD" 0, "opsz" 24; }
+.badge { position: absolute; top: 0; left: 36px; min-width: 18px; height: 18px; border-radius: 9px; padding: 0 5px; background: var(--primary); color: var(--on-primary); font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; font-variant-numeric: tabular-nums; }
+
+/* group detail */
+.pos { padding: 0 4px; }
+.pos .lbl { font-size: 15px; line-height: 20px; font-weight: 600; display: flex; align-items: center; gap: 8px; }
+.pos .big { font-size: 46px; line-height: 50px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.pos .sub { font-size: 14px; line-height: 20px; color: var(--ink2); margin-top: 2px; text-wrap: pretty; }
+.actions { display: flex; gap: 8px; margin-top: 14px; }
+.actions .btn { flex: 1; }
+.sugg-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 16px 4px; }
+.sugg-head .t { font-size: 15px; font-weight: 600; }
+.switch { display: inline-flex; align-items: center; gap: 10px; font-size: 13px; color: var(--ink2); font-weight: 500; }
+.switch .track { width: 44px; height: 26px; border-radius: 13px; background: var(--primary); position: relative; flex: none; }
+.switch .track::after { content: ""; position: absolute; top: 3px; right: 3px; width: 20px; height: 20px; border-radius: 10px; background: var(--on-primary); }
+.switch .track.off { background: var(--sch); box-shadow: inset 0 0 0 1.5px var(--outline); }
+.switch .track.off::after { right: auto; left: 5px; top: 5px; width: 16px; height: 16px; background: var(--outline); }
+.payrow { display: flex; align-items: center; gap: 12px; padding: 6px 16px; min-height: 50px; position: relative; }
+.payrow + .payrow::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.tm { display: flex; align-items: center; flex: none; }
+.tm .line { width: 56px; height: 10px; position: relative; color: var(--ink); }
+.tm .line svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.payrow .main { flex: 1; min-width: 0; font-size: 15px; line-height: 20px; font-weight: 500; }
+.payrow .main.me { font-weight: 600; }
+.payrow .amt { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.datehead { font-size: 13px; line-height: 18px; color: var(--ink2); font-weight: 500; padding: 10px 16px 0; }
+.list.dense .row { min-height: 58px; padding-top: 7px; padding-bottom: 7px; }
+
+/* add expense */
+.chip { height: 34px; border-radius: 10px; padding: 0 11px; display: inline-flex; align-items: center; gap: 6px; font-size: 14px; font-weight: 600; box-shadow: inset 0 0 0 1px var(--outline); white-space: nowrap; flex: none; }
+.chip .ms { font-size: 18px; }
+.chip.sel { background: var(--primary); color: var(--on-primary); box-shadow: none; }
+.amount-field { padding: 6px 4px 0; }
+.amount-field label { font-size: 13px; line-height: 18px; color: var(--ink2); font-weight: 500; }
+.amount-field .val { display: flex; align-items: baseline; gap: 4px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+.amount-field .cur { font-size: 32px; font-weight: 500; color: var(--ink2); }
+.amount-field .n { font-size: 54px; line-height: 60px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.caret { width: 2px; height: 44px; background: var(--ink); align-self: center; margin-left: 2px; }
+.desc { margin-top: 14px; display: flex; align-items: center; gap: 12px; background: var(--surface); border-radius: 12px; padding: 8px 12px 8px 16px; min-height: 56px; }
+.desc .main { flex: 1; }
+.desc label { display: block; font-size: 12px; line-height: 16px; color: var(--ink2); font-weight: 500; }
+.desc .v { font-size: 16px; line-height: 22px; font-weight: 500; }
+.kv { display: flex; align-items: center; gap: 12px; min-height: 52px; padding: 6px 12px 6px 16px; position: relative; }
+.kv + .kv::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.kv .k { font-size: 14px; color: var(--ink2); width: 72px; flex: none; }
+.kv .v { flex: 1; font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 8px; min-width: 0; }
+.kv .ms.chev { color: var(--ink2); font-size: 20px; }
+.methods { display: flex; gap: 6px; overflow: hidden; margin: 0 -16px; padding: 0 16px; }
+.methods .chip { padding: 0 10px; font-size: 13.5px; }
+.mrow { display: flex; align-items: center; gap: 12px; min-height: 56px; padding: 4px 16px 4px 12px; position: relative; cursor: pointer; }
+li + li > .mrow::before { content: ""; position: absolute; top: 0; left: 64px; right: 0; height: 1px; background: var(--hair); }
+.cb { width: 20px; height: 20px; border-radius: 4px; box-shadow: inset 0 0 0 2px var(--ink2); display: grid; place-items: center; flex: none; margin: 0 2px; }
+.cb.on { background: var(--primary); box-shadow: none; color: var(--on-primary); }
+.cb.on .ms { font-size: 16px; font-variation-settings: "FILL" 0, "wght" 700, "GRAD" 0, "opsz" 20; }
+.mrow .main { flex: 1; min-width: 0; }
+.mrow .title { font-size: 15px; line-height: 20px; font-weight: 600; }
+.mrow .sub { font-size: 13px; line-height: 18px; color: var(--ink2); }
+.mrow.out .title { color: var(--ink2); font-weight: 500; }
+.mrow .amt { font-size: 16px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.bottombar { flex: none; padding: 10px 16px 36px; background: var(--bg); display: flex; flex-direction: column; gap: 10px; border-top: 1px solid var(--hair); }
+.bottombar .sum { display: flex; justify-content: space-between; font-size: 14px; line-height: 20px; color: var(--ink2); padding: 0 4px; }
+.bottombar .sum b { color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+
+.desc input.v { width: 100%; padding: 0; }
+.amount-field input.n { padding: 0; }
+.chip.cat { height: 32px; background: var(--sc); box-shadow: none; border-radius: 8px; padding: 0 10px; font-size: 13px; }
+.pickers { display: flex; gap: 8px; margin-top: 10px; }
+.picker { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; background: var(--surface); border-radius: 12px; padding: 8px 10px 8px 12px; min-height: 56px; text-align: left; font-size: 15px; font-weight: 600; line-height: 20px; }
+.picker > span:nth-child(2) { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.picker small { display: block; font-size: 12px; line-height: 16px; color: var(--ink2); font-weight: 500; }
+.picker > .ms { color: var(--ink2); font-size: 20px; }
+.picker > .ms:first-child { color: var(--ink); font-size: 20px; width: 26px; text-align: center; }
+.av.xs { width: 26px; height: 26px; font-size: 10px; }
+.mrow .title, .mrow .sub { display: block; }
+.mrow .sub.owe, .mrow .amt.owe { color: var(--owe); }
+.mrow .sub .tg { vertical-align: -1px; margin-right: 2px; }
+.mrow:focus-within { outline: 2px solid var(--focus); outline-offset: -2px; border-radius: 12px; }
+
+/* settle up */
+.tl { padding: 8px 4px 0; }
+.tl .q { font-size: 15px; line-height: 20px; color: var(--ink2); font-weight: 500; text-align: center; }
+.tl .stage { display: flex; align-items: flex-start; justify-content: space-between; margin-top: 18px; }
+.tl .party { width: 92px; display: flex; flex-direction: column; align-items: center; gap: 8px; font-size: 14px; font-weight: 600; text-align: center; }
+.tl .party .av { width: 56px; height: 56px; font-size: 18px; }
+.tl .party .av.ring { box-shadow: inset 0 0 0 2px var(--ink); }
+.tl .wire { flex: 1; position: relative; height: 56px; }
+.tl .wire svg { position: absolute; left: -6px; right: -6px; top: 0; width: calc(100% + 12px); height: 56px; overflow: visible; }
+.tl .amt { position: absolute; left: 0; right: 0; top: -38px; text-align: center; font-size: 44px; line-height: 48px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.tl .edit { display: flex; justify-content: center; margin-top: 10px; }
+.seg { display: flex; border-radius: 999px; box-shadow: inset 0 0 0 1px var(--outline); height: 44px; overflow: hidden; }
+.seg button { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 14px; font-weight: 600; position: relative; }
+.seg button + button { border-left: 1px solid var(--outline); }
+.seg button[aria-pressed="true"] { background: var(--sch); }
+.seg .ms { font-size: 18px; }
+.note { font-size: 13px; line-height: 18px; color: var(--ink2); padding: 8px 4px 0; text-wrap: pretty; }
+.ba { background: var(--surface); border-radius: 20px; padding: 4px 0; }
+.ba-head { display: grid; grid-template-columns: 1fr 96px 22px 96px; padding: 10px 16px 4px; font-size: 12px; line-height: 16px; color: var(--ink2); font-weight: 600; }
+.ba-row { display: grid; grid-template-columns: 1fr 96px 22px 96px; align-items: center; padding: 10px 16px; position: relative; }
+.ba-row + .ba-row::before { content: ""; position: absolute; top: 0; left: 16px; right: 0; height: 1px; background: var(--hair); }
+.ba-row .k { font-size: 14px; line-height: 19px; font-weight: 600; padding-right: 8px; }
+.ba-row .k small { display: block; font-size: 12px; font-weight: 400; color: var(--ink2); }
+.ba-row .cell { text-align: right; }
+.ba-row .cell .w { font-size: 12px; line-height: 16px; font-weight: 500; display: block; }
+.ba-row .cell .a { font-size: 15px; line-height: 20px; font-weight: 600; font-variant-numeric: tabular-nums; display: block; }
+.ba-row .arr { color: var(--ink2); font-size: 16px; text-align: center; }
+.ba-head span:nth-child(2), .ba-head span:nth-child(4) { text-align: right; }
+
+/* sync */
+.waiting { padding: 0 4px; }
+.waiting .big { font-size: 30px; line-height: 36px; font-weight: 600; text-wrap: balance; }
+.waiting .sub { font-size: 14px; line-height: 20px; color: var(--ink2); margin-top: 4px; text-wrap: pretty; }
+.wt { display: flex; align-items: center; margin-top: 12px; gap: 0; }
+.wt .end { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 600; }
+.wt .ph { width: 32px; height: 32px; border-radius: 999px; display: grid; place-items: center; }
+.wt .ph.me { background: var(--primary); color: var(--on-primary); }
+.wt .ph.them { box-shadow: inset 0 0 0 1.5px var(--ink); }
+.wt .ph .ms { font-size: 18px; }
+.wt .wire { flex: 1; height: 10px; margin: 0 8px; position: relative; }
+.wt .wire svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+.host { background: var(--surface); border-radius: 20px; margin-top: 14px; }
+.host-head { display: flex; align-items: center; gap: 14px; padding: 12px 16px; }
+.host-head .main { flex: 1; }
+.host-head .title { font-size: 16px; line-height: 22px; font-weight: 600; }
+.host-head .sub { font-size: 13px; line-height: 18px; color: var(--ink2); }
+.host-body { display: flex; gap: 16px; padding: 0 16px 16px; align-items: center; }
+.qr { width: 124px; height: 124px; flex: none; background: #FFFFFF; border-radius: 12px; padding: 8px; box-shadow: inset 0 0 0 1px var(--hair); }
+.qr svg { width: 100%; height: 100%; display: block; }
+.host-body .info { font-size: 13px; line-height: 18px; color: var(--ink2); display: flex; flex-direction: column; gap: 10px; }
+.host-body .info b { display: block; font-size: 15px; line-height: 20px; color: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+.searching { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--ink2); font-weight: 500; }
+.spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid var(--sch); border-top-color: var(--ink); }
+.safe { display: flex; gap: 10px; align-items: flex-start; font-size: 13px; line-height: 18px; color: var(--ink2); padding: 14px 6px 0; text-wrap: pretty; }
+.safe .ms { font-size: 18px; color: var(--ink2); }
+
+@media (prefers-reduced-motion: no-preference) {
+  .spin { animation: spin 900ms linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+}
+</style>
+</head>
+<body>
+<main aria-label="Point to Point, six screens" style="display:contents">
+
+<section class="phone" id="screen-1" aria-label="Home">
+  <div class="statusbar" aria-hidden="true"><span>9:41</span><span class="icons"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_5_bar</span></span></div>
+  <header class="appbar">
+    <h1>Settle Up</h1>
+    <button class="iconbtn" aria-label="Search expenses"><span class="ms" aria-hidden="true">search</span></button>
+    <button class="iconbtn" aria-label="Your profile"><span class="av sm me">AM</span></button>
+  </header>
+  <div class="content">
+    <section class="hero" aria-label="Overall balance">
+      <p class="lbl owed"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>You're owed overall</p>
+      <p class="big num"><span class="cur">+₹</span>4,250</p>
+      <div class="split">
+        <div><p class="c">Coming to you</p><p class="v owed">+₹5,090</p></div>
+        <div><p class="c">You owe</p><p class="v owe">−₹840</p></div>
+      </div>
+    </section>
+    <a class="strip" href="#" aria-label="3 changes to share. Open sync">
+      <span class="ms" aria-hidden="true">sync_alt</span>
+      <div class="main"><p class="title">3 changes to share</p><p class="sub">Last synced with Priya's Pixel 8 yesterday</p></div>
+      <span class="btn tonal small">Sync</span>
+    </a>
+    <h2 class="section-h">Groups <a href="#">See all</a></h2>
+    <ul class="list">
+      <li class="row"><div class="main"><p class="title">Goa trip</p><p class="sub">6 people</p></div><div class="bal owe"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>you owe</span><span class="a">−₹840</span></div></li>
+      <li class="row"><div class="main"><p class="title">Flat 4B</p><p class="sub">3 people</p></div><div class="bal owed"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>you're owed</span><span class="a">+₹5,090</span></div></li>
+      <li class="row"><div class="main"><p class="title">Cabin weekend</p><p class="sub">4 people</p></div><div class="bal settled"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>settled up</span><span class="a">₹0</span></div></li>
+    </ul>
+    <h2 class="section-h">People</h2>
+    <ul class="list">
+      <li class="row has-av"><span class="av" aria-hidden="true">PS</span><div class="main"><p class="title">Priya Sharma</p><p class="sub">Goa trip, Flat 4B</p></div><div class="bal owed"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>owes you</span><span class="a">+₹1,200</span></div></li>
+      <li class="row has-av"><span class="av" aria-hidden="true">RK</span><div class="main"><p class="title">Ravi Kumar</p><p class="sub">Goa trip</p></div><div class="bal owe"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>you owe</span><span class="a">−₹960</span></div></li>
+    </ul>
+  </div>
+  <button class="fab"><span class="ms" aria-hidden="true">add</span>Add expense</button>
+  <nav class="navbar" aria-label="Main navigation"><a class="nav-i" href="#" aria-current="page"><span class="pill"><span class="ms" aria-hidden="true">home</span></span>Home</a><a class="nav-i" href="#"><span class="pill"><span class="ms" aria-hidden="true">receipt_long</span></span>Activity</a><a class="nav-i" href="#"><span class="pill"><span class="ms" aria-hidden="true">sync_alt</span><span class="badge" aria-hidden="true">3</span><span class="sr-only">, 3 changes to share</span></span>Sync</a></nav>
+  <div class="gesture" aria-hidden="true"></div>
+</section>
+
+<section class="phone" id="screen-2" aria-label="Goa trip">
+  <div class="statusbar" aria-hidden="true"><span>9:41</span><span class="icons"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_5_bar</span></span></div>
+  <header class="appbar has-nav">
+    <button class="iconbtn" aria-label="Back"><span class="ms" aria-hidden="true">arrow_back</span></button>
+    <h1 class="t">Goa trip<small>6 people, ₹38,400 spent</small></h1>
+    <button class="iconbtn" aria-label="Invite to group"><span class="ms" aria-hidden="true">person_add</span></button>
+    <button class="iconbtn" aria-label="More options"><span class="ms" aria-hidden="true">more_vert</span></button>
+  </header>
+  <div class="content">
+    <section class="pos" aria-label="Your position in Goa trip">
+      <p class="lbl owe"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>You owe in this group</p>
+      <p class="big num"><span class="cur">−₹</span>840</p>
+      <p class="sub">You paid ₹6,000 and your share is ₹6,840.</p>
+      <div class="actions">
+        <button class="btn primary">Settle up</button>
+        <button class="btn tonal">All balances</button>
+      </div>
+    </section>
+    <div class="list" style="margin-top:14px">
+      <div class="sugg-head"><p class="t">Suggested payments</p><button class="switch" role="switch" aria-checked="true">Simplify debts <span class="track" aria-hidden="true"></span></button></div>
+      <ul>
+        <li class="payrow"><span class="tm" aria-hidden="true"><span class="av sm me" aria-hidden="true">AM</span><span class="line"><svg style="width:calc(100% - 5px)" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="5.0" x2="100" y2="5.0" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="3 4"/></svg><svg style="left:auto;right:-1px;width:10px" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.5 L6 5 L2.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="av sm ring" aria-hidden="true">PS</span></span><span class="main me">You pay Priya</span><span class="amt owe">−₹840</span></li>
+        <li class="payrow"><span class="tm" aria-hidden="true"><span class="av sm ring" aria-hidden="true">KS</span><span class="line"><svg style="width:calc(100% - 5px)" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="5.0" x2="100" y2="5.0" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="3 4"/></svg><svg style="left:auto;right:-1px;width:10px" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.5 L6 5 L2.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="av sm ring" aria-hidden="true">RK</span></span><span class="main">Kabir pays Ravi</span><span class="amt neutral">₹6,150</span></li>
+        <li class="payrow"><span class="tm" aria-hidden="true"><span class="av sm ring" aria-hidden="true">IN</span><span class="line"><svg style="width:calc(100% - 5px)" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="5.0" x2="100" y2="5.0" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="3 4"/></svg><svg style="left:auto;right:-1px;width:10px" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.5 L6 5 L2.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span><span class="av sm ring" aria-hidden="true">RK</span></span><span class="main">Isha pays Ravi</span><span class="amt neutral">₹4,010</span></li>
+      </ul>
+    </div>
+    <h2 class="section-h" style="padding-top:16px">Expenses</h2>
+    <div class="list dense">
+      <p class="datehead">Today</p>
+      <ul>
+        <li class="row"><span class="lead-ic"><span class="ms" aria-hidden="true">two_wheeler</span></span><div class="main"><p class="title">Scooter rental</p><p class="sub">Priya paid ₹2,400</p></div><div class="bal owe"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>you borrowed</span><span class="a">−₹600</span></div></li>
+        <li class="row"><span class="lead-ic"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg></span><div class="main"><p class="title">Ravi paid you</p><p class="sub">Payment, UPI</p></div><div class="bal neutral"><span class="w">received</span><span class="a">₹2,000</span></div></li>
+      </ul>
+      <p class="datehead">Sat, 8 Nov</p>
+      <ul>
+        <li class="row"><span class="lead-ic"><span class="ms" aria-hidden="true">restaurant</span></span><div class="main"><p class="title">Dinner at Britto's</p><p class="sub">You paid ₹6,000</p></div><div class="bal owed"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>you lent</span><span class="a">+₹5,000</span></div></li>
+        <li class="row"><span class="lead-ic"><span class="ms" aria-hidden="true">hotel</span></span><div class="main"><p class="title">Hotel deposit</p><p class="sub">Ravi paid ₹30,000</p></div><div class="bal owe"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>you borrowed</span><span class="a">−₹5,000</span></div></li>
+      </ul>
+    </div>
+  </div>
+  <button class="fab nonav"><span class="ms" aria-hidden="true">add</span>Add expense</button>
+  <div class="gesture" aria-hidden="true"></div>
+</section>
+
+<section class="phone" id="screen-3" aria-label="Add expense">
+  <div class="statusbar" aria-hidden="true"><span>9:41</span><span class="icons"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_5_bar</span></span></div>
+  <header class="appbar has-nav">
+    <button class="iconbtn" aria-label="Discard and close"><span class="ms" aria-hidden="true">close</span></button>
+    <h1>Add expense</h1>
+    <button class="chip" style="margin-right:8px" aria-label="Group: Goa trip. Change group">Goa trip <span class="ms" aria-hidden="true">expand_more</span></button>
+  </header>
+  <div class="content">
+    <div class="amount-field">
+      <label for="amt">Amount</label>
+      <div class="val"><span class="cur" aria-hidden="true">₹</span><input id="amt" class="n" inputmode="decimal" value="2,400" aria-describedby="amt-cur" style="width:4.45ch"><span class="caret" aria-hidden="true"></span><span id="amt-cur" class="sr-only">Indian rupees</span></div>
+    </div>
+    <div class="desc">
+      <div class="main"><label for="desc">Description</label><input id="desc" class="v" value="Scooter rental"></div>
+      <button class="chip cat" aria-label="Category: Transport, suggested from description. Change category"><span class="ms" aria-hidden="true">two_wheeler</span>Transport</button>
+    </div>
+    <div class="pickers">
+      <button class="picker"><span class="av xs" aria-hidden="true">PS</span><span><small>Paid by</small>Priya</span><span class="ms" aria-hidden="true">expand_more</span></button>
+      <button class="picker"><span class="ms" aria-hidden="true">calendar_today</span><span><small>Date</small>Today, 9 Nov</span><span class="ms" aria-hidden="true">expand_more</span></button>
+    </div>
+    <h2 class="section-h" id="split-h">Split equally between 4 of 6</h2>
+    <div class="methods" role="radiogroup" aria-labelledby="split-h">
+      <label class="chip sel"><input type="radio" name="split" class="sr-only" checked>Equally</label>
+      <label class="chip"><input type="radio" name="split" class="sr-only">Exact amounts</label>
+      <label class="chip"><input type="radio" name="split" class="sr-only">Percent</label>
+      <label class="chip"><input type="radio" name="split" class="sr-only">Shares</label>
+      <label class="chip"><input type="radio" name="split" class="sr-only">Adjust</label>
+    </div>
+    <ul class="list" style="margin-top:12px" aria-label="Who is in this split">
+      <li><label class="mrow"><input type="checkbox" class="sr-only" checked><span class="cb on" aria-hidden="true"><span class=ms>check</span></span><span class="av sm me" aria-hidden="true">AM</span><span class="main"><span class="title">You</span><span class="sub owe"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg> you owe Priya</span></span><span class="amt owe">−₹600</span></label></li>
+      <li><label class="mrow"><input type="checkbox" class="sr-only" checked><span class="cb on" aria-hidden="true"><span class=ms>check</span></span><span class="av sm" aria-hidden="true">PS</span><span class="main"><span class="title">Priya</span><span class="sub ">her own share</span></span><span class="amt ">₹600</span></label></li>
+      <li><label class="mrow"><input type="checkbox" class="sr-only" checked><span class="cb on" aria-hidden="true"><span class=ms>check</span></span><span class="av sm" aria-hidden="true">RK</span><span class="main"><span class="title">Ravi</span><span class="sub ">owes Priya</span></span><span class="amt ">₹600</span></label></li>
+      <li><label class="mrow"><input type="checkbox" class="sr-only" checked><span class="cb on" aria-hidden="true"><span class=ms>check</span></span><span class="av sm" aria-hidden="true">NJ</span><span class="main"><span class="title">Neha</span><span class="sub ">owes Priya</span></span><span class="amt ">₹600</span></label></li>
+      <li><label class="mrow out"><input type="checkbox" class="sr-only"><span class="cb" aria-hidden="true"></span><span class="av sm" aria-hidden="true">KS</span><span class="main"><span class="title">Kabir</span><span class="sub ">not in this expense</span></span></label></li>
+      <li><label class="mrow out"><input type="checkbox" class="sr-only"><span class="cb" aria-hidden="true"></span><span class="av sm" aria-hidden="true">IN</span><span class="main"><span class="title">Isha</span><span class="sub ">not in this expense</span></span></label></li>
+    </ul>
+  </div>
+  <div class="bottombar">
+    <p class="sum" role="status"><span>₹600 each, 4 people</span><span><b>₹0</b> left to split</span></p>
+    <button class="btn primary block">Save expense</button>
+  </div>
+  <div class="gesture" aria-hidden="true"></div>
+</section>
+
+<section class="phone" id="screen-4" aria-label="Settle up">
+  <div class="statusbar" aria-hidden="true"><span>9:41</span><span class="icons"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_5_bar</span></span></div>
+  <header class="appbar has-nav">
+    <button class="iconbtn" aria-label="Close"><span class="ms" aria-hidden="true">close</span></button>
+    <h1 class="t">Settle up<small>Goa trip</small></h1>
+  </header>
+  <div class="content">
+    <section class="tl" aria-label="You pay Priya ₹840">
+      <p class="q">You pay Priya</p>
+      <div class="stage" style="margin-top:56px">
+        <div class="party"><span class="av me">AM</span>You</div>
+        <div class="wire owe"><svg viewBox="0 0 200 56" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="28" x2="200" y2="28" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg><svg style="left:auto;right:4px;width:14px" viewBox="0 0 14 56" aria-hidden="true"><path d="M4 21 L11 28 L4 35" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg><p class="amt">₹840</p></div>
+        <div class="party"><span class="av ring">PS</span>Priya Sharma</div>
+      </div>
+      <div class="edit"><button class="linkbtn">Pay part of it</button></div>
+    </section>
+    <h2 class="section-h" style="padding-top:22px">How you paid</h2>
+    <div class="seg" role="group" aria-label="Payment method">
+      <button aria-pressed="true"><span class="ms" aria-hidden="true">check</span>UPI</button>
+      <button aria-pressed="false">Cash</button>
+      <button aria-pressed="false">Bank</button>
+      <button aria-pressed="false">Other</button>
+    </div>
+    <p class="note">Pay in your UPI app first. This records it; no money moves here.</p>
+    <h2 class="section-h" style="padding-top:20px">What changes</h2>
+    <div class="ba" role="table" aria-label="Balances before and after">
+      <div class="ba-head" role="row"><span role="columnheader"><span class="sr-only">Balance</span></span><span role="columnheader">Now</span><span></span><span role="columnheader">After</span></div>
+      <div class="ba-row" role="row"><span class="k" role="rowheader">You and Priya<small>Goa trip</small></span><span class="cell owe" role="cell"><span class="w">you owe</span><span class="a">−₹840</span></span><span class="arr ms" aria-hidden="true">arrow_forward</span><span class="cell settled" role="cell"><span class="w">settled</span><span class="a">₹0</span></span></div>
+      <div class="ba-row" role="row"><span class="k" role="rowheader">Priya overall<small>All groups</small></span><span class="cell owed" role="cell"><span class="w">owes you</span><span class="a">+₹1,200</span></span><span class="arr ms" aria-hidden="true">arrow_forward</span><span class="cell owed" role="cell"><span class="w">owes you</span><span class="a">+₹2,040</span></span></div>
+      <div class="ba-row" role="row"><span class="k" role="rowheader">Your overall</span><span class="cell owed" role="cell"><span class="w">you're owed</span><span class="a">+₹4,250</span></span><span class="arr ms" aria-hidden="true">arrow_forward</span><span class="cell owed" role="cell"><span class="w">you're owed</span><span class="a">+₹5,090</span></span></div>
+    </div>
+    <ul class="list" style="margin-top:12px">
+      <li class="kv"><span class="k">Date</span><span class="v">Today, 9 Nov</span><span class="ms chev" aria-hidden="true">chevron_right</span></li>
+      <li class="kv"><span class="k">Note</span><span class="v" style="color:var(--ink2);font-weight:500">Optional</span><span class="ms chev" aria-hidden="true">chevron_right</span></li>
+    </ul>
+  </div>
+  <div class="bottombar" style="border-top:0;padding-top:12px">
+    <button class="btn primary block">Record ₹840 payment</button>
+  </div>
+  <div class="gesture" aria-hidden="true"></div>
+</section>
+
+<section class="phone" id="screen-5" aria-label="Sync">
+  <div class="statusbar" aria-hidden="true"><span>9:41</span><span class="icons"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_5_bar</span></span></div>
+  <header class="appbar">
+    <h1>Sync</h1>
+    <button class="iconbtn" aria-label="How sync works"><span class="ms" aria-hidden="true">help</span></button>
+  </header>
+  <div class="content">
+    <section class="waiting" aria-label="Changes waiting">
+      <p class="big">3 changes to share</p>
+      <p class="sub">2 expenses and 1 payment since you last synced with Priya's Pixel 8, yesterday at 9:12 pm.</p>
+      <div class="wt" aria-hidden="true">
+        <span class="end"><span class="ph me"><span class="ms">smartphone</span></span>This phone</span>
+        <span class="wire"><svg style="width:calc(100% - 5px)" viewBox="0 0 100 10" preserveAspectRatio="none" aria-hidden="true"><line x1="0" y1="5.0" x2="100" y2="5.0" stroke="currentColor" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="3 4"/></svg><svg style="left:auto;right:-1px;width:10px" viewBox="0 0 10 10" aria-hidden="true"><path d="M2.5 1.5 L6 5 L2.5 8.5" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></span>
+        <span class="end">Nearby phones<span class="ph them"><span class="ms">devices</span></span></span>
+      </div>
+    </section>
+    <section class="host" aria-label="Make this phone visible">
+      <div class="host-head">
+        <span class="ms" aria-hidden="true">wifi_tethering</span>
+        <div class="main"><p class="title">Make this phone visible</p><p class="sub">On your hotspot, for 4:58 more</p></div>
+        <button class="switch" role="switch" aria-checked="true" aria-label="Make this phone visible"><span class="track" aria-hidden="true"></span></button>
+      </div>
+      <div class="host-body">
+        <div class="qr"><svg viewBox="0 0 25 25" role="img" aria-label="QR code to sync with this phone" shape-rendering="crispEdges"><g fill="#16191D"><rect x="0" y="0" width="1.02" height="1.02"/><rect x="1" y="0" width="1.02" height="1.02"/><rect x="2" y="0" width="1.02" height="1.02"/><rect x="3" y="0" width="1.02" height="1.02"/><rect x="4" y="0" width="1.02" height="1.02"/><rect x="5" y="0" width="1.02" height="1.02"/><rect x="6" y="0" width="1.02" height="1.02"/><rect x="8" y="0" width="1.02" height="1.02"/><rect x="9" y="0" width="1.02" height="1.02"/><rect x="10" y="0" width="1.02" height="1.02"/><rect x="11" y="0" width="1.02" height="1.02"/><rect x="12" y="0" width="1.02" height="1.02"/><rect x="14" y="0" width="1.02" height="1.02"/><rect x="15" y="0" width="1.02" height="1.02"/><rect x="18" y="0" width="1.02" height="1.02"/><rect x="19" y="0" width="1.02" height="1.02"/><rect x="20" y="0" width="1.02" height="1.02"/><rect x="21" y="0" width="1.02" height="1.02"/><rect x="22" y="0" width="1.02" height="1.02"/><rect x="23" y="0" width="1.02" height="1.02"/><rect x="24" y="0" width="1.02" height="1.02"/><rect x="0" y="1" width="1.02" height="1.02"/><rect x="6" y="1" width="1.02" height="1.02"/><rect x="8" y="1" width="1.02" height="1.02"/><rect x="9" y="1" width="1.02" height="1.02"/><rect x="10" y="1" width="1.02" height="1.02"/><rect x="12" y="1" width="1.02" height="1.02"/><rect x="13" y="1" width="1.02" height="1.02"/><rect x="15" y="1" width="1.02" height="1.02"/><rect x="16" y="1" width="1.02" height="1.02"/><rect x="18" y="1" width="1.02" height="1.02"/><rect x="24" y="1" width="1.02" height="1.02"/><rect x="0" y="2" width="1.02" height="1.02"/><rect x="2" y="2" width="1.02" height="1.02"/><rect x="3" y="2" width="1.02" height="1.02"/><rect x="4" y="2" width="1.02" height="1.02"/><rect x="6" y="2" width="1.02" height="1.02"/><rect x="11" y="2" width="1.02" height="1.02"/><rect x="15" y="2" width="1.02" height="1.02"/><rect x="18" y="2" width="1.02" height="1.02"/><rect x="20" y="2" width="1.02" height="1.02"/><rect x="21" y="2" width="1.02" height="1.02"/><rect x="22" y="2" width="1.02" height="1.02"/><rect x="24" y="2" width="1.02" height="1.02"/><rect x="0" y="3" width="1.02" height="1.02"/><rect x="2" y="3" width="1.02" height="1.02"/><rect x="3" y="3" width="1.02" height="1.02"/><rect x="4" y="3" width="1.02" height="1.02"/><rect x="6" y="3" width="1.02" height="1.02"/><rect x="9" y="3" width="1.02" height="1.02"/><rect x="10" y="3" width="1.02" height="1.02"/><rect x="11" y="3" width="1.02" height="1.02"/><rect x="13" y="3" width="1.02" height="1.02"/><rect x="14" y="3" width="1.02" height="1.02"/><rect x="18" y="3" width="1.02" height="1.02"/><rect x="20" y="3" width="1.02" height="1.02"/><rect x="21" y="3" width="1.02" height="1.02"/><rect x="22" y="3" width="1.02" height="1.02"/><rect x="24" y="3" width="1.02" height="1.02"/><rect x="0" y="4" width="1.02" height="1.02"/><rect x="2" y="4" width="1.02" height="1.02"/><rect x="3" y="4" width="1.02" height="1.02"/><rect x="4" y="4" width="1.02" height="1.02"/><rect x="6" y="4" width="1.02" height="1.02"/><rect x="8" y="4" width="1.02" height="1.02"/><rect x="15" y="4" width="1.02" height="1.02"/><rect x="18" y="4" width="1.02" height="1.02"/><rect x="20" y="4" width="1.02" height="1.02"/><rect x="21" y="4" width="1.02" height="1.02"/><rect x="22" y="4" width="1.02" height="1.02"/><rect x="24" y="4" width="1.02" height="1.02"/><rect x="0" y="5" width="1.02" height="1.02"/><rect x="6" y="5" width="1.02" height="1.02"/><rect x="8" y="5" width="1.02" height="1.02"/><rect x="9" y="5" width="1.02" height="1.02"/><rect x="12" y="5" width="1.02" height="1.02"/><rect x="13" y="5" width="1.02" height="1.02"/><rect x="14" y="5" width="1.02" height="1.02"/><rect x="15" y="5" width="1.02" height="1.02"/><rect x="16" y="5" width="1.02" height="1.02"/><rect x="18" y="5" width="1.02" height="1.02"/><rect x="24" y="5" width="1.02" height="1.02"/><rect x="0" y="6" width="1.02" height="1.02"/><rect x="1" y="6" width="1.02" height="1.02"/><rect x="2" y="6" width="1.02" height="1.02"/><rect x="3" y="6" width="1.02" height="1.02"/><rect x="4" y="6" width="1.02" height="1.02"/><rect x="5" y="6" width="1.02" height="1.02"/><rect x="6" y="6" width="1.02" height="1.02"/><rect x="8" y="6" width="1.02" height="1.02"/><rect x="10" y="6" width="1.02" height="1.02"/><rect x="12" y="6" width="1.02" height="1.02"/><rect x="14" y="6" width="1.02" height="1.02"/><rect x="16" y="6" width="1.02" height="1.02"/><rect x="18" y="6" width="1.02" height="1.02"/><rect x="19" y="6" width="1.02" height="1.02"/><rect x="20" y="6" width="1.02" height="1.02"/><rect x="21" y="6" width="1.02" height="1.02"/><rect x="22" y="6" width="1.02" height="1.02"/><rect x="23" y="6" width="1.02" height="1.02"/><rect x="24" y="6" width="1.02" height="1.02"/><rect x="10" y="7" width="1.02" height="1.02"/><rect x="14" y="7" width="1.02" height="1.02"/><rect x="15" y="7" width="1.02" height="1.02"/><rect x="16" y="7" width="1.02" height="1.02"/><rect x="0" y="8" width="1.02" height="1.02"/><rect x="5" y="8" width="1.02" height="1.02"/><rect x="6" y="8" width="1.02" height="1.02"/><rect x="8" y="8" width="1.02" height="1.02"/><rect x="11" y="8" width="1.02" height="1.02"/><rect x="12" y="8" width="1.02" height="1.02"/><rect x="15" y="8" width="1.02" height="1.02"/><rect x="16" y="8" width="1.02" height="1.02"/><rect x="17" y="8" width="1.02" height="1.02"/><rect x="20" y="8" width="1.02" height="1.02"/><rect x="24" y="8" width="1.02" height="1.02"/><rect x="1" y="9" width="1.02" height="1.02"/><rect x="2" y="9" width="1.02" height="1.02"/><rect x="7" y="9" width="1.02" height="1.02"/><rect x="10" y="9" width="1.02" height="1.02"/><rect x="11" y="9" width="1.02" height="1.02"/><rect x="12" y="9" width="1.02" height="1.02"/><rect x="13" y="9" width="1.02" height="1.02"/><rect x="15" y="9" width="1.02" height="1.02"/><rect x="16" y="9" width="1.02" height="1.02"/><rect x="17" y="9" width="1.02" height="1.02"/><rect x="19" y="9" width="1.02" height="1.02"/><rect x="20" y="9" width="1.02" height="1.02"/><rect x="23" y="9" width="1.02" height="1.02"/><rect x="3" y="10" width="1.02" height="1.02"/><rect x="4" y="10" width="1.02" height="1.02"/><rect x="5" y="10" width="1.02" height="1.02"/><rect x="6" y="10" width="1.02" height="1.02"/><rect x="8" y="10" width="1.02" height="1.02"/><rect x="9" y="10" width="1.02" height="1.02"/><rect x="12" y="10" width="1.02" height="1.02"/><rect x="16" y="10" width="1.02" height="1.02"/><rect x="18" y="10" width="1.02" height="1.02"/><rect x="19" y="10" width="1.02" height="1.02"/><rect x="0" y="11" width="1.02" height="1.02"/><rect x="5" y="11" width="1.02" height="1.02"/><rect x="7" y="11" width="1.02" height="1.02"/><rect x="12" y="11" width="1.02" height="1.02"/><rect x="16" y="11" width="1.02" height="1.02"/><rect x="17" y="11" width="1.02" height="1.02"/><rect x="18" y="11" width="1.02" height="1.02"/><rect x="19" y="11" width="1.02" height="1.02"/><rect x="20" y="11" width="1.02" height="1.02"/><rect x="21" y="11" width="1.02" height="1.02"/><rect x="0" y="12" width="1.02" height="1.02"/><rect x="3" y="12" width="1.02" height="1.02"/><rect x="6" y="12" width="1.02" height="1.02"/><rect x="8" y="12" width="1.02" height="1.02"/><rect x="9" y="12" width="1.02" height="1.02"/><rect x="12" y="12" width="1.02" height="1.02"/><rect x="13" y="12" width="1.02" height="1.02"/><rect x="15" y="12" width="1.02" height="1.02"/><rect x="16" y="12" width="1.02" height="1.02"/><rect x="17" y="12" width="1.02" height="1.02"/><rect x="19" y="12" width="1.02" height="1.02"/><rect x="21" y="12" width="1.02" height="1.02"/><rect x="22" y="12" width="1.02" height="1.02"/><rect x="23" y="12" width="1.02" height="1.02"/><rect x="1" y="13" width="1.02" height="1.02"/><rect x="5" y="13" width="1.02" height="1.02"/><rect x="7" y="13" width="1.02" height="1.02"/><rect x="9" y="13" width="1.02" height="1.02"/><rect x="10" y="13" width="1.02" height="1.02"/><rect x="11" y="13" width="1.02" height="1.02"/><rect x="14" y="13" width="1.02" height="1.02"/><rect x="15" y="13" width="1.02" height="1.02"/><rect x="19" y="13" width="1.02" height="1.02"/><rect x="20" y="13" width="1.02" height="1.02"/><rect x="22" y="13" width="1.02" height="1.02"/><rect x="23" y="13" width="1.02" height="1.02"/><rect x="2" y="14" width="1.02" height="1.02"/><rect x="4" y="14" width="1.02" height="1.02"/><rect x="6" y="14" width="1.02" height="1.02"/><rect x="7" y="14" width="1.02" height="1.02"/><rect x="10" y="14" width="1.02" height="1.02"/><rect x="11" y="14" width="1.02" height="1.02"/><rect x="13" y="14" width="1.02" height="1.02"/><rect x="14" y="14" width="1.02" height="1.02"/><rect x="15" y="14" width="1.02" height="1.02"/><rect x="16" y="14" width="1.02" height="1.02"/><rect x="17" y="14" width="1.02" height="1.02"/><rect x="18" y="14" width="1.02" height="1.02"/><rect x="19" y="14" width="1.02" height="1.02"/><rect x="21" y="14" width="1.02" height="1.02"/><rect x="23" y="14" width="1.02" height="1.02"/><rect x="24" y="14" width="1.02" height="1.02"/><rect x="0" y="15" width="1.02" height="1.02"/><rect x="1" y="15" width="1.02" height="1.02"/><rect x="2" y="15" width="1.02" height="1.02"/><rect x="5" y="15" width="1.02" height="1.02"/><rect x="8" y="15" width="1.02" height="1.02"/><rect x="10" y="15" width="1.02" height="1.02"/><rect x="11" y="15" width="1.02" height="1.02"/><rect x="13" y="15" width="1.02" height="1.02"/><rect x="17" y="15" width="1.02" height="1.02"/><rect x="21" y="15" width="1.02" height="1.02"/><rect x="22" y="15" width="1.02" height="1.02"/><rect x="23" y="15" width="1.02" height="1.02"/><rect x="24" y="15" width="1.02" height="1.02"/><rect x="0" y="16" width="1.02" height="1.02"/><rect x="2" y="16" width="1.02" height="1.02"/><rect x="3" y="16" width="1.02" height="1.02"/><rect x="4" y="16" width="1.02" height="1.02"/><rect x="6" y="16" width="1.02" height="1.02"/><rect x="8" y="16" width="1.02" height="1.02"/><rect x="9" y="16" width="1.02" height="1.02"/><rect x="10" y="16" width="1.02" height="1.02"/><rect x="11" y="16" width="1.02" height="1.02"/><rect x="12" y="16" width="1.02" height="1.02"/><rect x="13" y="16" width="1.02" height="1.02"/><rect x="14" y="16" width="1.02" height="1.02"/><rect x="18" y="16" width="1.02" height="1.02"/><rect x="20" y="16" width="1.02" height="1.02"/><rect x="21" y="16" width="1.02" height="1.02"/><rect x="22" y="16" width="1.02" height="1.02"/><rect x="23" y="16" width="1.02" height="1.02"/><rect x="24" y="16" width="1.02" height="1.02"/><rect x="8" y="17" width="1.02" height="1.02"/><rect x="9" y="17" width="1.02" height="1.02"/><rect x="10" y="17" width="1.02" height="1.02"/><rect x="17" y="17" width="1.02" height="1.02"/><rect x="18" y="17" width="1.02" height="1.02"/><rect x="20" y="17" width="1.02" height="1.02"/><rect x="23" y="17" width="1.02" height="1.02"/><rect x="0" y="18" width="1.02" height="1.02"/><rect x="1" y="18" width="1.02" height="1.02"/><rect x="2" y="18" width="1.02" height="1.02"/><rect x="3" y="18" width="1.02" height="1.02"/><rect x="4" y="18" width="1.02" height="1.02"/><rect x="5" y="18" width="1.02" height="1.02"/><rect x="6" y="18" width="1.02" height="1.02"/><rect x="14" y="18" width="1.02" height="1.02"/><rect x="15" y="18" width="1.02" height="1.02"/><rect x="16" y="18" width="1.02" height="1.02"/><rect x="17" y="18" width="1.02" height="1.02"/><rect x="18" y="18" width="1.02" height="1.02"/><rect x="24" y="18" width="1.02" height="1.02"/><rect x="0" y="19" width="1.02" height="1.02"/><rect x="6" y="19" width="1.02" height="1.02"/><rect x="8" y="19" width="1.02" height="1.02"/><rect x="9" y="19" width="1.02" height="1.02"/><rect x="10" y="19" width="1.02" height="1.02"/><rect x="12" y="19" width="1.02" height="1.02"/><rect x="15" y="19" width="1.02" height="1.02"/><rect x="16" y="19" width="1.02" height="1.02"/><rect x="17" y="19" width="1.02" height="1.02"/><rect x="22" y="19" width="1.02" height="1.02"/><rect x="23" y="19" width="1.02" height="1.02"/><rect x="24" y="19" width="1.02" height="1.02"/><rect x="0" y="20" width="1.02" height="1.02"/><rect x="2" y="20" width="1.02" height="1.02"/><rect x="3" y="20" width="1.02" height="1.02"/><rect x="4" y="20" width="1.02" height="1.02"/><rect x="6" y="20" width="1.02" height="1.02"/><rect x="9" y="20" width="1.02" height="1.02"/><rect x="11" y="20" width="1.02" height="1.02"/><rect x="12" y="20" width="1.02" height="1.02"/><rect x="13" y="20" width="1.02" height="1.02"/><rect x="15" y="20" width="1.02" height="1.02"/><rect x="18" y="20" width="1.02" height="1.02"/><rect x="19" y="20" width="1.02" height="1.02"/><rect x="22" y="20" width="1.02" height="1.02"/><rect x="23" y="20" width="1.02" height="1.02"/><rect x="24" y="20" width="1.02" height="1.02"/><rect x="0" y="21" width="1.02" height="1.02"/><rect x="2" y="21" width="1.02" height="1.02"/><rect x="3" y="21" width="1.02" height="1.02"/><rect x="4" y="21" width="1.02" height="1.02"/><rect x="6" y="21" width="1.02" height="1.02"/><rect x="11" y="21" width="1.02" height="1.02"/><rect x="13" y="21" width="1.02" height="1.02"/><rect x="14" y="21" width="1.02" height="1.02"/><rect x="15" y="21" width="1.02" height="1.02"/><rect x="16" y="21" width="1.02" height="1.02"/><rect x="17" y="21" width="1.02" height="1.02"/><rect x="18" y="21" width="1.02" height="1.02"/><rect x="19" y="21" width="1.02" height="1.02"/><rect x="20" y="21" width="1.02" height="1.02"/><rect x="21" y="21" width="1.02" height="1.02"/><rect x="23" y="21" width="1.02" height="1.02"/><rect x="0" y="22" width="1.02" height="1.02"/><rect x="2" y="22" width="1.02" height="1.02"/><rect x="3" y="22" width="1.02" height="1.02"/><rect x="4" y="22" width="1.02" height="1.02"/><rect x="6" y="22" width="1.02" height="1.02"/><rect x="10" y="22" width="1.02" height="1.02"/><rect x="11" y="22" width="1.02" height="1.02"/><rect x="12" y="22" width="1.02" height="1.02"/><rect x="13" y="22" width="1.02" height="1.02"/><rect x="14" y="22" width="1.02" height="1.02"/><rect x="16" y="22" width="1.02" height="1.02"/><rect x="18" y="22" width="1.02" height="1.02"/><rect x="19" y="22" width="1.02" height="1.02"/><rect x="21" y="22" width="1.02" height="1.02"/><rect x="22" y="22" width="1.02" height="1.02"/><rect x="0" y="23" width="1.02" height="1.02"/><rect x="6" y="23" width="1.02" height="1.02"/><rect x="8" y="23" width="1.02" height="1.02"/><rect x="11" y="23" width="1.02" height="1.02"/><rect x="12" y="23" width="1.02" height="1.02"/><rect x="14" y="23" width="1.02" height="1.02"/><rect x="15" y="23" width="1.02" height="1.02"/><rect x="16" y="23" width="1.02" height="1.02"/><rect x="17" y="23" width="1.02" height="1.02"/><rect x="20" y="23" width="1.02" height="1.02"/><rect x="22" y="23" width="1.02" height="1.02"/><rect x="24" y="23" width="1.02" height="1.02"/><rect x="0" y="24" width="1.02" height="1.02"/><rect x="1" y="24" width="1.02" height="1.02"/><rect x="2" y="24" width="1.02" height="1.02"/><rect x="3" y="24" width="1.02" height="1.02"/><rect x="4" y="24" width="1.02" height="1.02"/><rect x="5" y="24" width="1.02" height="1.02"/><rect x="6" y="24" width="1.02" height="1.02"/><rect x="8" y="24" width="1.02" height="1.02"/><rect x="9" y="24" width="1.02" height="1.02"/><rect x="10" y="24" width="1.02" height="1.02"/><rect x="11" y="24" width="1.02" height="1.02"/><rect x="12" y="24" width="1.02" height="1.02"/><rect x="13" y="24" width="1.02" height="1.02"/><rect x="14" y="24" width="1.02" height="1.02"/><rect x="15" y="24" width="1.02" height="1.02"/><rect x="19" y="24" width="1.02" height="1.02"/><rect x="20" y="24" width="1.02" height="1.02"/><rect x="22" y="24" width="1.02" height="1.02"/><rect x="23" y="24" width="1.02" height="1.02"/><rect x="24" y="24" width="1.02" height="1.02"/></g></svg></div>
+        <div class="info">
+          <span>Friends scan this to sync with you</span>
+          <span>Or connect to<b>192.168.43.1:7420</b></span>
+          <span>Hotspot<b>AndroidAP_4B</b></span>
+        </div>
+      </div>
+    </section>
+    <button class="btn tonal block" style="margin-top:12px;height:48px"><span class="ms" aria-hidden="true">qr_code_scanner</span>Scan a QR</button>
+    <h2 class="section-h">Nearby phones <span class="searching"><span class="spin" aria-hidden="true"></span>Looking</span></h2>
+    <ul class="list">
+      <li class="row"><span class="lead-ic" style="color:var(--ink)"><span class="ms" aria-hidden="true">smartphone</span></span><div class="main"><p class="title">Priya's Pixel 8</p><p class="sub">Wi-Fi, shares Goa trip</p></div><button class="btn tonal small" aria-label="Sync with Priya's Pixel 8">Sync</button></li>
+      <li class="row"><span class="lead-ic" style="color:var(--ink)"><span class="ms" aria-hidden="true">phone_iphone</span></span><div class="main"><p class="title">Ravi's iPhone</p><p class="sub">Bluetooth, shares Goa trip</p></div><button class="btn tonal small" aria-label="Sync with Ravi's iPhone">Sync</button></li>
+      <li class="row"><span class="lead-ic" style="color:var(--ink)"><span class="ms" aria-hidden="true">device_unknown</span></span><div class="main"><p class="title">Unknown phone</p><p class="sub">Bluetooth, no shared groups</p></div><button class="btn outlined small" aria-label="Pair with Unknown phone">Pair</button></li>
+    </ul>
+    <p class="safe"><span class="ms" aria-hidden="true">lock</span>Encrypted between phones. A phone only gets the groups you both belong to.</p>
+  </div>
+  <nav class="navbar" aria-label="Main navigation, Sync screen"><a class="nav-i" href="#"><span class="pill"><span class="ms" aria-hidden="true">home</span></span>Home</a><a class="nav-i" href="#"><span class="pill"><span class="ms" aria-hidden="true">receipt_long</span></span>Activity</a><a class="nav-i" href="#" aria-current="page"><span class="pill"><span class="ms" aria-hidden="true">sync_alt</span><span class="badge" aria-hidden="true">3</span><span class="sr-only">, 3 changes to share</span></span>Sync</a></nav>
+  <div class="gesture" aria-hidden="true"></div>
+</section>
+
+<section class="phone dark" id="screen-6" aria-label="Home (dark)">
+  <div class="statusbar" aria-hidden="true"><span>9:41</span><span class="icons"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_5_bar</span></span></div>
+  <header class="appbar">
+    <h1>Settle Up</h1>
+    <button class="iconbtn" aria-label="Search expenses"><span class="ms" aria-hidden="true">search</span></button>
+    <button class="iconbtn" aria-label="Your profile"><span class="av sm me">AM</span></button>
+  </header>
+  <div class="content">
+    <section class="hero" aria-label="Overall balance (dark)">
+      <p class="lbl owed"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>You're owed overall</p>
+      <p class="big num"><span class="cur">+₹</span>4,250</p>
+      <div class="split">
+        <div><p class="c">Coming to you</p><p class="v owed">+₹5,090</p></div>
+        <div><p class="c">You owe</p><p class="v owe">−₹840</p></div>
+      </div>
+    </section>
+    <a class="strip" href="#" aria-label="3 changes to share. Open sync">
+      <span class="ms" aria-hidden="true">sync_alt</span>
+      <div class="main"><p class="title">3 changes to share</p><p class="sub">Last synced with Priya's Pixel 8 yesterday</p></div>
+      <span class="btn tonal small">Sync</span>
+    </a>
+    <h2 class="section-h">Groups <a href="#">See all</a></h2>
+    <ul class="list">
+      <li class="row"><div class="main"><p class="title">Goa trip</p><p class="sub">6 people</p></div><div class="bal owe"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>you owe</span><span class="a">−₹840</span></div></li>
+      <li class="row"><div class="main"><p class="title">Flat 4B</p><p class="sub">3 people</p></div><div class="bal owed"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>you're owed</span><span class="a">+₹5,090</span></div></li>
+      <li class="row"><div class="main"><p class="title">Cabin weekend</p><p class="sub">4 people</p></div><div class="bal settled"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>settled up</span><span class="a">₹0</span></div></li>
+    </ul>
+    <h2 class="section-h">People</h2>
+    <ul class="list">
+      <li class="row has-av"><span class="av" aria-hidden="true">PS</span><div class="main"><p class="title">Priya Sharma</p><p class="sub">Goa trip, Flat 4B</p></div><div class="bal owed"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.5" fill="currentColor"/></svg>owes you</span><span class="a">+₹1,200</span></div></li>
+      <li class="row has-av"><span class="av" aria-hidden="true">RK</span><div class="main"><p class="title">Ravi Kumar</p><p class="sub">Goa trip</p></div><div class="bal owe"><span class="w"><svg class="tg" viewBox="0 0 26 10" aria-hidden="true"><circle cx="4" cy="5" r="3.5" fill="currentColor"/><line x1="7.5" y1="5" x2="18.5" y2="5" stroke="currentColor" stroke-width="1.5"/><path d="M12.5 2.2 L15.3 5 L12.5 7.8" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><circle cx="22" cy="5" r="3.25" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>you owe</span><span class="a">−₹960</span></div></li>
+    </ul>
+  </div>
+  <button class="fab"><span class="ms" aria-hidden="true">add</span>Add expense</button>
+  <nav class="navbar" aria-label="Main navigation (dark)"><a class="nav-i" href="#" aria-current="page"><span class="pill"><span class="ms" aria-hidden="true">home</span></span>Home</a><a class="nav-i" href="#"><span class="pill"><span class="ms" aria-hidden="true">receipt_long</span></span>Activity</a><a class="nav-i" href="#"><span class="pill"><span class="ms" aria-hidden="true">sync_alt</span><span class="badge" aria-hidden="true">3</span><span class="sr-only">, 3 changes to share</span></span>Sync</a></nav>
+  <div class="gesture" aria-hidden="true"></div>
+</section>
+</main>
+</body>
+</html>
