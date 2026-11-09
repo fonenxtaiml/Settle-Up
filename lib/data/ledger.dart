@@ -142,7 +142,13 @@ final class Ledger implements LedgerRepository, SyncStore {
     for (final g in _mine.keys) {
       _acked[g] = (await _store.peerKnowledge(g))[me];
     }
-    _keyCache.addAll(await _keys.all());
+    try {
+      _keyCache.addAll(await _keys.all());
+    } catch (e) {
+      // A broken keystore must not stop the app: the ledger still works
+      // locally, only sync of those groups is unavailable.
+      developer.log('Could not read group keys: $e', name: _logName);
+    }
     final state = _reducer.state;
     for (final g in _keyCache.keys) {
       final hint = await _store.getKv(KvKeys.pending(g));
@@ -184,15 +190,19 @@ final class Ledger implements LedgerRepository, SyncStore {
 
   void _integrate(List<Operation> added) {
     final me = _me;
+    // One sort beats many mid-list inserts for a large sync batch.
+    final bulk = added.length > 64;
+    if (bulk) _ops.addAll(added);
     for (final op in added) {
       _reducer.apply(op);
-      _insertSorted(_ops, op, _byHlc);
+      if (!bulk) _insertSorted(_ops, op, _byHlc);
       if (op.deviceId == me) {
         _insertSorted(_mine[op.groupId] ??= [], op,
             (a, b) => a.counter.compareTo(b.counter));
         _factory.observe(op.groupId, op.counter);
       }
     }
+    if (bulk) _ops.sort(_byHlc);
     _opsView = null;
   }
 

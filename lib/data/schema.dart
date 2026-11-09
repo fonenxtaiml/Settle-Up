@@ -65,7 +65,6 @@ CREATE TABLE sync_records(
 /// was written by a newer app (its schema cannot be downgraded safely).
 void migrate(Database db) {
   db.execute('PRAGMA journal_mode = WAL');
-  db.execute('PRAGMA foreign_keys = ON');
   final from = db.userVersion;
   if (from == kStoreSchemaVersion) return;
   if (from > kStoreSchemaVersion) {

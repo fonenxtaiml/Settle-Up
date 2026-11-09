@@ -942,6 +942,26 @@ void main() {
       expect(c.snap.state.toCanonicalJson(), b.snap.state.toCanonicalJson());
     });
 
+    test('a large batch lands sorted by HLC and fully applied', () async {
+      final t = await trip();
+      final key = (await a.ledger.groupKeys())[t.g]!;
+      await b.ledger.registerJoinedGroup(t.g, key, 'Goa');
+      await b.pull(a, t.g);
+      for (var i = 0; i < 300; i++) {
+        b.clock.advance(i.isEven ? 1 : 0);
+        await b.ledger.addExpense(draft(t.g, [t.me, t.sam], total: 100 + i));
+        if (i % 50 == 0) {
+          await a.ledger.renameMember(t.g, t.priya, 'P$i');
+        }
+      }
+      expect(await a.pull(b, t.g), hasLength(300));
+      final hlcs = [for (final o in a.snap.ops) o.hlc];
+      expect(hlcs.isSorted((x, y) => x.compareTo(y)), isTrue);
+      expect(a.group(t.g).liveExpenses, hasLength(300));
+      await b.pull(a, t.g);
+      expect(a.snap.state.toCanonicalJson(), b.snap.state.toCanonicalJson());
+    });
+
     test('applyRemote returns only new ops and notifies once per batch',
         () async {
       final t = await trip();
