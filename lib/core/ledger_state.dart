@@ -98,16 +98,18 @@ final class GroupState {
   }
 
   /// Canonical JSON of this group (see [LedgerState.toCanonicalJson]).
-  Map<String, Object?> toCanonicalJson() => canonicalize(<String, Object?>{
-        'groupId': groupId,
-        'group': group == null ? null : groupToJson(group!),
-        'members': {
-          for (final e in members.entries) e.key: memberToJson(e.value),
-        },
-        'expenses': {
-          for (final e in expenses.entries) e.key: expenseToJson(e.value),
-        },
-      })! as Map<String, Object?>;
+  Map<String, Object?> toCanonicalJson() {
+    final memberIds = members.keys.toList()..sort();
+    final expenseIds = expenses.keys.toList()..sort();
+    return {
+      'expenses': {
+        for (final id in expenseIds) id: expenseToJson(expenses[id]!),
+      },
+      'group': group == null ? null : groupToJson(group!),
+      'groupId': groupId,
+      'members': {for (final id in memberIds) id: memberToJson(members[id]!)},
+    };
+  }
 }
 
 @immutable
@@ -132,11 +134,12 @@ final class LedgerState {
 
   /// Canonical, key-sorted JSON of everything materialized (including
   /// tombstones). Two replicas converge iff these are deeply equal.
-  Map<String, Object?> toCanonicalJson() => canonicalize(<String, Object?>{
-        'groups': {
-          for (final e in groups.entries) e.key: e.value.toCanonicalJson(),
-        },
-      })! as Map<String, Object?>;
+  Map<String, Object?> toCanonicalJson() {
+    final ids = groups.keys.toList()..sort();
+    return {
+      'groups': {for (final id in ids) id: groups[id]!.toCanonicalJson()},
+    };
+  }
 }
 
 /// Incremental, idempotent, commutative reducer (SPEC 7).

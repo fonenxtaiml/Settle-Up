@@ -158,11 +158,11 @@ final class ReducerEngine {
     switch (type) {
       case EntityType.group:
         final next = s == null ? null : buildGroup(id, s);
-        changed = !_same(m.group, next, groupToJson);
+        changed = !_same(m.group, next, sameGroup);
         m.group = next;
       case EntityType.member:
         final next = s == null || !owned ? null : buildMember(groupId, id, s);
-        changed = !_same(m.members[id], next, memberToJson);
+        changed = !_same(m.members[id], next, sameMember);
         if (next == null) {
           m.members.remove(id);
         } else {
@@ -171,7 +171,7 @@ final class ReducerEngine {
       case EntityType.expense:
         final next =
             s == null || !owned ? null : buildExpense(groupId, id, s);
-        changed = !_same(m.expenses[id], next, expenseToJson);
+        changed = !_same(m.expenses[id], next, sameExpense);
         if (next == null) {
           m.expenses.remove(id);
         } else {
@@ -185,8 +185,8 @@ final class ReducerEngine {
     return changed;
   }
 
-  static bool _same<T>(T? a, T? b, Map<String, Object?> Function(T) toJson) {
+  static bool _same<T>(T? a, T? b, bool Function(T, T) same) {
     if (a == null || b == null) return a == null && b == null;
-    return jsonEquals(toJson(a), toJson(b));
+    return same(a, b);
   }
 }
