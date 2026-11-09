@@ -436,6 +436,62 @@ void main() {
     });
   });
 
+  group('entity ownership across groups (SECURITY-R1-04)', () {
+    test('an earlier-stamped update in another group does not move an '
+        'expense out of the group that created it', () {
+      final created =
+          alex.addExpense('g1', 'x', money: equalBlock(5, 'a', ['a']));
+      final forged = priya.op('g2', EntityType.expense, 'x', OpKind.update,
+          {ExpenseFields.description: 'Hidden'},
+          hlc: const Hlc(1, 0, 'dev-priya'));
+      for (final order in [
+        [created, forged],
+        [forged, created],
+      ]) {
+        final s = reduce(order).state;
+        expect(s.groups['g1']!.expenses['x']!.money.total, 5);
+        expect(s.groups['g1']!.expenses['x']!.description,
+            isNot('Hidden'));
+        expect(s.groups['g2']!.expenses, isEmpty);
+      }
+    });
+
+    test('the same holds for members and for deletes', () {
+      final created = alex.addMember('g1', 'm', 'In g1');
+      final forged = priya.op('g2', EntityType.member, 'm', OpKind.delete,
+          {MemberFields.deletedAt: 1},
+          hlc: const Hlc(1, 0, 'dev-priya'));
+      for (final order in [
+        [created, forged],
+        [forged, created],
+      ]) {
+        final s = reduce(order).state;
+        expect(s.groups['g1']!.members['m']!.displayName, 'In g1');
+      }
+    });
+
+    test('a create beats earlier updates elsewhere, whatever the order', () {
+      final a = alex.op('g1', EntityType.expense, 'x', OpKind.update,
+          {ExpenseFields.description: 'a'},
+          hlc: const Hlc(20, 0, 'dev-alex'));
+      final b = priya.op('g2', EntityType.expense, 'x', OpKind.update,
+          {ExpenseFields.description: 'b'},
+          hlc: const Hlc(10, 0, 'dev-priya'));
+      final create = alex.addExpense('g1', 'x',
+          money: equalBlock(5, 'a', ['a']));
+      for (final order in [
+        [a, b, create],
+        [create, b, a],
+        [b, create, a],
+      ]) {
+        final s = reduce(order).state;
+        expect(s.groups['g1']!.expenses['x'], isNotNull,
+            reason: 'the create in g1 claims it');
+        expect(s.groups['g2']!.expenses, isEmpty);
+      }
+    });
+  });
+
   group('group lifecycle', () {
     test('delete group tombstones it; members/expenses stay', () {
       final r = reduce(base());
