@@ -446,13 +446,13 @@ abstract final class S {
   static const bluetooth = 'Bluetooth';
   static const radiosAskTitle = 'Allow Bluetooth sync';
   static const radiosAskBody =
-      'Settle Up needs the Nearby devices permission to find phones over '
-      'Bluetooth, without Wi-Fi.';
+      'Settle Up needs permission to find phones near you over Bluetooth, '
+      'without Wi-Fi.';
   static const allow = 'Allow';
   static const radiosDeniedTitle = 'Bluetooth sync is not allowed';
   static const radiosDeniedBody =
-      'Turn on Nearby devices (and Location on older phones) for Settle Up '
-      'in its app settings to sync over Bluetooth.';
+      'Allow the Nearby permission (Location on older phones) in the app '
+      'settings for Settle Up to sync over Bluetooth.';
   static const openSettings = 'Open settings';
   static const bluetoothOffTitle = 'Bluetooth is off';
   static const bluetoothOffBody =
