@@ -1,8 +1,27 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
+
+// Release signing (README "Release signing"). The upload key lives outside
+// git: android/key.properties (git-ignored) names the keystore and its
+// passwords. Without that file a release build falls back to the debug key
+// and says so loudly; pass -PrequireReleaseKey to make that an error.
+val keystorePropertiesFile: File = rootProject.file("key.properties")
+val hasReleaseKey = keystorePropertiesFile.isFile
+val keystoreProperties = Properties().apply {
+    if (hasReleaseKey) keystorePropertiesFile.inputStream().use { load(it) }
+}
+
+fun releaseKeyProperty(name: String): String =
+    keystoreProperties.getProperty(name)?.takeIf { it.isNotBlank() }
+        ?: throw GradleException(
+            "android/key.properties has no $name. It needs storeFile, " +
+                "storePassword, keyAlias and keyPassword (see README.md).",
+        )
 
 android {
     namespace = "app.settleup.settle_up"
@@ -31,12 +50,45 @@ android {
         versionName = flutter.versionName
     }
 
+    signingConfigs {
+        if (hasReleaseKey) {
+            create("release") {
+                // A relative storeFile is resolved from the android/ folder.
+                storeFile = rootProject.file(releaseKeyProperty("storeFile"))
+                storePassword = releaseKeyProperty("storePassword")
+                keyAlias = releaseKeyProperty("keyAlias")
+                keyPassword = releaseKeyProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            // TODO: Add your own signing config for the release build.
-            // Signing with the debug keys for now, so `flutter run --release` works.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = if (hasReleaseKey) {
+                signingConfigs.getByName("release")
+            } else {
+                signingConfigs.getByName("debug")
+            }
         }
+    }
+}
+
+// Warn (or fail with -PrequireReleaseKey) only when a release variant is
+// actually built, so debug builds and tests stay quiet.
+gradle.taskGraph.whenReady {
+    val buildsRelease = allTasks.any {
+        it.project == project && it.name.contains("Release")
+    }
+    if (buildsRelease && !hasReleaseKey) {
+        val message =
+            "android/key.properties not found: this RELEASE build is signed " +
+                "with the DEBUG key. It cannot be uploaded to Play, and a " +
+                "build signed with the real key cannot update it. See " +
+                "README.md \"Release signing\"."
+        if (project.hasProperty("requireReleaseKey")) {
+            throw GradleException(message)
+        }
+        logger.warn("WARNING: $message")
     }
 }
 
