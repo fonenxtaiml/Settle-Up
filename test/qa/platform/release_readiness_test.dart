@@ -126,107 +126,82 @@ void main() {
   });
 
   group('launcher icon', () {
-    test(
-      'icons are not the stock Flutter icon in any density',
-      () async {
-        for (final e in _flutterDefaultIcons.entries) {
-          final path = '$_res/${e.key}/ic_launcher.png';
-          expect(File(path).existsSync(), isTrue, reason: path);
-          expect(
-            await _sha256(path),
-            isNot(e.value),
-            reason: '$path is the Flutter template icon',
-          );
-        }
-      },
-    );
+    test('icons are not the stock Flutter icon in any density', () async {
+      for (final e in _flutterDefaultIcons.entries) {
+        final path = '$_res/${e.key}/ic_launcher.png';
+        expect(File(path).existsSync(), isTrue, reason: path);
+        expect(
+          await _sha256(path),
+          isNot(e.value),
+          reason: '$path is the Flutter template icon',
+        );
+      }
+    });
 
-    test(
-      'adaptive icon (API 26+) with foreground and monochrome layers',
-      () {
-        final file = File('$_res/mipmap-anydpi-v26/ic_launcher.xml');
-        expect(
-          file.existsSync(),
-          isTrue,
-          reason: 'minSdk is 26, so every phone uses the adaptive icon',
-        );
-        final xml = file.readAsStringSync();
-        expect(xml, contains('<adaptive-icon'));
-        expect(xml, contains('<foreground'));
-        expect(
-          xml,
-          contains('<monochrome'),
-          reason: 'Android 13+ themed icons',
-        );
-      },
-    );
+    test('adaptive icon (API 26+) with foreground and monochrome layers', () {
+      final file = File('$_res/mipmap-anydpi-v26/ic_launcher.xml');
+      expect(
+        file.existsSync(),
+        isTrue,
+        reason: 'minSdk is 26, so every phone uses the adaptive icon',
+      );
+      final xml = file.readAsStringSync();
+      expect(xml, contains('<adaptive-icon'));
+      expect(xml, contains('<foreground'));
+      expect(xml, contains('<monochrome'), reason: 'Android 13+ themed icons');
+    });
   });
 
   group('release signing', () {
-    test(
-      'release is not signed with the debug key unconditionally',
-      () {
-        final g = _read(_appGradle);
-        expect(
-          g,
-          contains('key.properties'),
-          reason: 'release signing must read android/key.properties',
-        );
-        final release = RegExp(
-          r'release\s*\{[^}]*\}',
-          dotAll: true,
-        ).firstMatch(g.substring(g.indexOf('buildTypes')))!.group(0)!;
-        expect(
-          release,
-          isNot(
-            contains('signingConfig = signingConfigs.getByName("debug")\n'),
-          ),
-          reason: 'a debug fallback must be conditional and logged',
-        );
-      },
-    );
+    test('release is not signed with the debug key unconditionally', () {
+      final g = _read(_appGradle);
+      expect(
+        g,
+        contains('key.properties'),
+        reason: 'release signing must read android/key.properties',
+      );
+      final release = RegExp(
+        r'release\s*\{[^}]*\}',
+        dotAll: true,
+      ).firstMatch(g.substring(g.indexOf('buildTypes')))!.group(0)!;
+      expect(
+        release,
+        isNot(contains('signingConfig = signingConfigs.getByName("debug")\n')),
+        reason: 'a debug fallback must be conditional and logged',
+      );
+    });
   });
 
   group('template leftovers', () {
-    test(
-      'no Flutter template TODOs left in the Android build',
-      () {
-        final hits = <String>[];
-        for (final path in [
-          _appGradle,
-          'android/build.gradle.kts',
-          _manifest,
-        ]) {
-          final lines = _read(path).split('\n');
-          for (var i = 0; i < lines.length; i++) {
-            if (lines[i].contains('TODO')) hits.add('$path:${i + 1}');
-          }
+    test('no Flutter template TODOs left in the Android build', () {
+      final hits = <String>[];
+      for (final path in [_appGradle, 'android/build.gradle.kts', _manifest]) {
+        final lines = _read(path).split('\n');
+        for (var i = 0; i < lines.length; i++) {
+          if (lines[i].contains('TODO')) hits.add('$path:${i + 1}');
         }
-        expect(hits, isEmpty);
-      },
-    );
+      }
+      expect(hits, isEmpty);
+    });
   });
 
   group('device-to-device transfer (Android 12+)', () {
-    test(
-      'data extraction rules exclude the op log and settings',
-      () {
-        // allowBackup="false" stops cloud backup only; for targetSdk >= 31 the
-        // device-to-device transfer (new phone setup, cable or Wi-Fi) still
-        // copies app data unless dataExtractionRules excludes it.
-        final m = _read(_manifest);
-        final ref = RegExp(r'android:dataExtractionRules="@xml/([a-z_]+)"')
-            .firstMatch(m);
-        expect(
-          ref,
-          isNotNull,
-          reason: 'targetSdk 36 needs android:dataExtractionRules',
-        );
-        final rules = _read('$_res/xml/${ref!.group(1)}.xml');
-        expect(rules, contains('<device-transfer>'));
-        expect(rules, contains('<exclude'));
-      },
-    );
+    test('data extraction rules exclude the op log and settings', () {
+      // allowBackup="false" stops cloud backup only; for targetSdk >= 31 the
+      // device-to-device transfer (new phone setup, cable or Wi-Fi) still
+      // copies app data unless dataExtractionRules excludes it.
+      final m = _read(_manifest);
+      final ref = RegExp(r'android:dataExtractionRules="@xml/([a-z_]+)"')
+          .firstMatch(m);
+      expect(
+        ref,
+        isNotNull,
+        reason: 'targetSdk 36 needs android:dataExtractionRules',
+      );
+      final rules = _read('$_res/xml/${ref!.group(1)}.xml');
+      expect(rules, contains('<device-transfer>'));
+      expect(rules, contains('<exclude'));
+    });
   });
 
   group('release docs', () {
@@ -298,5 +273,121 @@ void main() {
         expect(listing, contains(topic), reason: 'listing lacks "$topic"');
       }
     });
+  });
+
+  // QA PLATFORM round 2.
+  group('round 2', () {
+    test('release signing reads all four key.properties fields, and '
+        '-PrequireReleaseKey turns the fallback into an error', () {
+      final g = _read(_appGradle);
+      for (final k in [
+        'storeFile',
+        'storePassword',
+        'keyAlias',
+        'keyPassword',
+      ]) {
+        expect(g, contains('releaseKeyProperty("$k")'));
+      }
+      expect(g, contains('hasProperty("requireReleaseKey")'));
+      expect(g, contains('throw GradleException(message)'));
+    });
+
+    // PLATFORM-R2-02: `flutter build apk|appbundle` runs Gradle with -q
+    // (flutter_tools gradle.dart), which hides WARN, LIFECYCLE and INFO.
+    // logger.warn() is therefore never shown on the documented build path;
+    // only println / logger.quiet / logger.error reach the terminal.
+    test('PLATFORM-R2-02: the debug-key fallback warning is visible under '
+        'flutter build (Gradle -q)', () {
+      final g = _read(_appGradle);
+      final hook = g.substring(g.indexOf('gradle.taskGraph.whenReady'));
+      expect(
+        RegExp(r'println\(|logger\.quiet\(|logger\.error\(').hasMatch(hook),
+        isTrue,
+        reason:
+            'logger.warn is filtered out by flutter build -q; the '
+            'tester never sees that the APK is debug-signed',
+      );
+    }, skip: 'PLATFORM-R2-02: logger.warn is hidden by flutter build -q');
+
+    test('device-to-device and cloud rules also exclude the device_* '
+        'domains (direct boot storage)', () {
+      final rules = _read('$_res/xml/data_extraction_rules.xml');
+      for (final section in ['cloud-backup', 'device-transfer']) {
+        final body = RegExp(
+          '<$section>(.*?)</$section>',
+          dotAll: true,
+        ).firstMatch(rules)!.group(1)!;
+        for (final d in [
+          'root',
+          'file',
+          'database',
+          'sharedpref',
+          'external',
+          'device_root',
+          'device_file',
+          'device_database',
+          'device_sharedpref',
+        ]) {
+          expect(body, contains('domain="$d" path="."'), reason: '$section $d');
+        }
+        expect(body, isNot(contains('<include')));
+      }
+    });
+
+    test('round icon and adaptive round icon are declared and exist', () {
+      expect(
+        _read(_manifest),
+        contains('android:roundIcon="@mipmap/ic_launcher_round"'),
+      );
+      expect(
+        File('$_res/mipmap-anydpi-v26/ic_launcher_round.xml').existsSync(),
+        isTrue,
+      );
+      for (final d in _flutterDefaultIcons.keys) {
+        expect(
+          File('$_res/$d/ic_launcher_round.png').existsSync(),
+          isTrue,
+          reason: d,
+        );
+      }
+    });
+
+    test('the iOS bundle id matches the Android applicationId', () {
+      final id = RegExp(r'applicationId = "([^"]+)"')
+          .firstMatch(_read(_appGradle))!
+          .group(1)!;
+      final pbx = _read('ios/Runner.xcodeproj/project.pbxproj');
+      final ids = RegExp(r'PRODUCT_BUNDLE_IDENTIFIER = ([^;]+);')
+          .allMatches(pbx)
+          .map((m) => m.group(1)!)
+          .where((v) => !v.endsWith('RunnerTests'))
+          .toSet();
+      expect(ids, {id});
+    });
+
+    test('release notes warn 0.1.0 testers about the new app id and key', () {
+      final notes = _read('docs/release-notes.md');
+      expect(notes, contains('app.settleup.settle_up'));
+      expect(notes, contains('app.settleup.settleup'));
+      expect(notes, contains('debug key'));
+    });
+
+    // PLATFORM-R2-03: adverts carry a rotating advert id, not a device id
+    // prefix (SPEC 8.3, 9.x threat table: "nothing stable (no device id)
+    // is advertised"). The privacy policy still says nearby devices see
+    // "the first characters of this phone's random device id".
+    test(
+      'PLATFORM-R2-03: the privacy policy describes what is advertised as '
+      'it is (no device id)',
+      () {
+        final policy = _read('docs/PRIVACY.md');
+        expect(
+          policy,
+          isNot(contains("first characters of this phone's random device id")),
+        );
+      },
+      skip:
+          'PLATFORM-R2-03: PRIVACY.md says the device id prefix is advertised',
+    );
   });
 }
