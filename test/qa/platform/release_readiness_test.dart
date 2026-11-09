@@ -182,9 +182,6 @@ void main() {
           reason: 'a debug fallback must be conditional and logged',
         );
       },
-      skip:
-          'QA PLATFORM-R1-06: release build is always signed with the '
-          'debug key',
     );
   });
 
