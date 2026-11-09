@@ -1,0 +1,1220 @@
+// Add / edit expense (render 3): the amount first, then description with a
+// suggested category, who paid and when, and the split with all five
+// methods and a live "left to split" check above Save.
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/categories.dart';
+import '../../../core/ids.dart';
+import '../../../core/ledger_state.dart';
+import '../../../core/models.dart';
+import '../../../core/money.dart';
+import '../../../core/split.dart';
+import '../../../data/repositories.dart';
+import '../../../theme/app_theme.dart';
+import '../../../theme/tokens.dart';
+import '../../format/dates.dart';
+import '../../format/money_format.dart';
+import '../../providers.dart';
+import '../../router.dart';
+import '../../strings.dart';
+import '../../widgets/kit_strings.dart';
+import '../../widgets/widgets.dart';
+import '../common.dart';
+import '../pickers.dart';
+import 'category_hints.dart';
+import 'payment_edit.dart';
+import 'split_draft.dart';
+
+/// Stand-in member ids while a 1:1 group with a person does not exist yet.
+const String _meStandIn = 'standin-me';
+const String _themStandIn = 'standin-them';
+
+class ExpenseEditScreen extends ConsumerStatefulWidget {
+  const ExpenseEditScreen({
+    super.key,
+    this.groupId,
+    this.personId,
+    this.expenseId,
+  });
+
+  final GroupId? groupId;
+  final PersonId? personId;
+  final ExpenseId? expenseId;
+
+  @override
+  ConsumerState<ExpenseEditScreen> createState() => _ExpenseEditScreenState();
+}
+
+class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
+  final _description = TextEditingController();
+  final _notes = TextEditingController();
+  final Map<String, TextEditingController> _inputs = {};
+
+  bool _ready = false;
+  Expense? _editing;
+
+  GroupId? _groupId;
+  // A 1:1 group to create on save: (personId, name).
+  (PersonId, String)? _direct;
+  String _currency = 'INR';
+  int? _amount;
+  int _amountKey = 0;
+  String _category = Categories.general;
+  bool _categoryPicked = false;
+  late DateTime _date;
+  MemberId? _payer;
+  Map<MemberId, int>? _multiPaid;
+  SplitDraft _split = SplitDraft(members: const []);
+  List<MemberId> _order = const [];
+  Map<MemberId, String> _names = const {};
+  Map<MemberId, String> _fullNames = const {};
+  MemberId? _me;
+
+  bool _triedSave = false;
+  bool _saving = false;
+
+  @override
+  void dispose() {
+    _description.dispose();
+    _notes.dispose();
+    for (final c in _inputs.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  // ------------------------------------------------------------- setup --
+
+  void _init() {
+    if (_ready) return;
+    final snap = ref.read(ledgerProvider).value;
+    final profile = ref.read(profileProvider).value;
+    final settings = ref.read(appSettingsProvider).value ?? const AppSettings();
+    if (snap == null || profile == null) return;
+    _ready = true;
+    _date = ref.read(clockProvider)();
+    final state = snap.state;
+
+    if (widget.expenseId != null) {
+      final e = state.expense(widget.expenseId!);
+      if (e == null) return;
+      _editing = e;
+      final g = state.groups[e.groupId]!;
+      _useGroup(g, profile.personId, settings, keepSplit: true);
+      final currency = Currencies.of(e.money.currency);
+      _currency = e.money.currency;
+      _amount = e.money.total;
+      _description.text = e.description;
+      _notes.text = e.notes;
+      _category = e.category;
+      _categoryPicked = true;
+      _date = e.date.toLocal();
+      final paid = e.money.paidBy.values;
+      if (e.money.paidBy.method == SplitMethod.exact && paid.length == 1) {
+        _payer = paid.keys.first;
+      } else {
+        _multiPaid = Map.of(e.money.paid);
+      }
+      _split.load(e.money.owedBy, currency);
+      _order = _orderFor(g, profile.personId);
+      _syncInputs();
+      return;
+    }
+
+    if (widget.personId != null) {
+      for (final g in state.visibleGroups) {
+        if (g.group!.isDirect &&
+            g.memberForPerson(profile.personId) != null &&
+            g.memberForPerson(widget.personId!) != null) {
+          _useGroup(g, profile.personId, settings);
+          return;
+        }
+      }
+      final people = Summaries2.peopleNames(state, profile.personId);
+      final name = people[widget.personId!] ?? S.someone;
+      _direct = (widget.personId!, name);
+      _currency = profile.homeCurrency;
+      _me = _meStandIn;
+      _payer = _meStandIn;
+      _names = {_meStandIn: S.you, _themStandIn: firstName(name)};
+      _fullNames = {_meStandIn: profile.displayName, _themStandIn: name};
+      _order = const [_meStandIn, _themStandIn];
+      _split = SplitDraft(members: _order, method: settings.defaultSplit);
+      _split.switchTo(settings.defaultSplit, 0, Currencies.of(_currency));
+      return;
+    }
+
+    GroupState? g;
+    if (widget.groupId != null) g = state.groups[widget.groupId!];
+    if (g == null || g.group == null) {
+      final summaries = ref.read(groupSummariesProvider).value;
+      if (summaries != null && summaries.isNotEmpty) {
+        g = summaries.first.group;
+      }
+    }
+    if (g != null) _useGroup(g, profile.personId, settings);
+  }
+
+  void _useGroup(
+    GroupState g,
+    PersonId me,
+    AppSettings settings, {
+    bool keepSplit = false,
+  }) {
+    _groupId = g.groupId;
+    _direct = null;
+    _currency = g.group!.currency;
+    _me = myMemberIn(g, me);
+    _names = memberNames(g, me);
+    _fullNames = memberFullNames(g);
+    final members = [for (final m in g.activeMembers) m.id];
+    _payer = _me ?? (members.isEmpty ? null : members.first);
+    _multiPaid = null;
+    _order = _orderFor(g, me);
+    _split = SplitDraft(members: _order, method: SplitMethod.equal);
+    if (!keepSplit) {
+      _split.switchTo(
+        settings.defaultSplit,
+        _amount ?? 0,
+        Currencies.of(_currency),
+      );
+      _syncInputs();
+    }
+  }
+
+  /// You first, then whoever paid, then the others included, then the rest.
+  List<MemberId> _orderFor(GroupState g, PersonId me) {
+    final active = [for (final m in g.activeMembers) m.id];
+    final mine = myMemberIn(g, me);
+    final payers = _multiPaid?.keys.toSet() ?? {?_payer};
+    int rank(MemberId m) {
+      if (m == mine) return 0;
+      if (payers.contains(m)) return 1;
+      if (_split.included.contains(m)) return 2;
+      return 3;
+    }
+
+    final out = [...active];
+    // Members of an edited expense who were removed later stay listed.
+    for (final m in _split.included) {
+      if (!out.contains(m)) out.add(m);
+    }
+    // Ties keep the order people joined the group.
+    DateTime joined(MemberId m) =>
+        g.members[m]?.createdAt ?? DateTime.fromMillisecondsSinceEpoch(0);
+    final index = {for (final (i, m) in out.indexed) m: i};
+    out.sort((a, b) {
+      final c = rank(a).compareTo(rank(b));
+      if (c != 0) return c;
+      final j = joined(a).compareTo(joined(b));
+      return j != 0 ? j : index[a]!.compareTo(index[b]!);
+    });
+    _split.members = out;
+    return out;
+  }
+
+  /// Re-sorts the split list after the payer changes: you, whoever paid,
+  /// the people in the expense, then the rest.
+  void _reorder() {
+    final g = _groupId == null
+        ? null
+        : ref.read(ledgerProvider).value?.state.groups[_groupId];
+    final me = ref.read(profileProvider).value?.personId;
+    if (g == null || me == null) return;
+    _order = _orderFor(g, me);
+  }
+
+  Currency get _cur => Currencies.of(_currency);
+
+  TextEditingController _input(String key) =>
+      _inputs.putIfAbsent(key, TextEditingController.new);
+
+  /// Copies the draft's raw values into the text fields.
+  void _syncInputs() {
+    for (final m in _split.members) {
+      _input('exact:$m').text = _split.exact[m] ?? '';
+      _input('percent:$m').text = _split.percent[m] ?? '';
+      _input('adjust:$m').text = _split.adjust[m] ?? '';
+    }
+  }
+
+  // ------------------------------------------------------------ derived --
+
+  SplitSpec get _paidSpec {
+    final multi = _multiPaid;
+    if (multi != null) {
+      return SplitSpec(SplitMethod.exact, {
+        for (final e in multi.entries)
+          if (e.value > 0) e.key: e.value,
+      });
+    }
+    return SplitSpec.single(_payer ?? '', _amount ?? 0);
+  }
+
+  bool get _paidValid {
+    final multi = _multiPaid;
+    if (multi == null) return _payer != null;
+    return multi.values.fold(0, (a, b) => a + b) == (_amount ?? 0);
+  }
+
+  String get _payerLabel {
+    final multi = _multiPaid;
+    if (multi != null) {
+      final payers = multi.entries.where((e) => e.value > 0).toList();
+      if (payers.length == 1) return _names[payers.first.key] ?? S.someone;
+      return S.peoplePaid(payers.length);
+    }
+    return _names[_payer] ?? S.someone;
+  }
+
+  // ------------------------------------------------------------ actions --
+
+  Future<void> _pickGroup() async {
+    final profile = ref.read(profileProvider).value;
+    final snap = ref.read(ledgerProvider).value;
+    if (profile == null || snap == null) return;
+    final groups =
+        [
+          for (final g in snap.state.visibleGroups)
+            if (g.memberForPerson(profile.personId) != null &&
+                !g.group!.archived)
+              g,
+        ]..sort(
+          (a, b) => groupTitle(a, profile.personId).toLowerCase().compareTo(
+            groupTitle(b, profile.personId).toLowerCase(),
+          ),
+        );
+    final picked = await pickOption<GroupId>(
+      context,
+      title: S.pickGroup,
+      selected: _groupId,
+      options: [
+        for (final g in groups) (g.groupId, groupTitle(g, profile.personId)),
+      ],
+    );
+    if (picked == null || picked == _groupId || !mounted) return;
+    final settings = ref.read(appSettingsProvider).value ?? const AppSettings();
+    setState(() {
+      _useGroup(snap.state.groups[picked]!, profile.personId, settings);
+    });
+  }
+
+  Future<void> _pickCurrency() async {
+    final home = ref.read(profileProvider).value?.homeCurrency;
+    final code = await pickCurrency(
+      context,
+      selected: _currency,
+      pinned: [?home],
+    );
+    if (code == null || !mounted) return;
+    setState(() {
+      _currency = code;
+      _amountKey++;
+      _amount = null;
+    });
+  }
+
+  Future<void> _pickCategory() async {
+    final id = await pickCategory(
+      context,
+      selected: _category,
+      suggestedId: suggestCategory(_description.text),
+    );
+    if (id == null || !mounted) return;
+    setState(() {
+      _category = id;
+      _categoryPicked = true;
+    });
+  }
+
+  Future<void> _pickDate() async {
+    final now = ref.read(clockProvider)();
+    final d = await showDatePicker(
+      context: context,
+      initialDate: _date,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(now.year + 1, 12, 31),
+    );
+    if (d == null || !mounted) return;
+    setState(() {
+      _date = DateTime(d.year, d.month, d.day, _date.hour, _date.minute);
+    });
+  }
+
+  Future<void> _pickPayer() async {
+    const multiple = '__multiple__';
+    final picked = await pickOption<String>(
+      context,
+      title: S.whoPaid,
+      selected: _multiPaid == null ? _payer : multiple,
+      leading: (id) => id == multiple
+          ? const Icon(Icons.group_outlined)
+          : PersonAvatar(
+              id: id,
+              name: _fullNames[id] ?? '',
+              size: Sizes.avatarSmall,
+              isMe: id == _me,
+            ),
+      options: [
+        for (final m in _order) (m, _names[m] ?? S.someone),
+        (multiple, S.multiplePeople),
+      ],
+    );
+    if (picked == null || !mounted) return;
+    if (picked != multiple) {
+      setState(() {
+        _payer = picked;
+        _multiPaid = null;
+        _reorder();
+      });
+      return;
+    }
+    final result = await showModalBottomSheet<Map<MemberId, int>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (context) => MultiPayerSheet(
+        members: _order,
+        names: _names,
+        fullNames: _fullNames,
+        me: _me,
+        total: _amount ?? 0,
+        currency: _currency,
+        initial: _multiPaid ?? {?_payer: _amount ?? 0},
+      ),
+    );
+    if (result == null || !mounted) return;
+    setState(() {
+      _multiPaid = result;
+      _reorder();
+    });
+  }
+
+  void _setMethod(SplitMethod m) {
+    setState(() {
+      _split.switchTo(m, _amount ?? 0, _cur);
+      _syncInputs();
+    });
+  }
+
+  Future<void> _save() async {
+    setState(() => _triedSave = true);
+    final amount = _amount ?? 0;
+    final description = _description.text.trim();
+    final check = _split.check(amount, _cur);
+    if (amount <= 0 ||
+        description.isEmpty ||
+        !check.isValid ||
+        !_paidValid ||
+        _saving) {
+      Haptics.invalid(context);
+      return;
+    }
+    setState(() => _saving = true);
+    final ledger = ref.read(ledgerRepositoryProvider);
+    var groupId = _groupId;
+    var paid = _paidSpec;
+    var owed = _split.spec(_cur);
+    final ok = await runGuarded(context, () async {
+      final direct = _direct;
+      if (direct != null) {
+        groupId = await ledger.directGroupWith(
+          personId: direct.$1,
+          displayName: direct.$2,
+          currency: _currency,
+        );
+        final g = ledger.current.state.groups[groupId]!;
+        final me = ref.read(profileProvider).value!.personId;
+        final map = {
+          _meStandIn: myMemberIn(g, me)!,
+          _themStandIn: g.resolve(g.memberForPerson(direct.$1)!.id),
+        };
+        SplitSpec remap(SplitSpec s) => SplitSpec(s.method, {
+          for (final e in s.values.entries) map[e.key]!: e.value,
+        });
+        paid = remap(paid);
+        owed = remap(owed);
+      }
+      final draft = ExpenseDraft(
+        groupId: groupId!,
+        description: description,
+        total: amount,
+        currency: _currency,
+        paidBy: paid,
+        owedBy: owed,
+        category: _category,
+        date: _date.toUtc(),
+        notes: _notes.text.trim(),
+      );
+      if (_editing != null) {
+        await ledger.updateExpense(_editing!.id, draft);
+      } else {
+        final id = await ledger.addExpense(draft);
+        if (!mounted) return;
+        Haptics.medium(context);
+        showSnack(
+          context,
+          S.expenseAdded,
+          actionLabel: S.undo,
+          onAction: () => ledger.deleteExpense(id),
+        );
+      }
+    });
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!ok) return;
+    if (_editing != null) {
+      Haptics.medium(context);
+      showSnack(context, S.expenseSaved);
+    }
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(groupId == null ? Routes.home : Routes.group(groupId!));
+    }
+  }
+
+  // -------------------------------------------------------------- build --
+
+  @override
+  Widget build(BuildContext context) {
+    ref.watch(ledgerProvider);
+    ref.watch(profileProvider);
+    _init();
+    final editing = _editing;
+    if (editing != null && editing.isPayment) {
+      return PaymentEditScreen(expense: editing);
+    }
+    final title = editing == null ? S.addExpenseTitle : S.editExpenseTitle;
+    if (!_ready || (_groupId == null && _direct == null)) {
+      return Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(close: true),
+          title: Text(title),
+        ),
+        body: _ready
+            ? Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(Space.xl),
+                  child: EmptyState(
+                    headline: S.homeEmptyHeadline,
+                    body: S.homeEmptyBody,
+                    actionLabel: S.createGroup,
+                    onAction: () => context.pushReplacement(Routes.newGroup),
+                  ),
+                ),
+              )
+            : const SizedBox.shrink(),
+      );
+    }
+
+    final snap = ref.read(ledgerProvider).value!;
+    final me = ref.read(profileProvider).value!.personId;
+    final groupName = _direct != null
+        ? _direct!.$2
+        : groupTitle(snap.state.groups[_groupId]!, me);
+    final amount = _amount ?? 0;
+    final check = _split.check(amount, _cur);
+    final shares = check.shares ?? const <MemberId, int>{};
+    final left = _split.leftMinor(amount, _cur);
+    final suggested = _categoryPicked
+        ? _category
+        : (suggestCategory(_description.text) ?? Categories.general);
+    _category = suggested;
+    final descriptionError = _triedSave && _description.text.trim().isEmpty
+        ? S.descriptionNeeded
+        : null;
+    final amountError = _triedSave && amount <= 0
+        ? S.amountNeeded(MoneyFormat.format(0, _currency))
+        : null;
+    final canSave = amount > 0 && check.isValid && _paidValid && !_saving;
+
+    return Scaffold(
+      appBar: screenAppBar(
+        leading: const BackArrow(close: true),
+        title: Text(title),
+        actions: [
+          if (editing == null && widget.personId == null)
+            DropdownChip(
+              label: groupName,
+              onTap: _pickGroup,
+              semanticLabel: S.groupChip(groupName),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.only(right: Space.sm),
+              child: Center(
+                child: Text(
+                  groupName,
+                  style: Theme.of(context).textTheme.titleSmall!.copyWith(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+            ),
+          const SizedBox(width: Space.xs),
+        ],
+      ),
+      bottomNavigationBar: _SaveBar(
+        summary: _summary(check, amount),
+        left: left,
+        currency: _currency,
+        canSave: canSave,
+        onSave: _save,
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: Space.lg),
+        children: [
+          const SizedBox(height: 6),
+          textGutter(
+            AmountField(
+              key: ValueKey('amount-$_amountKey-$_currency'),
+              currency: _currency,
+              initialMinor: _amount,
+              autofocus: editing == null,
+              currencyName: _cur.name,
+              errorText: amountError,
+              onCurrencyTap: _pickCurrency,
+              onChanged: (v) => setState(() => _amount = v),
+            ),
+          ),
+          const SizedBox(height: 14),
+          gutter(
+            LabeledTextField(
+              label: S.description,
+              hintText: S.descriptionHint,
+              controller: _description,
+              errorText: descriptionError,
+              textInputAction: TextInputAction.done,
+              maxLength: 120,
+              onChanged: (_) => setState(() {}),
+              trailing: CategoryChip(
+                categoryId: _category,
+                label: categoryLabel(_category),
+                onTap: _pickCategory,
+              ),
+            ),
+          ),
+          const SizedBox(height: 10),
+          gutter(
+            Flex(
+              direction: isLargeText(context) ? Axis.vertical : Axis.horizontal,
+              crossAxisAlignment: isLargeText(context)
+                  ? CrossAxisAlignment.stretch
+                  : CrossAxisAlignment.center,
+              children: [
+                _flexible(
+                  context,
+                  PickerTile(
+                    label: S.paidBy,
+                    value: _payerLabel,
+                    leading: _multiPaid == null && _payer != null
+                        ? PersonAvatar(
+                            id: _payer!,
+                            name: _fullNames[_payer] ?? '',
+                            size: Sizes.avatarTiny,
+                            isMe: _payer == _me,
+                          )
+                        : const Icon(Icons.group_outlined, size: 20),
+                    onTap: _pickPayer,
+                  ),
+                ),
+                const SizedBox(width: Space.sm, height: Space.sm),
+                _flexible(
+                  context,
+                  PickerTile(
+                    label: S.date,
+                    value: DateLabels.pickerDate(
+                      _date,
+                      now: ref.watch(clockProvider)(),
+                    ),
+                    leading: const Icon(Icons.calendar_today_rounded, size: 20),
+                    onTap: _pickDate,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_triedSave && !_paidValid)
+            textGutter(
+              Padding(
+                padding: const EdgeInsets.only(top: Space.xs),
+                child: Text(
+                  S.splitNotDone,
+                  style: Theme.of(context).textTheme.bodySmall!
+                      .copyWith(color: Theme.of(context).colorScheme.error),
+                ),
+              ),
+            ),
+          gutter(
+            SectionHeading(
+              S.splitHeading(
+                _split.method.name,
+                _split.participants.length,
+                _order.length,
+              ),
+            ),
+          ),
+          gutter(
+            SplitMethodSelector(value: _split.method, onChanged: _setMethod),
+          ),
+          const SizedBox(height: 5),
+          gutter(
+            ListSection(
+              dividerIndent: 64,
+              children: [for (final m in _order) _memberRow(m, shares)],
+            ),
+          ),
+          const SizedBox(height: Space.md),
+          gutter(
+            LabeledTextField(
+              label: S.notes,
+              hintText: S.notesHint,
+              controller: _notes,
+              maxLength: 500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _flexible(BuildContext context, Widget child) =>
+      isLargeText(context) ? child : Expanded(child: child);
+
+  String _summary(SplitCheck check, int amount) {
+    final n = _split.participants.length;
+    final shares = check.shares;
+    switch (_split.method) {
+      case SplitMethod.equal:
+        if (shares == null || shares.isEmpty) return S.people(n);
+        final values = shares.values.toList()..sort();
+        final each = MoneyFormat.format(values.first, _currency);
+        return values.first == values.last
+            ? S.eachSummary(each, n)
+            : S.unevenSummary(each, n, values.last - values.first);
+      case SplitMethod.exact:
+        return S.exactSummary(
+          MoneyFormat.format(check.assignedUnits, _currency),
+          MoneyFormat.format(amount, _currency),
+        );
+      case SplitMethod.percent:
+        return S.percentSummary(formatPercent(check.assignedUnits));
+      case SplitMethod.shares:
+        return S.sharesSummary(check.targetUnits, n);
+      case SplitMethod.adjustment:
+        final adjusted = _split
+            .spec(_cur)
+            .values
+            .values
+            .fold(0, (a, b) => a + b.abs());
+        return S.adjustSummary(MoneyFormat.format(adjusted, _currency));
+    }
+  }
+
+  /// The subline and direction for one member, from your point of view.
+  (String?, MoneyDirection?) _subline(MemberId m, int? share) {
+    final included = _split.included.contains(m);
+    if (!included) return (null, null);
+    final payers = _paidSpec.values.keys.toSet();
+    final singlePayer = payers.length == 1 ? payers.first : null;
+    final payerName = singlePayer == null ? null : _names[singlePayer];
+    if (m == _me) {
+      if (payers.contains(m)) {
+        final paid = _multiPaid?[m] ?? (_amount ?? 0);
+        final back = paid - (share ?? 0);
+        if (back > 0) {
+          return (
+            S.youGetBack(MoneyFormat.format(back, _currency)),
+            MoneyDirection.owed,
+          );
+        }
+        return (S.yourOwnShare, null);
+      }
+      return (
+        payerName == null ? S.owesPayers : S.youOweName(payerName),
+        MoneyDirection.owe,
+      );
+    }
+    if (payers.contains(m)) return (S.herOwnShare, null);
+    if (singlePayer == _me) return (S.owesYou, null);
+    return (payerName == null ? S.owesPayers : S.owesName(payerName), null);
+  }
+
+  Widget _memberRow(MemberId m, Map<MemberId, int> shares) {
+    final included = _split.included.contains(m);
+    final share = shares[m];
+    final (sub, dir) = _subline(m, share);
+    final isMe = m == _me;
+    final payers = _paidSpec.values.keys.toSet();
+    void toggle(bool v) => setState(() {
+      if (v) {
+        _split.included.add(m);
+      } else {
+        _split.included.remove(m);
+      }
+    });
+    final name = _names[m] ?? S.someone;
+    if (_split.method == SplitMethod.equal) {
+      return MemberSplitRow(
+        id: m,
+        name: name,
+        avatarName: _fullNames[m],
+        isMe: isMe,
+        included: included,
+        onChanged: toggle,
+        currency: _currency,
+        subtitle: sub,
+        subtitleDirection: dir,
+        shareMinor: share,
+        shareDirection: isMe && !payers.contains(m)
+            ? MoneyDirection.owe
+            : MoneyDirection.neutral,
+      );
+    }
+    final Widget input = switch (_split.method) {
+      SplitMethod.shares => _SharesStepper(
+        value: _split.shares[m] ?? 1,
+        enabled: included,
+        onChanged: (v) => setState(() => _split.shares[m] = v),
+      ),
+      SplitMethod.exact => _UnitField(
+        controller: _input('exact:$m'),
+        enabled: included,
+        prefix: _cur.symbol,
+        label: S.amountOf(name),
+        onChanged: (v) => setState(() => _split.exact[m] = v),
+      ),
+      SplitMethod.percent => _UnitField(
+        controller: _input('percent:$m'),
+        enabled: included,
+        suffix: S.percentSuffix,
+        label: S.percentOf(name),
+        onChanged: (v) => setState(() => _split.percent[m] = v),
+      ),
+      _ => _UnitField(
+        controller: _input('adjust:$m'),
+        enabled: included,
+        prefix: _cur.symbol,
+        hint: S.adjustHint,
+        signed: true,
+        label: S.adjustmentOf(name),
+        onChanged: (v) => setState(() => _split.adjust[m] = v),
+      ),
+    };
+    final shareText = included && share != null
+        ? MoneyFormat.format(share, _currency)
+        : null;
+    return _InputSplitRow(
+      id: m,
+      name: name,
+      avatarName: _fullNames[m] ?? name,
+      isMe: isMe,
+      included: included,
+      onChanged: toggle,
+      subtitle: [
+        if (_split.method == SplitMethod.shares && included)
+          S.sharesOf(_split.shares[m] ?? 1),
+        ?shareText,
+        if (shareText == null) ?sub,
+      ].join(', '),
+      input: input,
+    );
+  }
+}
+
+/// Summary line and the Save button, pinned above the keyboard.
+class _SaveBar extends StatelessWidget {
+  const _SaveBar({
+    required this.summary,
+    required this.left,
+    required this.currency,
+    required this.canSave,
+    required this.onSave,
+  });
+
+  final String summary;
+  final int left;
+  final String currency;
+  final bool canSave;
+  final VoidCallback onSave;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: scheme.surface,
+        border: Border(top: BorderSide(color: scheme.outlineVariant)),
+      ),
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SplitSummaryBar(
+                summary: summary,
+                leftMinor: left,
+                currency: currency,
+              ),
+              const SizedBox(height: 10),
+              FilledButton(
+                onPressed: canSave ? onSave : null,
+                style: KitButtonStyles.block,
+                child: const Text(S.saveExpense),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Split row with an input on the right (exact, percent, shares, adjust).
+class _InputSplitRow extends StatelessWidget {
+  const _InputSplitRow({
+    required this.id,
+    required this.name,
+    required this.avatarName,
+    required this.isMe,
+    required this.included,
+    required this.onChanged,
+    required this.subtitle,
+    required this.input,
+  });
+
+  final String id;
+  final String name;
+  final String avatarName;
+  final bool isMe;
+  final bool included;
+  final ValueChanged<bool> onChanged;
+  final String subtitle;
+  final Widget input;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final sub = included ? subtitle : KitStrings.notInThisExpense;
+    final titleStyle = included
+        ? theme.textTheme.titleSmall!
+        : theme.textTheme.titleSmall!.copyWith(color: scheme.onSurfaceVariant);
+    final large = isLargeText(context);
+    final text = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(name, style: titleStyle),
+        if (sub.isNotEmpty)
+          Text(
+            sub,
+            style: theme.textTheme.bodySmall!.copyWith(
+              color: scheme.onSurfaceVariant,
+            ),
+          ),
+      ],
+    );
+    return ConstrainedBox(
+      constraints: const BoxConstraints(minHeight: 56),
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(0, 4, 16, 4),
+        child: Row(
+          children: [
+            Checkbox(
+              value: included,
+              semanticLabel: name,
+              onChanged: (v) {
+                Haptics.selection(context);
+                onChanged(v ?? false);
+              },
+            ),
+            ExcludeSemantics(
+              child: PersonAvatar(
+                id: id,
+                name: avatarName,
+                size: Sizes.avatarSmall,
+                isMe: isMe,
+              ),
+            ),
+            const SizedBox(width: Space.md),
+            Expanded(
+              child: large
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [text, const SizedBox(height: 4), input],
+                    )
+                  : text,
+            ),
+            if (!large) ...[const SizedBox(width: Space.sm), input],
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// A compact numeric field for one member's share.
+class _UnitField extends StatelessWidget {
+  const _UnitField({
+    required this.controller,
+    required this.enabled,
+    required this.onChanged,
+    required this.label,
+    this.prefix,
+    this.suffix,
+    this.hint,
+    this.signed = false,
+  });
+
+  final TextEditingController controller;
+  final bool enabled;
+  final ValueChanged<String> onChanged;
+  final String label;
+  final String? prefix;
+  final String? suffix;
+  final String? hint;
+  final bool signed;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    return SizedBox(
+      width: 112,
+      child: TextField(
+        controller: controller,
+        enabled: enabled,
+        onChanged: onChanged,
+        textAlign: TextAlign.end,
+        keyboardType: TextInputType.numberWithOptions(
+          decimal: true,
+          signed: signed,
+        ),
+        inputFormatters: [
+          FilteringTextInputFormatter.allow(
+            RegExp(signed ? r'[0-9.,+\-−]' : r'[0-9.,]'),
+          ),
+        ],
+        style: AppType.amount(context),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: hint ?? '0',
+          labelText: null,
+          semanticCounterText: label,
+          prefixText: prefix,
+          suffixText: suffix,
+          filled: true,
+          fillColor: scheme.surfaceContainer,
+          contentPadding: const EdgeInsets.symmetric(
+            horizontal: 10,
+            vertical: 10,
+          ),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(Radii.md),
+            borderSide: BorderSide.none,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// − n + stepper for shares.
+class _SharesStepper extends StatelessWidget {
+  const _SharesStepper({
+    required this.value,
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final int value;
+  final bool enabled;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          tooltip: S.lessShares,
+          onPressed: enabled && value > 1 ? () => onChanged(value - 1) : null,
+          icon: const Icon(Icons.remove_rounded),
+        ),
+        SizedBox(
+          width: 28,
+          child: Text(
+            '$value',
+            textAlign: TextAlign.center,
+            style: theme.textTheme.titleMedium,
+          ),
+        ),
+        IconButton(
+          tooltip: S.moreShares,
+          onPressed: enabled && value < 99 ? () => onChanged(value + 1) : null,
+          icon: const Icon(Icons.add_rounded),
+        ),
+      ],
+    );
+  }
+}
+
+/// "Paid by: multiple people": an amount per payer that must add up.
+class MultiPayerSheet extends StatefulWidget {
+  const MultiPayerSheet({
+    super.key,
+    required this.members,
+    required this.names,
+    required this.fullNames,
+    required this.me,
+    required this.total,
+    required this.currency,
+    required this.initial,
+  });
+
+  final List<MemberId> members;
+  final Map<MemberId, String> names;
+  final Map<MemberId, String> fullNames;
+  final MemberId? me;
+  final int total;
+  final String currency;
+  final Map<MemberId, int> initial;
+
+  @override
+  State<MultiPayerSheet> createState() => _MultiPayerSheetState();
+}
+
+class _MultiPayerSheetState extends State<MultiPayerSheet> {
+  late final Currency _cur = Currencies.of(widget.currency);
+  late final Map<MemberId, TextEditingController> _c = {
+    for (final m in widget.members)
+      m: TextEditingController(
+        text: (widget.initial[m] ?? 0) > 0
+            ? minorToInput(widget.initial[m]!, _cur)
+            : '',
+      ),
+  };
+
+  @override
+  void dispose() {
+    for (final c in _c.values) {
+      c.dispose();
+    }
+    super.dispose();
+  }
+
+  Map<MemberId, int> get _values => {
+    for (final e in _c.entries)
+      if ((Money.parseMinor(e.value.text, _cur) ?? 0) > 0)
+        e.key: Money.parseMinor(e.value.text, _cur)!,
+  };
+
+  void _splitEvenly() {
+    final payers = _values.keys.toList();
+    final who = payers.isEmpty ? widget.members : payers;
+    final even = SplitCalculator.allocate(widget.total, {
+      for (final m in who) m: 1,
+    });
+    setState(() {
+      for (final m in widget.members) {
+        _c[m]!.text = (even[m] ?? 0) > 0 ? minorToInput(even[m]!, _cur) : '';
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final sum = _values.values.fold(0, (a, b) => a + b);
+    final left = widget.total - sum;
+    return Padding(
+      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            textGutter(Text(S.paidHowMuch, style: theme.textTheme.titleLarge)),
+            const SizedBox(height: Space.sm),
+            gutter(
+              ListSection(
+                dividerIndent: 64,
+                children: [
+                  for (final m in widget.members)
+                    _InputSplitRow(
+                      id: m,
+                      name: widget.names[m] ?? S.someone,
+                      avatarName: widget.fullNames[m] ?? '',
+                      isMe: m == widget.me,
+                      included: true,
+                      onChanged: (_) {},
+                      subtitle: '',
+                      input: _UnitField(
+                        controller: _c[m]!,
+                        enabled: true,
+                        prefix: _cur.symbol,
+                        label: '${S.paidBy}, ${widget.names[m]}',
+                        onChanged: (_) => setState(() {}),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, Space.md, 16, 0),
+              child: SplitSummaryBar(
+                summary: S.exactSummary(
+                  MoneyFormat.format(sum, widget.currency),
+                  MoneyFormat.format(widget.total, widget.currency),
+                ),
+                leftMinor: left,
+                currency: widget.currency,
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, Space.sm, 16, Space.lg),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: FilledButton.tonal(
+                      onPressed: widget.total > 0 ? _splitEvenly : null,
+                      child: const Text(S.splitRestEqually),
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm),
+                  Expanded(
+                    child: FilledButton(
+                      onPressed: left == 0 && sum > 0
+                          ? () => Navigator.of(context).pop(_values)
+                          : null,
+                      child: const Text(S.done),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Display names of everyone I share a group with (for 1:1 expenses).
+abstract final class Summaries2 {
+  static Map<PersonId, String> peopleNames(LedgerState state, PersonId me) => {
+    for (final g in state.visibleGroups)
+      for (final m in g.activeMembers)
+        if (m.personId != me) m.personId: m.displayName,
+  };
+}
