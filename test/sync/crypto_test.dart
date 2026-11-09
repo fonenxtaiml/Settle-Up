@@ -501,7 +501,8 @@ void main() {
           }),
         );
         expect(rp.failure, SyncFailure.authFailed);
-        expect(ra.failure, isNotNull);
+        // Priya's plain ERROR reaches Alex although he already sealed.
+      expect(ra.failure, SyncFailure.authFailed, reason: ra.message);
         expect(ra.isSuccess, isFalse);
       },
     );

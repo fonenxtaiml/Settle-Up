@@ -434,13 +434,17 @@ final class SyncSession {
     }
 
     if (frame[0] == FrameKind.plain) {
-      // Only an ERROR may still arrive in clear (the peer may have failed
-      // to verify our AUTH). It can only end the session.
-      final msg = FrameCodec.decodePlainFrame(
-        frame,
-        maxBodyBytes: kMaxPreAuthBodyBytes,
-      );
-      if (msg is ErrorMessage) return _onPeerError(msg);
+      // Only an ERROR may still arrive in clear, and only before the
+      // peer's first sealed frame (it may have failed to verify our AUTH).
+      // Once the peer seals, a plain frame is not from the peer: anyone on
+      // the path could write it, so it must not speak for the peer.
+      if (_keys!.cipher.receivedFrames == 0) {
+        final msg = FrameCodec.decodePlainFrame(
+          frame,
+          maxBodyBytes: kMaxPreAuthBodyBytes,
+        );
+        if (msg is ErrorMessage) return _onPeerError(msg);
+      }
       throw const ProtocolException(
           ErrorCodes.badFrame, 'plain frame after AUTH');
     }

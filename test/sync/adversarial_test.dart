@@ -132,6 +132,29 @@ void main() {
     });
   });
 
+  group('an on-path stranger', () {
+    test('cannot end a sealed session with a plain ERROR of its own',
+        () async {
+      final s = await alex.seedGroup(expenses: 40);
+      await priya.join(alex, s.g);
+      var sealed = 0;
+      final forged = FrameCodec.plainFrame(const ErrorMessage(
+          ErrorCodes.cancelled, 'Alex cancelled. Pay Mallory instead.'));
+
+      final (_, rp) = await syncPair(alex, priya,
+          maxFrameBytes: 4096,
+          wrapResponder: (c) => InterceptChannel(c, (i, f) {
+                if (f[0] != FrameKind.sealed) return [f];
+                // Inject after Alex's VV and first OPS batch.
+                return ++sealed == 2 ? [f, forged] : [f];
+              }));
+
+      expect(rp.failure, isNot(SyncFailure.cancelled));
+      expect(rp.outcome, isNot(SyncOutcome.cancelled));
+      expect(rp.message, isNot(contains('Mallory')));
+    });
+  });
+
   group('size limits', () {
     test(
       'an unauthenticated peer cannot make us inflate a large body',
