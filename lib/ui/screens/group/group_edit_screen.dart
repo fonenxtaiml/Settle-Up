@@ -75,7 +75,11 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
     if (n.isEmpty) return true;
+    // You are a member of every new group too (Members refuses your name
+    // for the same reason).
+    final me = ref.read(profileProvider).value?.displayName;
     final dup = duplicateName(n, [
+      ?me,
       ..._newNames,
       for (final p in _existing) ?people[p],
     ]);
