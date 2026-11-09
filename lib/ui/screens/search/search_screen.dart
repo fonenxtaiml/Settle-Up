@@ -133,6 +133,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             expense: e,
                             memberNames: memberNames(entry.key, me),
                             myMemberId: myMemberIn(entry.key, me),
+                            resolve: entry.key.resolve,
                             unshared: snap.unsharedEntityIds.contains(e.id),
                             onTap: () => context.push(Routes.expense(e.id)),
                           ),

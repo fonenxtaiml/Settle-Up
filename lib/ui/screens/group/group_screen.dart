@@ -292,6 +292,7 @@ class _GroupBody extends ConsumerWidget {
                       expense: e,
                       memberNames: names,
                       myMemberId: myId,
+                      resolve: g.resolve,
                       unshared: unshared.contains(e.id),
                       onTap: () => context.push(Routes.expense(e.id)),
                     ),

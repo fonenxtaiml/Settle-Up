@@ -24,6 +24,7 @@ class ExpenseRow extends StatelessWidget {
     required this.expense,
     required this.memberNames, // MemberId -> display name ("You" for me)
     required this.myMemberId,
+    this.resolve,
     this.unshared = false,
     this.deleted = false,
     this.onTap,
@@ -33,21 +34,50 @@ class ExpenseRow extends StatelessWidget {
   final Expense expense;
   final Map<MemberId, String> memberNames;
   final MemberId? myMemberId;
+
+  /// Follows member merges (GroupState.resolve), so a duplicate of me that
+  /// was merged into me counts as me. Null: ids are taken as they are.
+  final MemberId Function(MemberId)? resolve;
   final bool unshared;
   final bool deleted;
   final VoidCallback? onTap;
   final VoidCallback? onRestore;
 
-  static ExpenseImpact impactOf(Expense e, MemberId? me) {
+  static ExpenseImpact impactOf(
+    Expense e,
+    MemberId? me, {
+    MemberId Function(MemberId)? resolve,
+  }) {
     if (me == null) return ExpenseImpact.notInvolved;
-    final involved =
-        e.money.paid.containsKey(me) || e.money.owed.containsKey(me);
+    bool mine(MemberId m) => (resolve?.call(m) ?? m) == me;
+    final involved = e.money.paid.keys.any(mine) || e.money.owed.keys.any(mine);
     if (!involved) return ExpenseImpact.notInvolved;
-    final v = e.impactFor(me);
+    final v = impactValue(e, me, resolve: resolve);
     if (v > 0) return ExpenseImpact.lent;
     if (v < 0) return ExpenseImpact.borrowed;
     return ExpenseImpact.even;
   }
+
+  /// Paid minus owed for [me], counting members merged into [me].
+  static int impactValue(
+    Expense e,
+    MemberId? me, {
+    MemberId Function(MemberId)? resolve,
+  }) {
+    if (me == null) return 0;
+    if (resolve == null) return e.impactFor(me);
+    var v = 0;
+    e.money.paid.forEach((m, x) {
+      if (resolve(m) == me) v += x;
+    });
+    e.money.owed.forEach((m, x) {
+      if (resolve(m) == me) v -= x;
+    });
+    return v;
+  }
+
+  bool _isMe(MemberId id) =>
+      myMemberId != null && (resolve?.call(id) ?? id) == myMemberId;
 
   static String methodLabel(PaymentMethod m) => switch (m) {
     PaymentMethod.upi => KitStrings.upi,
@@ -60,10 +90,8 @@ class ExpenseRow extends StatelessWidget {
 
   /// "Ravi paid you", "You paid Priya", "Kabir paid Ravi".
   String paymentTitle() {
-    final to = expense.receiver == myMemberId ? 'you' : _name(expense.receiver);
-    final from = expense.payer == myMemberId
-        ? KitStrings.you
-        : _name(expense.payer);
+    final to = _isMe(expense.receiver) ? 'you' : _name(expense.receiver);
+    final from = _isMe(expense.payer) ? KitStrings.you : _name(expense.payer);
     return KitStrings.paymentTitle(from, to);
   }
 
@@ -81,9 +109,7 @@ class ExpenseRow extends StatelessWidget {
     );
     final payers = expense.money.paid.keys.toList();
     if (payers.length == 1) {
-      final p = payers.first == myMemberId
-          ? KitStrings.you
-          : _name(payers.first);
+      final p = _isMe(payers.first) ? KitStrings.you : _name(payers.first);
       return KitStrings.paidAmount(p, total);
     }
     return KitStrings.peoplePaid(payers.length, total);
@@ -105,8 +131,8 @@ class ExpenseRow extends StatelessWidget {
     final Widget? trailing;
     final Widget leading;
     if (expense.isPayment) {
-      final toMe = expense.receiver == myMemberId;
-      final fromMe = expense.payer == myMemberId;
+      final toMe = _isMe(expense.receiver);
+      final fromMe = _isMe(expense.payer);
       // The 26 dp glyph overhangs the 24 dp icon column, as in render 2.
       leading = SizedBox(
         width: 24,
@@ -139,8 +165,8 @@ class ExpenseRow extends StatelessWidget {
               child: const Text(KitStrings.restore),
             );
     } else if (expense.isPayment) {
-      final toMe = expense.receiver == myMemberId;
-      final fromMe = expense.payer == myMemberId;
+      final toMe = _isMe(expense.receiver);
+      final fromMe = _isMe(expense.payer);
       final word = toMe
           ? KitStrings.received
           : fromMe
@@ -162,8 +188,8 @@ class ExpenseRow extends StatelessWidget {
               direction: MoneyDirection.neutral,
             );
     } else {
-      final impact = impactOf(expense, myMemberId);
-      final value = myMemberId == null ? 0 : expense.impactFor(myMemberId!);
+      final impact = impactOf(expense, myMemberId, resolve: resolve);
+      final value = impactValue(expense, myMemberId, resolve: resolve);
       final (word, direction) = switch (impact) {
         ExpenseImpact.lent => (KitStrings.youLent, MoneyDirection.owed),
         ExpenseImpact.borrowed => (KitStrings.youBorrowed, MoneyDirection.owe),
