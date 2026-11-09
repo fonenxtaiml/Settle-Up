@@ -148,7 +148,7 @@ final class SyncStatus {
   static const SyncStatus idle = SyncStatus();
 }
 
-/// A phone seen nearby, merged across transports by device id.
+/// A phone seen nearby, merged across transports by its advert id.
 @immutable
 final class NearbyPeer {
   const NearbyPeer({
@@ -156,12 +156,15 @@ final class NearbyPeer {
     required this.name,
     required this.transports,
     required this.sharedGroupIds,
-    this.deviceIdPrefix,
+    this.advertId,
   });
 
-  final String key; // stable for the discovery run
+  /// Stable for the discovery run, also when the advert id rotates.
+  final String key;
   final String name;
-  final String? deviceIdPrefix;
+
+  /// The advert id seen most recently (SPEC 8.3), if any.
+  final String? advertId;
   final Set<TransportKind> transports; // preferred: lan > nearby > ble
   final List<GroupId> sharedGroupIds; // from tokens; empty = unknown/none
 

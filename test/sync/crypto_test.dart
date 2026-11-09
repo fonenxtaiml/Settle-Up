@@ -273,11 +273,12 @@ void main() {
     final t0 = DateTime.utc(2026, 11, 9, 12, 0, 1);
 
     test(
-      '16 hex chars, stable per window, rotating every 10 minutes',
+      '4 base64url chars, stable per window, rotating every 10 minutes',
       () async {
         final w = DiscoveryTokens.windowAt(t0);
         final a = await DiscoveryTokens.token(_key(1), w);
-        expect(a, matches(RegExp(r'^[0-9a-f]{16}$')));
+        expect(a, matches(RegExp(r'^[A-Za-z0-9_-]{4}$')));
+        expect(DiscoveryTokens.isToken(a), isTrue);
         expect(await DiscoveryTokens.token(_key(1), w), a);
         expect(await DiscoveryTokens.token(_key(1), w + 1), isNot(a));
         expect(await DiscoveryTokens.token(_key(2), w), isNot(a));
@@ -314,6 +315,45 @@ void main() {
         expect(adv.where(stranger.containsKey), isEmpty);
       },
     );
+
+    test('window tags resolve to the nearest window within two days', () {
+      const w = 2950000;
+      int? resolve(int window) => DiscoveryTokens.resolveWindowTag(
+            DiscoveryTokens.parseWindowTag(DiscoveryTokens.windowTag(window))!,
+            w,
+          );
+      expect(DiscoveryTokens.windowTag(w), hasLength(3));
+      for (final d in const [0, 1, -1, 12, -144, 288, -288]) {
+        expect(resolve(w + d), w + d, reason: 'skew of $d windows');
+      }
+      expect(resolve(w + 289), isNull);
+      expect(resolve(w - 600), isNull);
+      expect(DiscoveryTokens.parseWindowTag('xyz'), isNull);
+      expect(DiscoveryTokens.parseWindowTag('1000'), isNull);
+    });
+
+    test('advert ids: 8 hex chars, per secret and window, unlinkable', () async {
+      final s1 = DiscoveryTokens.newAdvertSecret();
+      final s2 = DiscoveryTokens.newAdvertSecret();
+      expect(s1, isNot(s2));
+      final a = await DiscoveryTokens.advertId(s1, 7);
+      expect(DiscoveryTokens.isAdvertId(a), isTrue);
+      expect(await DiscoveryTokens.advertId(s1, 7), a);
+      expect(await DiscoveryTokens.advertId(s1, 8), isNot(a));
+      expect(await DiscoveryTokens.advertId(s2, 7), isNot(a));
+    });
+
+    test('an advertiser that names its window is matched at any skew',
+        () async {
+      final keys = {'g1': _key(1)};
+      final hostClock = t0.add(const Duration(hours: 5));
+      final adv = await DiscoveryTokens.advertised(keys, hostClock);
+      final index = await DiscoveryTokens.indexForWindow(
+        keys,
+        DiscoveryTokens.windowAt(hostClock),
+      );
+      expect(index[adv.single], 'g1');
+    });
 
     test('blinded ids depend on the key and the nonce', () async {
       final n1 = Uint8List(16), n2 = Uint8List(16)..[0] = 1;

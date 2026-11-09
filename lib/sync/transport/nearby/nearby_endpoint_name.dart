@@ -1,41 +1,47 @@
 // The Nearby Connections endpoint name (SPEC 8.7.2): the only thing a
 // scanner learns about an advertiser before connecting.
 //
-//   "1|<deviceId[0..8]>|<deviceName <= 24>|<up to 4 tokens comma-joined>"
+//   "2|<advertId>|<windowTag>|<deviceName <= 24>|<up to 24 tokens>"
 //
-// The device name sits between the fixed fields, so a '|' inside it still
-// parses (everything between the second and the last '|' is the name).
+// Tokens are fixed width (4 chars, SPEC 8.3) and written back to back. The
+// device name sits between the fixed fields, so a '|' inside it still
+// parses (everything between the third and the last '|' is the name).
 // Nearby carries the name as endpoint info bytes, which must stay small:
 // the whole name is kept within [NearbyEndpointName.maxBytes] UTF-8 bytes
-// by cutting the device name further.
+// by cutting the device name further. All 24 tokens always fit.
 import 'dart:convert';
 
 import 'package:meta/meta.dart';
 
 import '../../../core/models.dart';
+import '../../crypto/tokens.dart';
 import '../transport.dart';
-
-final RegExp _token = RegExp(r'^[0-9a-f]{16}$');
 
 @immutable
 final class NearbyEndpointName {
   const NearbyEndpointName({
-    required this.deviceIdPrefix,
+    required this.advertId,
     required this.deviceName,
     required this.groupTokens,
-    this.version = 1,
+    this.windowTag,
+    this.version = currentVersion,
   });
 
   factory NearbyEndpointName.of(AdvertiseInfo info) => NearbyEndpointName(
-        deviceIdPrefix: info.deviceId.length > 8
-            ? info.deviceId.substring(0, 8)
-            : info.deviceId,
+        advertId: info.advertId ?? '',
         deviceName: info.deviceName,
         groupTokens: info.groupTokens,
+        windowTag: switch (info.tokenWindow) {
+          final w? => w % DiscoveryTokens.windowTagModulus,
+          null => null,
+        },
       );
 
-  /// Most tokens that fit next to the name.
-  static const int maxTokens = 4;
+  /// The layout this file writes. Older layouts are not read.
+  static const int currentVersion = 2;
+
+  /// Most tokens advertised.
+  static const int maxTokens = 24;
 
   /// Device names are cut to this many Unicode code points.
   static const int maxNameRunes = 24;
@@ -44,40 +50,48 @@ final class NearbyEndpointName {
   static const int maxBytes = 131;
 
   final int version;
-  final String deviceIdPrefix;
+
+  /// '' when none is advertised.
+  final String advertId;
   final String deviceName;
   final List<String> groupTokens;
+  final int? windowTag;
 
   String encode() {
     final tokens = [
       for (final t in groupTokens)
-        if (_token.hasMatch(t)) t,
-    ].take(maxTokens).join(',');
-    final prefix = deviceIdPrefix.replaceAll('|', '');
+        if (DiscoveryTokens.isToken(t)) t,
+    ].take(maxTokens).join();
+    final id = DiscoveryTokens.isAdvertId(advertId) ? advertId : '';
+    final tag = windowTag == null ? '' : DiscoveryTokens.windowTag(windowTag!);
     var runes = deviceName.runes.take(maxNameRunes).toList();
     while (true) {
-      final s = '$version|$prefix|${String.fromCharCodes(runes)}|$tokens';
+      final s = '$version|$id|$tag|${String.fromCharCodes(runes)}|$tokens';
       if (runes.isEmpty || utf8.encode(s).length <= maxBytes) return s;
       runes = runes.sublist(0, runes.length - 1);
     }
   }
 
-  /// Null when [name] is not a Settle Up endpoint name.
+  /// Null when [name] is not a Settle Up endpoint name of this layout.
   static NearbyEndpointName? tryParse(String name) {
     final parts = name.split('|');
-    if (parts.length < 4) return null;
+    if (parts.length < 5) return null;
     final version = int.tryParse(parts.first);
-    if (version == null || version < 1) return null;
-    final tokens = parts.last.isEmpty
-        ? const <String>[]
-        : [
-            for (final t in parts.last.split(','))
-              if (_token.hasMatch(t)) t,
-          ].take(maxTokens).toList();
+    if (version == null || version < currentVersion) return null;
+    final packed = parts.last;
+    final tokens = <String>[];
+    for (var i = 0;
+        i + DiscoveryTokens.tokenLength <= packed.length &&
+            tokens.length < maxTokens;
+        i += DiscoveryTokens.tokenLength) {
+      final t = packed.substring(i, i + DiscoveryTokens.tokenLength);
+      if (DiscoveryTokens.isToken(t)) tokens.add(t);
+    }
     return NearbyEndpointName(
       version: version,
-      deviceIdPrefix: parts[1],
-      deviceName: parts.sublist(2, parts.length - 1).join('|'),
+      advertId: DiscoveryTokens.isAdvertId(parts[1]) ? parts[1] : '',
+      windowTag: DiscoveryTokens.parseWindowTag(parts[2]),
+      deviceName: parts.sublist(3, parts.length - 1).join('|'),
       groupTokens: tokens,
     );
   }
@@ -87,21 +101,28 @@ final class NearbyEndpointName {
         kind: TransportKind.nearby,
         address: endpointId,
         name: deviceName,
-        deviceIdPrefix: deviceIdPrefix.isEmpty ? null : deviceIdPrefix,
+        advertId: advertId.isEmpty ? null : advertId,
         groupTokens: groupTokens.toSet(),
+        windowTag: windowTag,
       );
 
   @override
   bool operator ==(Object other) =>
       other is NearbyEndpointName &&
       other.version == version &&
-      other.deviceIdPrefix == deviceIdPrefix &&
+      other.advertId == advertId &&
+      other.windowTag == windowTag &&
       other.deviceName == deviceName &&
       _listEq(other.groupTokens, groupTokens);
 
   @override
-  int get hashCode =>
-      Object.hash(version, deviceIdPrefix, deviceName, Object.hashAll(groupTokens));
+  int get hashCode => Object.hash(
+        version,
+        advertId,
+        windowTag,
+        deviceName,
+        Object.hashAll(groupTokens),
+      );
 
   @override
   String toString() => 'NearbyEndpointName(${encode()})';

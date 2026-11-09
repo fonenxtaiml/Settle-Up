@@ -1,10 +1,9 @@
 // mDNS / DNS-SD for the LAN transport (SPEC 8.7.2): service type
 // `_settleup._tcp`, service name = device name (<= 40 chars), TXT
-// `v=1`, `d=<deviceId[0..8]>`, `t=<tokens comma-joined, <= 16>`.
+// `v=2`, `d=<advertId>`, `w=<windowTag>`, `t=<tokens comma-joined, <= 48>`.
 //
-// A DNS TXT string holds at most 255 bytes, which fits 14 tokens of 16 hex
-// chars in `t`. Tokens 15 and 16 go in `t2`. Readers join `t` and `t2`, so
-// a phone that only reads `t` still sees the first 14 groups.
+// A DNS TXT string holds at most 255 bytes: 48 tokens of 4 chars take
+// "t=" + 48 * 5 - 1 = 241 bytes.
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -12,6 +11,7 @@ import 'dart:io';
 import 'package:bonsoir/bonsoir.dart';
 
 import '../../../core/models.dart';
+import '../../crypto/tokens.dart';
 import '../transport.dart';
 import 'tcp_framing.dart';
 
@@ -22,10 +22,10 @@ const String kLanServiceType = '_settleup._tcp';
 const int kLanServiceNameMax = 40;
 
 /// Most tokens advertised (SPEC 5.12 AdvertiseInfo).
-const int kLanMaxTokens = 16;
+const int kLanMaxTokens = 48;
 
-/// Tokens that fit in the `t` TXT string (14 * 17 - 1 + 2 = 239 bytes).
-const int kTokensPerTxtString = 14;
+/// The TXT `v` this file writes. Older services are not read.
+const int kLanTxtVersion = 2;
 
 void _log(String message, [Object? error, StackTrace? st]) => developer.log(
       message,
@@ -77,15 +77,15 @@ final class MdnsAdvert {
   static Map<String, String> txtFor(AdvertiseInfo info) {
     final tokens = [
       for (final t in info.groupTokens)
-        if (_validToken(t)) t,
+        if (DiscoveryTokens.isToken(t)) t,
     ].take(kLanMaxTokens).toList();
-    final id = info.deviceId;
+    final id = info.advertId;
+    final window = info.tokenWindow;
     return {
-      'v': '1',
-      'd': id.length >= 8 ? id.substring(0, 8) : id,
-      't': tokens.take(kTokensPerTxtString).join(','),
-      if (tokens.length > kTokensPerTxtString)
-        't2': tokens.skip(kTokensPerTxtString).join(','),
+      'v': '$kLanTxtVersion',
+      if (id != null && DiscoveryTokens.isAdvertId(id)) 'd': id,
+      if (window != null) 'w': DiscoveryTokens.windowTag(window),
+      't': tokens.join(','),
     };
   }
 }
@@ -98,8 +98,6 @@ int _addressRank(InternetAddress a) {
   if (a.isLinkLocal) return 2;
   return a.type == InternetAddressType.IPv4 ? 0 : 1;
 }
-
-bool _validToken(String t) => RegExp(r'^[0-9a-f]{16}$').hasMatch(t);
 
 /// A resolved service seen on the network.
 final class MdnsSighting {
@@ -115,10 +113,12 @@ final class MdnsSighting {
   final int port;
   final Map<String, String> attributes;
 
-  /// The peer this sighting describes, or null when it is not a v1 Settle
-  /// Up service or has no usable address. Prefers IPv4; IPv6 is bracketed.
+  /// The peer this sighting describes, or null when it is not a Settle Up
+  /// service of this version (or later) or has no usable address. Prefers
+  /// IPv4; IPv6 is bracketed.
   DiscoveredPeer? toPeer() {
-    if (attributes['v'] != '1') return null;
+    final v = int.tryParse(attributes['v'] ?? '');
+    if (v == null || v < kLanTxtVersion) return null;
     if (port < 1 || port > 65535) return null;
     InternetAddress? best;
     var bestRank = 99;
@@ -134,16 +134,16 @@ final class MdnsSighting {
     if (best == null) return null;
     final d = attributes['d'];
     final tokens = <String>{
-      for (final key in const ['t', 't2'])
-        for (final t in (attributes[key] ?? '').split(','))
-          if (_validToken(t)) t,
+      for (final t in (attributes['t'] ?? '').split(','))
+        if (DiscoveryTokens.isToken(t)) t,
     };
     return DiscoveredPeer(
       kind: TransportKind.lan,
       address: formatHostPort(best, port),
       name: name,
-      deviceIdPrefix: d != null && d.isNotEmpty ? d : null,
+      advertId: d != null && DiscoveryTokens.isAdvertId(d) ? d : null,
       groupTokens: tokens.take(kLanMaxTokens).toSet(),
+      windowTag: DiscoveryTokens.parseWindowTag(attributes['w']),
     );
   }
 }

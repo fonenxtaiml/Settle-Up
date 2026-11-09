@@ -110,7 +110,9 @@ void main() {
     final peer = await alex.find(priya);
     expect(peer.transports.toList(), [TransportKind.lan, TransportKind.ble]);
     expect(peer.sharedGroupIds, [seed.g]);
-    expect(peer.deviceIdPrefix, priya.phone.deviceId.substring(0, 8));
+    // A per-window advert id, never a piece of the device id (SPEC 8.3).
+    expect(peer.advertId, matches(RegExp(r'^[0-9a-f]{8}$')));
+    expect(priya.phone.deviceId, isNot(contains(peer.advertId!)));
     expect(alex.engine.status.discovering, isTrue);
 
     final statuses = <SyncStatus>[];

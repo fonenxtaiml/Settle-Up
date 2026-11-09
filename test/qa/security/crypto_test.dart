@@ -572,9 +572,10 @@ void main() {
         w,
         DateTime.utc(2026, 11, 9, 10).millisecondsSinceEpoch ~/ 1000 ~/ 600,
       );
-      final mac = await hmac(key, utf8.encode('settleup-adv-v1:$w'));
-      final hex = mac.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-      expect(await DiscoveryTokens.token(key, w), hex.substring(0, 16));
+      // SPEC 8.3 (SYNC-R1-07): 3 MAC bytes as 4 base64url chars, so a
+      // phone in many groups fits every token in a Nearby endpoint name.
+      final mac = await hmac(key, utf8.encode('settleup-adv-v2:$w'));
+      expect(await DiscoveryTokens.token(key, w), base64Url.encode(mac.sublist(0, 3)));
       final nonce = Uint8List.fromList(List.generate(16, (i) => i));
       final blind = await hmac(key, [
         ...utf8.encode('settleup-gid-v1'),

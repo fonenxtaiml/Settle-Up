@@ -29,7 +29,7 @@ void _log(String message, [Object? error, StackTrace? st]) => developer.log(
 
 final class DefaultSyncEngine implements SyncEngine {
   DefaultSyncEngine({
-    required SyncStore store,
+    required this._store,
     required List<SyncTransport> transports,
     SyncClock? clock,
     this.timings = const SessionTimings(),
@@ -37,15 +37,9 @@ final class DefaultSyncEngine implements SyncEngine {
     Duration nearbyTtl = const Duration(seconds: 15),
     this.connectTimeout = const Duration(seconds: 10),
     this.linkConnectTimeout = const Duration(seconds: 4),
-  })  : _store = store,
-        _transports = List.unmodifiable(transports),
+  })  : _transports = List.unmodifiable(transports),
         _clock = clock ?? const SystemSyncClock(),
-        _registry = NearbyRegistry(
-          localDeviceIdPrefix: _prefix(store.localDeviceId),
-          ttl: nearbyTtl,
-        );
-
-  static String _prefix(String id) => id.length >= 8 ? id.substring(0, 8) : id;
+        _registry = NearbyRegistry(ttl: nearbyTtl);
 
   final SyncStore _store;
   final List<SyncTransport> _transports;
@@ -55,6 +49,10 @@ final class DefaultSyncEngine implements SyncEngine {
   final SessionTimings timings;
   final Duration connectTimeout;
   final Duration linkConnectTimeout;
+
+  /// Keys this phone's advert ids (SPEC 8.3). Random per launch and never
+  /// sent, so nobody can link the ids of two windows.
+  final Uint8List _advertSecret = DiscoveryTokens.newAdvertSecret();
 
   final StreamController<SyncStatus> _statusCtl = StreamController.broadcast();
   final StreamController<List<NearbyPeer>> _nearbyCtl =
@@ -78,6 +76,12 @@ final class DefaultSyncEngine implements SyncEngine {
   final List<StreamSubscription<DiscoveredPeer>> _discoverySubs = [];
   Timer? _sweep;
   int _indexWindow = -1;
+  String _keysSignature = '';
+  Future<void>? _indexRefresh;
+
+  /// Sightings are handled one at a time, each after its token index.
+  Future<void> _sightings = Future.value();
+
 
   /// Bumped by every start/stop of discovery: an older start that is still
   /// awaiting must not add subscriptions afterwards.
@@ -150,14 +154,20 @@ final class DefaultSyncEngine implements SyncEngine {
 
   // ----------------------------------------------------------- hosting --
 
-  Future<AdvertiseInfo> _advertiseInfo() async => AdvertiseInfo(
-        deviceId: _store.localDeviceId,
-        deviceName: _store.localDeviceName,
-        groupTokens: await DiscoveryTokens.advertised(
-          await _store.groupKeys(),
-          _clock.now(),
-        ),
-      );
+  Future<AdvertiseInfo> _advertiseInfo() async {
+    final now = _clock.now();
+    final w = DiscoveryTokens.windowAt(now);
+    return AdvertiseInfo(
+      deviceId: _store.localDeviceId,
+      deviceName: _store.localDeviceName,
+      groupTokens: await DiscoveryTokens.advertised(
+        await _store.groupKeys(),
+        now,
+      ),
+      advertId: await DiscoveryTokens.advertId(_advertSecret, w),
+      tokenWindow: w,
+    );
+  }
 
   @override
   Future<HostInfo> startHosting({
@@ -356,9 +366,7 @@ final class DefaultSyncEngine implements SyncEngine {
       if (gen != _discoveryGen) return;
       if (!ready) continue;
       _discoverySubs.add(t.discover().listen(
-        (peer) {
-          if (_registry.update(peer, _clock.now())) _emitNearby();
-        },
+        (peer) => _onSighting(peer, gen),
         onError: (Object e, StackTrace st) =>
             _log('discover(${t.kind.name}) error', e, st),
       ));
@@ -370,15 +378,65 @@ final class DefaultSyncEngine implements SyncEngine {
     _setStatus(discovering: true);
   }
 
-  Future<void> _refreshTokenIndex({bool force = false}) async {
+  void _onSighting(DiscoveredPeer peer, int gen) {
+    _sightings = _sightings.then((_) async {
+      if (gen != _discoveryGen || _disposed) return;
+      // Match the tokens against the window the advertiser says they are
+      // for, so a phone with a skewed clock still shows its groups.
+      final w = _registry.windowOf(peer);
+      var changed = false;
+      if (w != null && !_registry.hasWindowIndex(w)) {
+        final index = DiscoveryTokens.indexForWindow(
+          await _store.groupKeys(),
+          w,
+        );
+        changed = _registry.setWindowIndex(w, await index);
+      }
+      if (gen != _discoveryGen || _disposed) return;
+      if (_registry.update(peer, _clock.now()) || changed) _emitNearby();
+    }).catchError((Object e, StackTrace st) => _log('sighting', e, st));
+  }
+
+  /// Re-reads the token index when the window or the group keys change.
+  Future<void> _refreshTokenIndex({bool force = false}) {
+    final running = _indexRefresh;
+    if (running != null) {
+      return force
+          ? running.then((_) => _refreshTokenIndex(force: true))
+          : running;
+    }
+    final f = _indexRefresh = _doRefreshTokenIndex(force);
+    return f.whenComplete(() {
+      if (identical(_indexRefresh, f)) _indexRefresh = null;
+    });
+  }
+
+  Future<void> _doRefreshTokenIndex(bool force) async {
     final now = _clock.now();
     final w = DiscoveryTokens.windowAt(now);
-    if (!force && w == _indexWindow) return;
+    final keys = await _store.groupKeys();
+    final signature = (keys.keys.toList()..sort()).join(',');
+    final keysChanged = signature != _keysSignature;
+    if (!force && w == _indexWindow && !keysChanged) return;
     _indexWindow = w;
-    _registry.tokenIndex = await DiscoveryTokens.index(
-      await _store.groupKeys(),
-      now,
-    );
+    _keysSignature = signature;
+    _registry
+      ..currentWindow = w
+      ..selfAdvertIds = {
+        for (final d in const [-1, 0, 1])
+          await DiscoveryTokens.advertId(_advertSecret, w + d),
+      }
+      ..tokenIndex = await DiscoveryTokens.index(keys, now);
+    if (keysChanged || force) {
+      final inUse = _registry.windowsInUse;
+      _registry.clearWindowIndexes();
+      for (final win in inUse) {
+        _registry.setWindowIndex(
+          win,
+          await DiscoveryTokens.indexForWindow(keys, win),
+        );
+      }
+    }
     _emitNearby();
   }
 
