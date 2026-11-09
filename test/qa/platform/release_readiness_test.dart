@@ -259,6 +259,34 @@ void main() {
         isTrue,
         reason: 'no store listing text under docs/',
       );
-    }, skip: 'QA PLATFORM-R1-10: no privacy policy or store listing');
+    });
+
+    test('privacy policy covers what PLATFORM-R1-10 asks for', () {
+      final policy = _read('docs/PRIVACY.md').toLowerCase();
+      for (final topic in [
+        'no account',
+        'bluetooth',
+        'wi-fi',
+        'location',
+        'android 12l and older',
+        'camera',
+        'ml kit',
+        'clear storage',
+      ]) {
+        expect(policy, contains(topic), reason: 'PRIVACY.md lacks "$topic"');
+      }
+      final listing = _read('docs/STORE-LISTING.md').toLowerCase();
+      for (final topic in [
+        'short description',
+        'full description',
+        'data safety',
+        'access_fine_location',
+        'bluetooth_scan',
+        'camera',
+        'privacy policy url',
+      ]) {
+        expect(listing, contains(topic), reason: 'listing lacks "$topic"');
+      }
+    });
   });
 }
