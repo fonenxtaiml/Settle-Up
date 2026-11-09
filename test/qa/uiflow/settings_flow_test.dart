@@ -323,5 +323,5 @@ void main() {
         .group(1)!;
     final parts = v.split('+');
     expect(appVersion, '${parts[0]} (${parts[1]})');
-  }, skip: 'QA UIFLOW-R1-12: About version is hard-coded');
+  });
 }
