@@ -241,7 +241,17 @@ void main() {
       ]) {
         expect(readme, contains(word), reason: 'README lacks "$word"');
       }
-    }, skip: 'QA PLATFORM-R1-08: README.md is a single heading');
+      for (final word in [
+        'flutter analyze',
+        '--split-per-abi',
+        'flutter build appbundle',
+        'docs/qa.md',
+        'docs/qa/test-plan.md',
+        'jdk 17',
+      ]) {
+        expect(readme, contains(word), reason: 'README lacks "$word"');
+      }
+    });
 
     test('privacy policy and store listing are in the repo', () {
       final docs = Directory('docs')
