@@ -9,14 +9,24 @@ abstract final class MoneyFormat {
   /// "£12.00", "¥500", "−£8.40" (signed: true adds '+' for positives).
   /// Uses intl NumberFormat.currency with the currency's minorDigits and
   /// Currencies symbol; [locale] null = Intl.defaultLocale.
-  static String format(int minor, String currency,
-      {bool signed = false, String? locale}) {
+  ///
+  /// Indian rupees (Point to Point design): with no explicit [locale] they
+  /// use the en_IN lakh grouping ("₹1,20,000"), and whole-rupee amounts drop
+  /// the paise ("₹4,250"; "₹4,250.50" keeps them).
+  static String format(
+    int minor,
+    String currency, {
+    bool signed = false,
+    String? locale,
+  }) {
     final c = Currencies.of(currency);
+    final isInr = c.code == 'INR';
+    final wholeOnly = isInr && minor % c.minorPerMajor == 0;
     final f = NumberFormat.currency(
-      locale: locale,
+      locale: locale ?? (isInr ? 'en_IN' : null),
       name: c.code,
       symbol: c.symbol,
-      decimalDigits: c.minorDigits,
+      decimalDigits: wholeOnly ? 0 : c.minorDigits,
     );
     final body = f.format(minor.abs() / c.minorPerMajor);
     if (minor < 0) return '$minusSign$body';
