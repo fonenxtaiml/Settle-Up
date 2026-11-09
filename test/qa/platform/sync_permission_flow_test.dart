@@ -185,9 +185,6 @@ void main() {
         await tester.pumpWidget(const SizedBox.shrink());
       });
     },
-    skip:
-        'QA PLATFORM-R1-02: the app never calls requestPermissions, so '
-        'Bluetooth and Nearby sync are never available',
   );
 
   group(
@@ -226,8 +223,5 @@ void main() {
         },
       );
     },
-    skip:
-        'QA PLATFORM-R1-11: no recovery path for permanently denied '
-        'permissions or Bluetooth switched off',
   );
 }

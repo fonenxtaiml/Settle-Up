@@ -16,6 +16,7 @@ import '../../strings.dart';
 import '../../widgets/kit_strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import 'radios.dart';
 
 class HostScreen extends ConsumerStatefulWidget {
   const HostScreen({super.key});
@@ -34,13 +35,16 @@ class _HostScreenState extends ConsumerState<HostScreen>
     super.initState();
     final engine = ref.read(syncEngineProvider);
     if (engine.status.host == null) {
+      // Bluetooth advertising needs its permissions first (SPEC 8.10).
       unawaited(
-        engine.startHosting().then<void>(
-          (_) {},
-          onError: (Object e) {
-            if (mounted) showSnack(context, errorMessage(e));
-          },
-        ),
+        prepareRadios(engine)
+            .then((_) => engine.startHosting())
+            .then<void>(
+              (_) {},
+              onError: (Object e) {
+                if (mounted) showSnack(context, errorMessage(e));
+              },
+            ),
       );
     }
     _ticker.start();
