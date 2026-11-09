@@ -510,6 +510,15 @@ abstract final class S {
   static const errExpenseNotFound = 'This expense is no longer on this phone.';
   static const errInvalidInput = 'Check the highlighted fields.';
   static const errInvalidSplit = 'The split does not add up to the total.';
+  static const errGroupFull = 'A group can have up to 50 people.';
+  static const errTooLong = 'That is too long. Make it shorter.';
+  static const missingKeyTitle = "This phone can't sync this group";
+  static const missingKeyBody =
+      'Its key was lost on this phone. Your expenses are still here. Ask a '
+      'friend in the group to show the invite QR again, then scan it.';
+  static const errStorage =
+      'Could not save on this phone. Make sure it has some free storage, '
+      'then try again.';
   static const errPermission =
       "Settle Up needs permission to find friends' phones nearby.";
   static const errRadioOff =

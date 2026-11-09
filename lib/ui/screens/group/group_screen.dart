@@ -21,6 +21,7 @@ import '../../router.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import 'missing_key_notice.dart';
 
 enum _Menu { edit, members, export }
 
@@ -199,6 +200,8 @@ class _GroupBody extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 96),
       children: [
+        if (snapshot.groupsWithoutKey.contains(g.groupId))
+          gutter(const MissingKeyNotice()),
         if (myId != null)
           textGutter(
             GroupBalanceHero(
