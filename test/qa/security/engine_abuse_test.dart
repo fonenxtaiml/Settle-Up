@@ -88,9 +88,6 @@ void main() {
 
   test(
     'a silent stranger connection does not lock friends out of the host',
-    skip:
-        'QA SECURITY-R1-10: an unauthenticated connection holds the '
-        'single session slot for the whole handshake timeout',
     () async {
       // Mallory connects and says nothing (or reconnects every 10 s).
       final silent = await dial('mallory');
@@ -125,9 +122,6 @@ void main() {
 
   test(
     'a connect link to a public internet host is refused before dialing',
-    skip:
-        'QA SECURITY-R1-14: settleup://sync deep links dial any host, '
-        'including public internet addresses, and leak the HELLO',
     () async {
       final dialed = <String>[];
       final engine = DefaultSyncEngine(

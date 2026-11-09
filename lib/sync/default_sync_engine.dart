@@ -1,5 +1,17 @@
 // DefaultSyncEngine (SPEC 5.13, 8.7.1): hosting, discovery across
 // transports, choosing a transport, one session at a time.
+//
+// One session at a time means one session that exchanges data. Inbound
+// connections handshake in parallel (up to [kMaxPendingInbound]), and the
+// first to authenticate gets the slot, so a silent stranger cannot hold
+// it. Who gets the slot (SPEC 8.7.1):
+// - nothing running: the session is admitted;
+// - a new authenticated connection from the phone whose inbound session
+//   holds the slot: it replaces that (dead or abandoned) session;
+// - both phones tapped Sync on each other: the phone with the lower device
+//   id gives way and serves the other one's connection; its own Sync call
+//   resolves with that session's result;
+// - otherwise: ERROR busy.
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:typed_data';
@@ -16,6 +28,7 @@ import 'protocol/session.dart';
 import 'sync_clock.dart';
 import 'sync_engine.dart';
 import 'transport/hosting_details.dart';
+import 'transport/lan/local_address.dart';
 import 'transport/transport.dart';
 
 export 'sync_clock.dart';
@@ -27,9 +40,47 @@ void _log(String message, [Object? error, StackTrace? st]) => developer.log(
       stackTrace: st,
     );
 
+/// Inbound handshakes that may run at once. A new one beyond this evicts
+/// the oldest one that has not authenticated yet.
+const int kMaxPendingInbound = 4;
+
+const String _busyOther = 'Syncing with another phone';
+const String _busySame = 'Already syncing with you';
+
+/// A Sync this phone started (syncWith, syncWithLink, an invite).
+final class _Outbound {
+  SyncSession? session;
+
+  /// The inbound session from the same phone this attempt gave way to.
+  _Run? yieldedTo;
+  bool get yielded => yieldedTo != null;
+}
+
+/// A running session.
+final class _Run {
+  _Run(this.session, this.seq);
+  final SyncSession session;
+
+  /// Start order: a later connection from the same phone is the live one.
+  final int seq;
+  late final Future<SessionResult> result;
+
+  /// Completes when the session goes LIVE.
+  final Completer<SessionResult> live = Completer();
+
+  /// Completes once the session ended and was recorded.
+  final Completer<SessionResult> finished = Completer();
+
+  /// Got the slot (SPEC 8.7.1) at some point.
+  bool admitted = false;
+
+  /// Lost the slot to a newer session from the same phone.
+  bool superseded = false;
+}
+
 final class DefaultSyncEngine implements SyncEngine {
   DefaultSyncEngine({
-    required SyncStore store,
+    required this._store,
     required List<SyncTransport> transports,
     SyncClock? clock,
     this.timings = const SessionTimings(),
@@ -37,15 +88,9 @@ final class DefaultSyncEngine implements SyncEngine {
     Duration nearbyTtl = const Duration(seconds: 15),
     this.connectTimeout = const Duration(seconds: 10),
     this.linkConnectTimeout = const Duration(seconds: 4),
-  })  : _store = store,
-        _transports = List.unmodifiable(transports),
+  })  : _transports = List.unmodifiable(transports),
         _clock = clock ?? const SystemSyncClock(),
-        _registry = NearbyRegistry(
-          localDeviceIdPrefix: _prefix(store.localDeviceId),
-          ttl: nearbyTtl,
-        );
-
-  static String _prefix(String id) => id.length >= 8 ? id.substring(0, 8) : id;
+        _registry = NearbyRegistry(ttl: nearbyTtl);
 
   final SyncStore _store;
   final List<SyncTransport> _transports;
@@ -55,6 +100,10 @@ final class DefaultSyncEngine implements SyncEngine {
   final SessionTimings timings;
   final Duration connectTimeout;
   final Duration linkConnectTimeout;
+
+  /// Keys this phone's advert ids (SPEC 8.3). Random per launch and never
+  /// sent, so nobody can link the ids of two windows.
+  final Uint8List _advertSecret = DiscoveryTokens.newAdvertSecret();
 
   final StreamController<SyncStatus> _statusCtl = StreamController.broadcast();
   final StreamController<List<NearbyPeer>> _nearbyCtl =
@@ -78,16 +127,34 @@ final class DefaultSyncEngine implements SyncEngine {
   final List<StreamSubscription<DiscoveredPeer>> _discoverySubs = [];
   Timer? _sweep;
   int _indexWindow = -1;
+  String _keysSignature = '';
+  Future<void>? _indexRefresh;
+
+  /// Sightings are handled one at a time, each after its token index.
+  Future<void> _sightings = Future.value();
 
   /// Bumped by every start/stop of discovery: an older start that is still
   /// awaiting must not add subscriptions afterwards.
   int _discoveryGen = 0;
 
   // sessions
-  bool _busy = false;
-  SyncSession? _session;
+  _Outbound? _outbound;
+  SyncSession? _active;
+  final List<SyncSession> _pendingInbound = [];
+  final Map<SyncSession, _Run> _runs = {};
+  Completer<void> _changed = Completer();
+  int _runSeq = 0;
   bool _cancelRequested = false;
   bool _liveMode = false;
+
+  bool get _busy => _outbound != null || _active != null;
+
+  /// Wakes everyone waiting for the session slot to change.
+  void _notify() {
+    final c = _changed;
+    _changed = Completer();
+    c.complete();
+  }
 
   // ------------------------------------------------------------ status --
 
@@ -150,14 +217,20 @@ final class DefaultSyncEngine implements SyncEngine {
 
   // ----------------------------------------------------------- hosting --
 
-  Future<AdvertiseInfo> _advertiseInfo() async => AdvertiseInfo(
-        deviceId: _store.localDeviceId,
-        deviceName: _store.localDeviceName,
-        groupTokens: await DiscoveryTokens.advertised(
-          await _store.groupKeys(),
-          _clock.now(),
-        ),
-      );
+  Future<AdvertiseInfo> _advertiseInfo() async {
+    final now = _clock.now();
+    final w = DiscoveryTokens.windowAt(now);
+    return AdvertiseInfo(
+      deviceId: _store.localDeviceId,
+      deviceName: _store.localDeviceName,
+      groupTokens: await DiscoveryTokens.advertised(
+        await _store.groupKeys(),
+        now,
+      ),
+      advertId: await DiscoveryTokens.advertId(_advertSecret, w),
+      tokenWindow: w,
+    );
+  }
 
   @override
   Future<HostInfo> startHosting({
@@ -310,14 +383,28 @@ final class DefaultSyncEngine implements SyncEngine {
   }
 
   void _onInbound(FrameChannel channel) {
-    if (_disposed || _busy) {
+    if (_disposed) {
       unawaited(_rejectBusy(channel));
       return;
     }
-    _busy = true;
-    _cancelRequested = false;
-    unawaited(_runSession(channel, SessionRole.responder, '').then((_) {},
-        onError: (Object e, StackTrace st) => _log('inbound session', e, st)));
+    if (_pendingInbound.length >= kMaxPendingInbound) {
+      // The oldest handshake that has not authenticated has had the
+      // longest to prove itself.
+      final victim = _pendingInbound.firstWhere(
+        (s) => s.state.index < SessionState.authenticated.index,
+        orElse: () => _pendingInbound.first,
+      );
+      _pendingInbound.remove(victim);
+      unawaited(victim.cancel(message: 'Too many phones connecting'));
+    }
+    final run = _startSession(channel, SessionRole.responder, '');
+    unawaited(run.result.then(
+      (r) async {
+        await _finishRun(run, r);
+        run.finished.complete(r);
+      },
+      onError: (Object e, StackTrace st) => _log('inbound session', e, st),
+    ));
   }
 
   Future<void> _rejectBusy(FrameChannel channel) async {
@@ -356,9 +443,7 @@ final class DefaultSyncEngine implements SyncEngine {
       if (gen != _discoveryGen) return;
       if (!ready) continue;
       _discoverySubs.add(t.discover().listen(
-        (peer) {
-          if (_registry.update(peer, _clock.now())) _emitNearby();
-        },
+        (peer) => _onSighting(peer, gen),
         onError: (Object e, StackTrace st) =>
             _log('discover(${t.kind.name}) error', e, st),
       ));
@@ -370,15 +455,65 @@ final class DefaultSyncEngine implements SyncEngine {
     _setStatus(discovering: true);
   }
 
-  Future<void> _refreshTokenIndex({bool force = false}) async {
+  void _onSighting(DiscoveredPeer peer, int gen) {
+    _sightings = _sightings.then((_) async {
+      if (gen != _discoveryGen || _disposed) return;
+      // Match the tokens against the window the advertiser says they are
+      // for, so a phone with a skewed clock still shows its groups.
+      final w = _registry.windowOf(peer);
+      var changed = false;
+      if (w != null && !_registry.hasWindowIndex(w)) {
+        final index = DiscoveryTokens.indexForWindow(
+          await _store.groupKeys(),
+          w,
+        );
+        changed = _registry.setWindowIndex(w, await index);
+      }
+      if (gen != _discoveryGen || _disposed) return;
+      if (_registry.update(peer, _clock.now()) || changed) _emitNearby();
+    }).catchError((Object e, StackTrace st) => _log('sighting', e, st));
+  }
+
+  /// Re-reads the token index when the window or the group keys change.
+  Future<void> _refreshTokenIndex({bool force = false}) {
+    final running = _indexRefresh;
+    if (running != null) {
+      return force
+          ? running.then((_) => _refreshTokenIndex(force: true))
+          : running;
+    }
+    final f = _indexRefresh = _doRefreshTokenIndex(force);
+    return f.whenComplete(() {
+      if (identical(_indexRefresh, f)) _indexRefresh = null;
+    });
+  }
+
+  Future<void> _doRefreshTokenIndex(bool force) async {
     final now = _clock.now();
     final w = DiscoveryTokens.windowAt(now);
-    if (!force && w == _indexWindow) return;
+    final keys = await _store.groupKeys();
+    final signature = (keys.keys.toList()..sort()).join(',');
+    final keysChanged = signature != _keysSignature;
+    if (!force && w == _indexWindow && !keysChanged) return;
     _indexWindow = w;
-    _registry.tokenIndex = await DiscoveryTokens.index(
-      await _store.groupKeys(),
-      now,
-    );
+    _keysSignature = signature;
+    _registry
+      ..currentWindow = w
+      ..selfAdvertIds = {
+        for (final d in const [-1, 0, 1])
+          await DiscoveryTokens.advertId(_advertSecret, w + d),
+      }
+      ..tokenIndex = await DiscoveryTokens.index(keys, now);
+    if (keysChanged || force) {
+      final inUse = _registry.windowsInUse;
+      _registry.clearWindowIndexes();
+      for (final win in inUse) {
+        _registry.setWindowIndex(
+          win,
+          await DiscoveryTokens.indexForWindow(keys, win),
+        );
+      }
+    }
     _emitNearby();
   }
 
@@ -414,31 +549,47 @@ final class DefaultSyncEngine implements SyncEngine {
     return null;
   }
 
-  void _claim() {
+  _Outbound _claim() {
     _checkAlive();
     if (_busy) {
       throw const SyncException(
           SyncFailure.internal, 'A sync is already running');
     }
-    _busy = true;
     _cancelRequested = false;
+    return _outbound = _Outbound();
+  }
+
+  void _release(_Outbound out) {
+    if (identical(_outbound, out)) {
+      _outbound = null;
+      _notify();
+    }
   }
 
   @override
   Future<SyncSummary> syncWith(NearbyPeer peer) async {
-    _claim();
+    final out = _claim();
     final routes = [
       for (final r in _registry.routesFor(peer.key))
         if (peer.transports.contains(r.kind)) r,
     ];
-    return _connectAndRun(peer.name, routes, connectTimeout);
+    return _connectAndRun(out, peer.name, routes, connectTimeout);
   }
 
   @override
   Future<SyncSummary> syncWithLink(String link) async {
     final target = await _parseSyncTarget(link);
-    _claim();
-    return _connectAndRun(target.name, target.routes, linkConnectTimeout);
+    final out = _claim();
+    return _connectAndRun(out, target.name, target.routes, linkConnectTimeout);
+  }
+
+  /// Whether a link may make this phone dial [address] (SPEC 8.6): only
+  /// local-network addresses, so a link from a web page cannot reach the
+  /// internet.
+  bool _isLinkHost(String address) {
+    final t = _transportOf(TransportKind.lan);
+    if (t is HostingDetails) return (t as HostingDetails).isLinkHost(address);
+    return isLocalNetworkHostPort(address);
   }
 
   /// Hosts to try for a connect link, or an invite carrying `h`.
@@ -447,10 +598,17 @@ final class DefaultSyncEngine implements SyncEngine {
   ) async {
     final connect = ConnectLink.tryParse(link);
     if (connect != null) {
+      final hosts = connect.hosts.where(_isLinkHost).toList();
+      if (hosts.isEmpty) {
+        throw const SyncException(
+          SyncFailure.invalidCode,
+          'This code is not for a phone on your network',
+        );
+      }
       return (
         name: connect.deviceName,
         routes: [
-          for (final h in connect.hosts)
+          for (final h in hosts)
             DiscoveredPeer(
               kind: TransportKind.lan,
               address: h,
@@ -461,7 +619,10 @@ final class DefaultSyncEngine implements SyncEngine {
     }
     final invite = InviteLink.tryParse(link);
     final host = invite?.host;
-    if (invite == null || host == null || !_validInvite(invite)) {
+    if (invite == null ||
+        host == null ||
+        !_validInvite(invite) ||
+        !_isLinkHost(host)) {
       throw const SyncException(SyncFailure.invalidCode, 'Not a sync link');
     }
     await _registerInvite(invite);
@@ -474,6 +635,7 @@ final class DefaultSyncEngine implements SyncEngine {
   }
 
   Future<SyncSummary> _connectAndRun(
+    _Outbound out,
     String name,
     List<DiscoveredPeer> routes,
     Duration timeout,
@@ -485,13 +647,15 @@ final class DefaultSyncEngine implements SyncEngine {
       for (final route in routes) {
         final t = _transportOf(route.kind);
         if (t == null) continue;
-        _setStatus(
-          session: SessionActive(SyncProgress(
-            peerName: name,
-            transport: route.kind,
-            phase: SyncPhase.connecting,
-          )),
-        );
+        if (!out.yielded) {
+          _setStatus(
+            session: SessionActive(SyncProgress(
+              peerName: name,
+              transport: route.kind,
+              phase: SyncPhase.connecting,
+            )),
+          );
+        }
         try {
           channel = await t.connect(route, timeout: timeout);
           break;
@@ -499,20 +663,23 @@ final class DefaultSyncEngine implements SyncEngine {
           lastError = e;
           _log('connect ${route.kind.name} ${route.address} failed', e);
         }
-        if (_cancelRequested) break;
+        if (_cancelRequested || out.yielded) break;
       }
-      if (_cancelRequested) {
+      if (out.yielded) {
+        // The other phone's connection got here first (both tapped Sync).
+        await channel?.close();
+        channel = null;
+      } else if (_cancelRequested) {
         await channel?.close();
         throw const SyncException(SyncFailure.cancelled, 'Cancelled');
-      }
-      if (channel == null) {
+      } else if (channel == null) {
         throw SyncException(
           SyncFailure.peerUnreachable,
           lastError == null ? 'No way to reach $name' : '$lastError',
         );
       }
     } on SyncException catch (e) {
-      _busy = false;
+      _release(out);
       final transport = routes.isEmpty ? TransportKind.lan : routes.first.kind;
       await _record(SessionResult(
         outcome: e.failure == SyncFailure.cancelled
@@ -532,16 +699,38 @@ final class DefaultSyncEngine implements SyncEngine {
       _setStatus(session: SessionFailed(e.failure, e.message));
       rethrow;
     }
+    if (channel == null) return _follow(out);
 
+    final run = _startSession(channel, SessionRole.initiator, name, out: out);
     final summary = Completer<SyncSummary>();
-    unawaited(_runSession(
-      channel,
-      SessionRole.initiator,
-      name,
-      onLive: (r) {
-        if (!summary.isCompleted) summary.complete(r.summary);
-      },
-    ).then((r) {
+    unawaited(run.live.future.then((r) {
+      // LIVE: the caller gets the summary now; the session keeps running.
+      if (!summary.isCompleted) summary.complete(r.summary);
+    }));
+    unawaited(run.result.then((r) async {
+      final peer = r.peerDeviceId;
+      if (!out.yielded &&
+          !r.isSuccess &&
+          r.peerErrorCode == ErrorCodes.busy &&
+          peer != null &&
+          _yieldsTo(peer) &&
+          (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
+        // The other phone is syncing with us the other way round: its
+        // connection here is about to ask for the slot.
+        await _awaitYield(out, peer);
+      }
+      if (out.yielded) {
+        try {
+          final s = await _follow(out);
+          if (!summary.isCompleted) summary.complete(s);
+        } on SyncException catch (e) {
+          if (!summary.isCompleted) summary.completeError(e);
+        }
+        return;
+      }
+      _release(out);
+      await _finishRun(run, r);
+      run.finished.complete(r);
       if (summary.isCompleted) return;
       if (r.isSuccess) {
         summary.complete(r.summary);
@@ -552,7 +741,9 @@ final class DefaultSyncEngine implements SyncEngine {
           r.outcome == SyncOutcome.partial ? r.summary : null,
         ));
       }
-    }, onError: (Object e, StackTrace st) {
+    }).catchError((Object e, StackTrace st) {
+      _log('outbound session', e, st);
+      _release(out);
       if (!summary.isCompleted) {
         summary.completeError(SyncException(SyncFailure.internal, '$e'));
       }
@@ -560,12 +751,130 @@ final class DefaultSyncEngine implements SyncEngine {
     return summary.future;
   }
 
-  Future<SessionResult> _runSession(
+  /// The result of the inbound session [out] gave way to.
+  Future<SyncSummary> _follow(_Outbound out) async {
+    final to = out.yieldedTo!;
+    final r = await Future.any([to.live.future, to.finished.future]);
+    if (r.isSuccess) return r.summary;
+    throw SyncException(
+      r.failure ?? SyncFailure.internal,
+      r.message,
+      r.outcome == SyncOutcome.partial ? r.summary : null,
+    );
+  }
+
+  /// In a mutual Sync the phone with the lower device id gives way.
+  bool _yieldsTo(DeviceId peer) => _store.localDeviceId.compareTo(peer) < 0;
+
+  SyncSession? _inboundFrom(DeviceId peer) {
+    for (final s in [..._pendingInbound, ?_active]) {
+      if (s.role == SessionRole.responder &&
+          !s.isFinished &&
+          s.peerDeviceId == peer) {
+        return s;
+      }
+    }
+    return null;
+  }
+
+  /// Waits until [out] gives way to an inbound session from [peer]: soon
+  /// if that session is here, briefly if it has not said HELLO yet.
+  Future<void> _awaitYield(_Outbound out, DeviceId peer) async {
+    final waited = Stopwatch()..start();
+    while (!out.yielded && !_disposed) {
+      final limit = _inboundFrom(peer) == null
+          ? const Duration(seconds: 1)
+          : timings.handshakeTimeout;
+      final left = limit - waited.elapsed;
+      if (left <= Duration.zero) return;
+      await _changed.future.timeout(left, onTimeout: () {});
+    }
+  }
+
+  /// Gives [out] up for the inbound session [to] from the same phone.
+  void _yield(_Outbound out, _Run to) {
+    out.yieldedTo = to;
+    final mine = out.session;
+    if (identical(_active, mine)) _active = null;
+    if (identical(_outbound, out)) _outbound = null;
+    if (mine != null && !mine.isFinished) {
+      unawaited(mine.cancel(message: 'Both phones tapped Sync'));
+    }
+  }
+
+  void _admitRun(_Run run) {
+    _pendingInbound.remove(run.session);
+    run.admitted = true;
+    _active = run.session;
+    _notify();
+  }
+
+  /// Admission of an outbound session: it has the slot already, unless it
+  /// gave way meanwhile.
+  Future<String?> _admitOutbound(_Run run, _Outbound out) async {
+    if (out.yielded || _disposed) return _busySame;
+    final active = _active;
+    if (active != null && !identical(active, run.session)) return _busyOther;
+    _admitRun(run);
+    return null;
+  }
+
+  /// Admission of an authenticated inbound session (SPEC 8.7.1).
+  Future<String?> _admitInbound(_Run run) async {
+    final s = run.session;
+    final peer = s.peerDeviceId!;
+    final waited = Stopwatch()..start();
+    while (true) {
+      if (_disposed) return _busyOther;
+      if (!_pendingInbound.contains(s)) return 'Too many phones connecting';
+      final out = _outbound;
+      if (out != null) {
+        final target = out.session?.peerDeviceId;
+        if (target == null) {
+          // Our own Sync is still connecting or waiting for HELLO: learn
+          // whom it is for before deciding (at most one handshake timeout;
+          // the session's own handshake timer pauses meanwhile).
+          final left = timings.handshakeTimeout - waited.elapsed;
+          if (left <= Duration.zero) return _busyOther;
+          await _changed.future.timeout(left, onTimeout: () {});
+          continue;
+        }
+        if (target != peer) return _busyOther;
+        // Both phones tapped Sync on each other.
+        if (!_yieldsTo(peer)) return _busySame;
+        _yield(out, run);
+        _admitRun(run);
+        return null;
+      }
+      final active = _active;
+      if (active != null) {
+        final old = _runs[active];
+        if (active.role == SessionRole.responder &&
+            active.peerDeviceId == peer &&
+            old != null &&
+            old.seq < run.seq) {
+          // The same phone again: a phone runs one Sync at a time, so the
+          // older session is dead (half-open link) or was given up.
+          old.superseded = true;
+          _admitRun(run);
+          unawaited(active.cancel(message: 'Replaced by a new connection'));
+          return null;
+        }
+        return active.peerDeviceId == peer ? _busySame : _busyOther;
+      }
+      _admitRun(run);
+      return null;
+    }
+  }
+
+  /// Creates and starts a session on [channel].
+  _Run _startSession(
     FrameChannel channel,
     SessionRole role,
     String nameHint, {
-    void Function(SessionResult)? onLive,
-  }) async {
+    _Outbound? out,
+  }) {
+    late final _Run run;
     final session = SyncSession(
       channel: channel,
       store: _store,
@@ -575,28 +884,60 @@ final class DefaultSyncEngine implements SyncEngine {
       now: _clock.now,
       peerNameHint: nameHint,
       onProgress: (p) {
-        // Inbound probes (e.g. the hotspot gateway check) stay invisible
-        // until the peer says HELLO.
-        if (role == SessionRole.responder && p.peerDeviceId == null) return;
-        if (_session != null) _setStatus(session: SessionActive(p));
+        if (_mayShow(run, p)) _setStatus(session: SessionActive(p));
       },
       onLive: (r) {
-        _setStatus(session: SessionCompleted(r.summary));
-        onLive?.call(r);
+        if (_mayShow(run, null)) _setStatus(session: SessionCompleted(r.summary));
+        if (!run.live.isCompleted) run.live.complete(r);
       },
+      onPeerHello: (_) => _notify(),
+      admit: (_) => out == null ? _admitInbound(run) : _admitOutbound(run, out),
     );
-    _session = session;
-    final SessionResult result;
-    try {
-      result = await session.run();
-    } finally {
-      _session = null;
-      _busy = false;
+    run = _Run(session, _runSeq++);
+    _runs[session] = run;
+    if (out != null) out.session = session;
+    if (role == SessionRole.responder) _pendingInbound.add(session);
+    run.result = session.run().whenComplete(() {
+      _runs.remove(session);
+      _pendingInbound.remove(session);
+      if (identical(_active, session)) _active = null;
+      _notify();
+    });
+    return run;
+  }
+
+  /// Whether [run] may drive the visible status.
+  bool _mayShow(_Run run, SyncProgress? p) {
+    final s = run.session;
+    if (run.superseded) return false;
+    if (identical(_active, s)) return true;
+    if (run.admitted) return false;
+    if (s.role == SessionRole.initiator) {
+      return identical(_outbound?.session, s);
     }
-    if (role == SessionRole.responder && !result.receivedAnyFrame) {
-      return result;
+    // An inbound handshake shows once it says HELLO, if nothing else runs
+    // (probes such as the hotspot gateway check stay invisible).
+    return !_busy && (p == null || p.peerDeviceId != null);
+  }
+
+  /// Records [result] and shows it, for sessions that count.
+  Future<void> _finishRun(_Run run, SessionResult result) async {
+    final s = run.session;
+    if (!run.admitted) {
+      // Refused (busy) or evicted before it got the slot: not a sync.
+      if (result.failure == SyncFailure.peerUnreachable &&
+          result.peerErrorCode == null) {
+        return;
+      }
+      if (s.role == SessionRole.responder &&
+          (!result.receivedAnyFrame ||
+              result.failure == SyncFailure.cancelled)) {
+        return;
+      }
     }
     await _record(result);
+    if (run.superseded) return;
+    if (_busy && !identical(_active, s)) return;
     _setStatus(
       session: result.isSuccess
           ? SessionCompleted(result.summary)
@@ -606,7 +947,6 @@ final class DefaultSyncEngine implements SyncEngine {
               result.outcome == SyncOutcome.partial ? result.summary : null,
             ),
     );
-    return result;
   }
 
   Future<void> _record(SessionResult result) async {
@@ -643,10 +983,10 @@ final class DefaultSyncEngine implements SyncEngine {
     final added = await _registerInvite(invite);
     SyncSummary? first;
     final host = invite.host;
-    if (host != null && !_busy) {
+    if (host != null && !_busy && _isLinkHost(host)) {
       try {
-        _claim();
         first = await _connectAndRun(
+          _claim(),
           invite.fromName,
           [
             DiscoveredPeer(
@@ -718,18 +1058,20 @@ final class DefaultSyncEngine implements SyncEngine {
 
   @override
   Future<void> cancel() async {
-    final session = _session;
-    if (session != null) {
-      await session.cancel();
-    } else if (_busy) {
-      _cancelRequested = true;
+    // A Sync still connecting stops after the current attempt.
+    _cancelRequested = _outbound != null;
+    final sessions = {?_outbound?.session, ?_active};
+    for (final s in sessions) {
+      await s.cancel();
     }
   }
 
   @override
   set liveMode(bool enabled) {
     _liveMode = enabled;
-    _session?.liveMode = enabled;
+    for (final s in _runs.keys.toList()) {
+      s.liveMode = enabled;
+    }
   }
 
   @override
@@ -739,6 +1081,9 @@ final class DefaultSyncEngine implements SyncEngine {
   Future<void> dispose() async {
     if (_disposed) return;
     await cancel();
+    for (final s in _pendingInbound.toList()) {
+      await s.cancel();
+    }
     await stopDiscovery();
     await stopHosting();
     _disposed = true;

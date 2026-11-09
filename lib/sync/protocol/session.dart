@@ -100,6 +100,7 @@ final class SessionResult {
     this.peerDeviceId,
     this.verificationCode,
     this.receivedAnyFrame = true,
+    this.peerErrorCode,
   });
 
   final SyncOutcome outcome;
@@ -125,6 +126,9 @@ final class SessionResult {
   /// False when the channel ended before the peer sent anything (probe
   /// connections; the engine does not record those).
   final bool receivedAnyFrame;
+
+  /// The `ERROR.code` the peer ended the session with, if it did.
+  final String? peerErrorCode;
 
   bool get isSuccess => outcome == SyncOutcome.completed;
 
@@ -184,6 +188,8 @@ final class SyncSession {
     DateTime Function()? now,
     this.onProgress,
     this.onLive,
+    this.onPeerHello,
+    this.admit,
     this.peerNameHint = '',
   }) : _now = now ?? DateTime.now;
 
@@ -198,6 +204,15 @@ final class SyncSession {
 
   /// Called once when the session enters LIVE, with the result so far.
   final void Function(SessionResult soFar)? onLive;
+
+  /// Called when the peer's HELLO arrives. Its device id is a claim until
+  /// the AUTH verifies.
+  final void Function(SyncSession session)? onPeerHello;
+
+  /// Called once the peer's AUTH verifies, before any group data is sent:
+  /// the engine decides whether this session may run now (SPEC 8.7.1).
+  /// A non-null result refuses it with `ERROR busy` and that message.
+  final Future<String?> Function(SyncSession session)? admit;
 
   /// Shown until the peer's HELLO arrives (e.g. the discovered name).
   final String peerNameHint;
@@ -228,6 +243,10 @@ final class SyncSession {
   HandshakeKeys? _keys;
   bool _authenticated = false;
   bool _receivedAnyFrame = false;
+  String? _peerErrorCode;
+
+  /// Waiting for the engine to admit this session (after AUTH).
+  bool _admitting = false;
   HelloMessage? _peerHello;
   int _maxFrame = 0;
 
@@ -284,9 +303,7 @@ final class SyncSession {
         _receivedAnyFrame = true;
         _enqueue(() => _onFrame(frame));
       },
-      onError: (Object e) => _enqueue(
-        () => _fail(SyncFailure.connectionLost, 'Connection lost: $e'),
-      ),
+      onError: (Object e) => _enqueue(() => _onLinkLost('$e')),
       onDone: () => _enqueue(_onChannelDone),
       cancelOnError: true,
     );
@@ -296,14 +313,14 @@ final class SyncSession {
   }
 
   /// Sends `ERROR cancelled` and closes (outcome cancelled).
-  Future<void> cancel() async {
+  Future<void> cancel({String message = 'Cancelled'}) async {
     if (!_started) {
       _started = true;
       _startedAt = _now();
     }
     await _fail(
       SyncFailure.cancelled,
-      'Cancelled',
+      message,
       sendCode: ErrorCodes.cancelled,
     );
   }
@@ -342,7 +359,7 @@ final class SyncSession {
         // instance) may still be queued: let them and the end of the
         // stream decide, with a fallback in case the stream never ends.
         _sendFailedTimer ??= Timer(const Duration(seconds: 1), () {
-          unawaited(_fail(SyncFailure.connectionLost, 'Connection lost: $cause'));
+          unawaited(_onLinkLost('$cause'));
         });
       default:
         developer.log('Sync session error', error: e, stackTrace: st,
@@ -479,6 +496,7 @@ final class SyncSession {
       throw const ProtocolException(
           ErrorCodes.internal, 'Connected to this phone itself');
     }
+    onPeerHello?.call(this);
     final keys = await _handshake!.onPeerHello(
       peer,
       frame,
@@ -498,6 +516,18 @@ final class SyncSession {
     }
     _authenticated = true;
     _state = SessionState.authenticated;
+    // The engine bounds its own wait; the handshake timer pauses meanwhile.
+    _admitting = true;
+    final String? refusal;
+    try {
+      refusal = await admit?.call(this);
+    } finally {
+      _admitting = false;
+    }
+    if (_finished) return;
+    if (refusal != null) {
+      throw ProtocolException(ErrorCodes.busy, refusal);
+    }
     _phase = SyncPhase.comparing;
     // Buffer local ops from now on (pushed only in LIVE).
     _localOps = store.localOps.listen(_onLocalOp);
@@ -624,10 +654,7 @@ final class SyncSession {
     _sentOps += n;
     await store.recordPeerKnowledge(_peerHello!.deviceId, g, msg.vv);
     if (_peerLeftLive) {
-      if (_inFlight.isEmpty) {
-        await _sendSealed(const ByeMessage());
-        await _finishSuccess();
-      }
+      if (_inFlight.isEmpty) await _byeAndFinish();
       return;
     }
     await _pump();
@@ -641,17 +668,29 @@ final class SyncSession {
     await _checkComplete();
   }
 
-  Future<void> _onPeerError(ErrorMessage msg) => _fail(
-        failureForErrorCode(msg.code),
-        msg.msg.isEmpty ? 'Peer error: ${msg.code}' : '${msg.code}: ${msg.msg}',
-      );
+  Future<void> _onPeerError(ErrorMessage msg) {
+    _peerErrorCode = msg.code;
+    return _fail(
+      failureForErrorCode(msg.code),
+      msg.msg.isEmpty ? 'Peer error: ${msg.code}' : '${msg.code}: ${msg.msg}',
+    );
+  }
+
+  /// Answers the peer's BYE and ends as completed. Everything was sent,
+  /// ACKed and said DONE on both sides, so a link that drops before our BYE
+  /// gets out changes nothing: the peer already counts the sync complete.
+  Future<void> _byeAndFinish() async {
+    try {
+      await _sendSealed(const ByeMessage());
+    } on _SendFailed catch (_) {
+      // The peer has gone; it already said BYE.
+    }
+    await _finishSuccess();
+  }
 
   Future<void> _onBye() async {
     if (_state == SessionState.closing) return _finishSuccess();
-    if (_exchangeComplete) {
-      await _sendSealed(const ByeMessage());
-      return _finishSuccess();
-    }
+    if (_exchangeComplete) return _byeAndFinish();
     if (_state == SessionState.live) {
       // The peer left live mode while our pushes were on the wire. It
       // still applies and ACKs OPS while closing, so wait for those ACKs
@@ -668,6 +707,14 @@ final class SyncSession {
       return;
     }
     await _fail(SyncFailure.connectionLost, 'Peer closed before finishing');
+  }
+
+  /// The link failed. In CLOSING everything was already sent, ACKed and
+  /// DONE on both sides (or the peer left LIVE), so losing the link while
+  /// the BYEs cross is still a completed sync, as when it closes cleanly.
+  Future<void> _onLinkLost(String cause) async {
+    if (_state == SessionState.closing) return _finishSuccess();
+    await _fail(SyncFailure.connectionLost, 'Connection lost: $cause');
   }
 
   Future<void> _onChannelDone() async {
@@ -758,7 +805,7 @@ final class SyncSession {
             SessionState.helloSent ||
             SessionState.authSent ||
             SessionState.authenticated:
-        if (now > timings.handshakeTimeout) {
+        if (now > timings.handshakeTimeout && !_admitting) {
           _timeout('No answer from the other phone');
         }
       case SessionState.exchanging:
@@ -851,6 +898,7 @@ final class SyncSession {
         groupIds: sharedGroups,
         verificationCode: verificationCode,
         receivedAnyFrame: _receivedAnyFrame,
+        peerErrorCode: _peerErrorCode,
       );
 
   Future<void> _finishSuccess() async {

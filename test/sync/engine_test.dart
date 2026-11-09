@@ -110,7 +110,9 @@ void main() {
     final peer = await alex.find(priya);
     expect(peer.transports.toList(), [TransportKind.lan, TransportKind.ble]);
     expect(peer.sharedGroupIds, [seed.g]);
-    expect(peer.deviceIdPrefix, priya.phone.deviceId.substring(0, 8));
+    // A per-window advert id, never a piece of the device id (SPEC 8.3).
+    expect(peer.advertId, matches(RegExp(r'^[0-9a-f]{8}$')));
+    expect(priya.phone.deviceId, isNot(contains(peer.advertId!)));
     expect(alex.engine.status.discovering, isTrue);
 
     final statuses = <SyncStatus>[];
@@ -517,5 +519,98 @@ void main() {
   test('watchStatus and watchNearby emit the current value first', () async {
     expect(await alex.engine.watchStatus().first, same(alex.engine.status));
     expect(await alex.engine.watchNearby().first, isEmpty);
+  });
+
+  group('the session slot (SPEC 8.7.1)', () {
+    Future<Object> tap(Phone p, NearbyPeer peer) =>
+        p.engine.syncWith(peer).then<Object>((s) => s, onError: (Object e) => e);
+
+    for (final (label, latency, delay) in const [
+      ('no latency', Duration.zero, Duration.zero),
+      ('30 ms latency', Duration(milliseconds: 30), Duration.zero),
+      ('one tap 40 ms later', Duration(milliseconds: 20), Duration(milliseconds: 40)),
+    ]) {
+      for (final lowerFirst in [true, false]) {
+        test(
+          'both phones tap Sync ($label, '
+          '${lowerFirst ? 'lower' : 'higher'} id first): it syncs once and '
+          'nobody is told another phone is busy',
+          () async {
+            hub.latency = latency;
+            await alex.engine.startHosting();
+            await priya.engine.startHosting();
+            final toPriya = await alex.find(priya);
+            final toAlex = await priya.find(alex);
+            expect(
+              alex.phone.deviceId.compareTo(priya.phone.deviceId),
+              lessThan(0),
+            );
+            final first = lowerFirst
+                ? tap(alex, toPriya)
+                : tap(priya, toAlex);
+            await Future<void>.delayed(delay);
+            final second = lowerFirst
+                ? tap(priya, toAlex)
+                : tap(alex, toPriya);
+            final results = await Future.wait([first, second]);
+            expect(results.whereType<SyncSummary>(), isNotEmpty,
+                reason: '$results');
+            for (final e in results.whereType<SyncException>()) {
+              expect(e.message, isNot(contains('another phone')));
+            }
+            expect(priya.phone.canonical, alex.phone.canonical);
+            expect(priya.phone.opCount(seed.g), alex.phone.opCount(seed.g));
+          },
+        );
+      }
+    }
+
+    test('silent connections beyond the limit cannot lock a friend out',
+        () async {
+      await priya.engine.startHosting();
+      final silent = <FrameChannel>[];
+      for (var i = 0; i < kMaxPendingInbound + 2; i++) {
+        final t = MemoryTransport(
+          hub,
+          kind: TransportKind.lan,
+          address: 'mallory-$i',
+        );
+        addTearDown(t.dispose);
+        silent.add(await t.connect(const DiscoveredPeer(
+          kind: TransportKind.lan,
+          address: 'b-lan',
+          name: '',
+        )));
+      }
+      final summary = await alex.engine.syncWith(await alex.find(priya));
+      expect(summary.sentOps, 7);
+      for (final c in silent) {
+        await c.close();
+      }
+    });
+
+    test('a third phone is told the host is syncing with another phone',
+        () async {
+      hub.latency = const Duration(milliseconds: 20);
+      final ravi = await Phone.create(hub, 'c', "Ravi's iPhone");
+      addTearDown(ravi.dispose);
+      await ravi.phone.join(alex.phone, seed.g);
+      await priya.engine.startHosting();
+      final first = alex.engine.syncWith(await alex.find(priya));
+      final fromRavi = await ravi.find(priya);
+      await eventually(() => priya.engine.status.session is SessionActive);
+      await expectLater(
+        ravi.engine.syncWith(fromRavi),
+        throwsA(isA<SyncException>().having(
+          (e) => e.message,
+          'message',
+          'busy: Syncing with another phone',
+        )),
+      );
+      await first;
+      // The refused attempt is not in the host's history.
+      await eventually(() => priya.records.isNotEmpty);
+      expect(priya.records.map((r) => r.peerName), ["Alex's Pixel"]);
+    });
   });
 }
