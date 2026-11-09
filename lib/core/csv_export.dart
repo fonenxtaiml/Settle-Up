@@ -2,6 +2,7 @@
 import 'categories.dart';
 import 'ids.dart';
 import 'ledger_state.dart';
+import 'member_order.dart';
 import 'models.dart';
 import 'money.dart';
 

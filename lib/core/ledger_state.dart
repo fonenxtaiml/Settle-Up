@@ -4,6 +4,7 @@ import 'package:meta/meta.dart';
 
 import 'ids.dart';
 import 'models.dart';
+import 'member_order.dart';
 import 'ops.dart';
 import 'reducer/canonical.dart';
 import 'reducer/reducer_engine.dart';
@@ -97,19 +98,6 @@ final class GroupState {
     return best;
   }
 
-  /// Canonical JSON of this group (see [LedgerState.toCanonicalJson]).
-  Map<String, Object?> toCanonicalJson() {
-    final memberIds = members.keys.toList()..sort();
-    final expenseIds = expenses.keys.toList()..sort();
-    return {
-      'expenses': {
-        for (final id in expenseIds) id: expenseToJson(expenses[id]!),
-      },
-      'group': group == null ? null : groupToJson(group!),
-      'groupId': groupId,
-      'members': {for (final id in memberIds) id: memberToJson(members[id]!)},
-    };
-  }
 }
 
 @immutable
@@ -137,7 +125,7 @@ final class LedgerState {
   Map<String, Object?> toCanonicalJson() {
     final ids = groups.keys.toList()..sort();
     return {
-      'groups': {for (final id in ids) id: groups[id]!.toCanonicalJson()},
+      'groups': {for (final id in ids) id: groupStateToJson(groups[id]!)},
     };
   }
 }
@@ -161,13 +149,4 @@ final class LedgerReducer {
 
   /// Immutable snapshot of the current state (safe to hand to the UI).
   LedgerState get state => _engine.state;
-}
-
-/// Sort order of [GroupState.activeMembers]: display name (case-insensitive,
-/// then exact), then id.
-int compareMembersByName(Member a, Member b) {
-  var c = a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
-  if (c != 0) return c;
-  c = a.displayName.compareTo(b.displayName);
-  return c != 0 ? c : a.id.compareTo(b.id);
 }

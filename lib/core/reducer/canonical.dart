@@ -6,6 +6,7 @@
 // result is canonical too.
 import 'package:collection/collection.dart';
 
+import '../ledger_state.dart';
 import '../models.dart';
 
 const DeepCollectionEquality _deep = DeepCollectionEquality();
@@ -72,6 +73,22 @@ Map<String, Object?> expenseToJson(Expense e) => {
       'paymentMethod': e.paymentMethod?.name,
       'updatedHlc': e.updatedHlc.encode(),
     };
+
+/// Canonical JSON of one group's materialized state.
+Map<String, Object?> groupStateToJson(GroupState g) {
+  final memberIds = g.members.keys.toList()..sort();
+  final expenseIds = g.expenses.keys.toList()..sort();
+  return {
+    'expenses': {
+      for (final id in expenseIds) id: expenseToJson(g.expenses[id]!),
+    },
+    'group': g.group == null ? null : groupToJson(g.group!),
+    'groupId': g.groupId,
+    'members': {
+      for (final id in memberIds) id: memberToJson(g.members[id]!),
+    },
+  };
+}
 
 bool _sameInts(Map<String, int> a, Map<String, int> b) =>
     a.length == b.length && a.entries.every((e) => b[e.key] == e.value);
