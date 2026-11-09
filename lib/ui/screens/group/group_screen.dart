@@ -169,6 +169,7 @@ class _GroupBody extends ConsumerWidget {
     final fullNames = memberFullNames(g);
     final now = ref.watch(clockProvider)();
     final unshared = snapshot.unsharedEntityIds;
+    final duplicates = possibleDuplicatePayments(g);
 
     final transfers = [...BalanceCalculator.suggestedTransfers(g)]
       ..sort((a, b) {
@@ -294,6 +295,7 @@ class _GroupBody extends ConsumerWidget {
                       myMemberId: myId,
                       resolve: g.resolve,
                       unshared: unshared.contains(e.id),
+                      possibleDuplicate: duplicates.contains(e.id),
                       onTap: () => context.push(Routes.expense(e.id)),
                     ),
                 ],

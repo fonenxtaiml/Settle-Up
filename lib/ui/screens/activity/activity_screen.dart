@@ -253,6 +253,11 @@ class ActivityRow extends ConsumerWidget {
       DateLabels.clock12(entry.at),
       if (!entry.isLocal) S.bySync,
       if (entry.isLocal && !entry.isShared) S.notYetShared,
+      if (expense != null &&
+          expense.isPayment &&
+          g != null &&
+          possibleDuplicatePayments(g).contains(expense.id))
+        KitStrings.possibleDuplicate,
     ].join(', ');
 
     final myId = g == null ? null : myMemberIn(g, me);

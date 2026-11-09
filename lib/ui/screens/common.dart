@@ -7,6 +7,7 @@ import '../../core/balances.dart';
 import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
+import '../../core/models.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
@@ -369,3 +370,36 @@ String groupCurrency(GroupState g) => g.group?.currency ?? 'INR';
 /// True when the member is [me] after resolving merges.
 bool isMeIn(GroupState g, MemberId member, PersonId me) =>
     g.resolve(member) == myMemberIn(g, me);
+
+final _duplicates = Expando<Set<ExpenseId>>('possibleDuplicatePayments');
+
+/// SPEC 7.2: payments that look like a second record of the same handover:
+/// another live payment with the same from, to, currency and amount within
+/// 24 h. Both are kept; the UI only hints. Cached per [GroupState].
+Set<ExpenseId> possibleDuplicatePayments(GroupState g) =>
+    _duplicates[g] ??= _findDuplicatePayments(g);
+
+Set<ExpenseId> _findDuplicatePayments(GroupState g) {
+  const window = Duration(hours: 24);
+  final byKey = <String, List<Expense>>{};
+  for (final e in g.liveExpenses) {
+    if (!e.isPayment) continue;
+    final key =
+        '${g.resolve(e.payer)}|${g.resolve(e.receiver)}|'
+        '${e.money.currency}|${e.money.total}';
+    (byKey[key] ??= []).add(e);
+  }
+  final out = <ExpenseId>{};
+  for (final list in byKey.values) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.date.compareTo(b.date));
+    for (var i = 1; i < list.length; i++) {
+      if (list[i].date.difference(list[i - 1].date).abs() <= window) {
+        out
+          ..add(list[i].id)
+          ..add(list[i - 1].id);
+      }
+    }
+  }
+  return out;
+}

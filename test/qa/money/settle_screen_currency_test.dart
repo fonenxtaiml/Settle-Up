@@ -156,7 +156,6 @@ void main() {
   testWidgets(
     'QA MONEY-R1-06: two identical payments within 24 h are hinted as a '
     'possible duplicate',
-    skip: true, // QA MONEY-R1-06: no "possible duplicate" hint anywhere
     (tester) async {
       await tester.runAsync(() async {
         p = await QaPhone.create(home: 'INR');

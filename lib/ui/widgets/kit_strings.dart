@@ -44,6 +44,7 @@ abstract final class KitStrings {
   static String peoplePaid(int n, String amount) => '$n people paid $amount';
   static String paymentTitle(String from, String to) => '$from paid $to';
   static const payment = 'Payment';
+  static const possibleDuplicate = 'possible duplicate';
   static const notYetShared = 'Not yet shared';
   static const restore = 'Restore';
   static const deleted = 'deleted';

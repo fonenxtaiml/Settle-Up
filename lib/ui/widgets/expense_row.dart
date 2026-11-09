@@ -26,6 +26,7 @@ class ExpenseRow extends StatelessWidget {
     required this.myMemberId,
     this.resolve,
     this.unshared = false,
+    this.possibleDuplicate = false,
     this.deleted = false,
     this.onTap,
     this.onRestore,
@@ -39,6 +40,10 @@ class ExpenseRow extends StatelessWidget {
   /// was merged into me counts as me. Null: ids are taken as they are.
   final MemberId Function(MemberId)? resolve;
   final bool unshared;
+
+  /// SPEC 7.2: a payment that matches another (same from, to and amount
+  /// within 24 h). Both are kept; the subline hints "possible duplicate".
+  final bool possibleDuplicate;
   final bool deleted;
   final VoidCallback? onTap;
   final VoidCallback? onRestore;
@@ -99,9 +104,11 @@ class ExpenseRow extends StatelessWidget {
   String meta() {
     if (expense.isPayment) {
       final m = expense.paymentMethod;
-      return m == null
-          ? KitStrings.payment
-          : '${KitStrings.payment}, ${methodLabel(m)}';
+      return [
+        KitStrings.payment,
+        if (m != null) methodLabel(m),
+        if (possibleDuplicate) KitStrings.possibleDuplicate,
+      ].join(', ');
     }
     final total = MoneyFormat.format(
       expense.money.total,
