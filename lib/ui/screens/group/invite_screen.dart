@@ -1,5 +1,9 @@
 // Invite to a group: a full-screen QR carrying the group and its key. It
-// hides itself after 2 minutes to keep the group private.
+// hides itself after 2 minutes to keep the group private, and while it is
+// shown the window is secure (FLAG_SECURE): no screenshots, recordings or
+// recents thumbnail of the key.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -9,6 +13,7 @@ import 'package:share_plus/share_plus.dart';
 import '../../../core/ids.dart';
 import '../../../theme/tokens.dart';
 import '../../format/dates.dart';
+import '../../platform/app_window.dart';
 import '../../providers.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
@@ -33,6 +38,7 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
   int _left = 0;
   Object? _error;
   bool _loading = true;
+  bool _secure = false;
 
   @override
   void initState() {
@@ -41,6 +47,7 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
   }
 
   Future<void> _show() async {
+    _setSecure(false);
     setState(() {
       _error = null;
       _link = null;
@@ -51,6 +58,7 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
           .read(syncEngineProvider)
           .inviteLinkFor(widget.groupId);
       if (!mounted) return;
+      _setSecure(true);
       setState(() {
         _link = link;
         _hideAt = ref.read(clockProvider)().add(inviteVisibleFor);
@@ -74,6 +82,7 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
     final left = hideAt.difference(ref.read(clockProvider)()).inSeconds;
     if (left <= 0) {
       _ticker.stop();
+      _setSecure(false);
       setState(() {
         _link = null;
         _hideAt = null;
@@ -84,8 +93,16 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
     }
   }
 
+  /// Holds FLAG_SECURE exactly while the QR (the group key) is on screen.
+  void _setSecure(bool on) {
+    if (on == _secure) return;
+    _secure = on;
+    unawaited(on ? AppWindow.holdSecure() : AppWindow.releaseSecure());
+  }
+
   @override
   void dispose() {
+    _setSecure(false);
     _ticker.dispose();
     super.dispose();
   }
