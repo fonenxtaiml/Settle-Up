@@ -163,6 +163,7 @@ Future<bool> confirmAction(
   required String title,
   required String body,
   required String confirmLabel,
+  String cancelLabel = S.cancel,
 }) async {
   final ok = await showDialog<bool>(
     context: context,
@@ -172,7 +173,7 @@ Future<bool> confirmAction(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text(S.cancel),
+          child: Text(cancelLabel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),

@@ -273,7 +273,7 @@ void main() {
     // that nothing is left to split.
     expect(summaryRight(tester), isNot('₹0 left to split'));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-04
+  });
 
   testWidgets('UIFLOW-R1-04b: adjustments larger than the total read "₹0 '
       'left to split" while Save is disabled', (tester) async {
@@ -287,7 +287,7 @@ void main() {
     expect(saveEnabled(tester), isFalse);
     expect(summaryRight(tester), isNot('₹0 left to split'));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-04
+  });
 
   testWidgets('UIFLOW-R1-05: changing the amount after picking multiple '
       'payers disables Save with no explanation', (tester) async {
@@ -315,7 +315,7 @@ void main() {
         find.text(S.splitNotDone).evaluate().isNotEmpty || saveEnabled(tester);
     expect(explained, isTrue);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-05
+  });
 
   testWidgets('UIFLOW-R1-20: Android back on a filled-in Add expense '
       'discards it without asking (S.discardAndClose is never used)', (
@@ -332,5 +332,5 @@ void main() {
     expect(find.text(S.discardAndClose), findsOneWidget);
     expect(w.location, isNot(Routes.group(gid)));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-20
+  });
 }
