@@ -202,9 +202,6 @@ void main() {
         }
         expect(hits, isEmpty);
       },
-      skip:
-          'QA PLATFORM-R1-07: template TODOs (applicationId, signing) '
-          'still in android/app/build.gradle.kts',
     );
   });
 
