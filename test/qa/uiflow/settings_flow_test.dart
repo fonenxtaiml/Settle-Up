@@ -297,6 +297,24 @@ void main() {
     await w.shutdown(tester);
   }, skip: true); // QA UIFLOW-R1-11
 
+  testWidgets('UIFLOW-R1-18: renaming yourself in Settings never reaches '
+      'your groups, although the prompt says "Friends see this when you '
+      'sync."', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup();
+    await pumpReal(tester, w, location: Routes.settings);
+    await qaTap(tester, find.text('Arjun'));
+    expect(find.text(S.yourNameHelper), findsOneWidget);
+    await promptAndSave(tester, 'Arjun Mehta');
+    final mine = w
+        .group(gid)
+        .memberForPerson(w.settings.profile!.personId)!;
+    // Expected: the member that friends sync shows the new name.
+    expect(mine.displayName, 'Arjun Mehta');
+    await w.shutdown(tester);
+  }, skip: true); // QA UIFLOW-R1-18
+
   test('UIFLOW-R1-12: Settings shows version "1.0.0 (1)" while pubspec '
       'builds 0.1.0+1', () {
     final pubspec = File('pubspec.yaml').readAsStringSync();
