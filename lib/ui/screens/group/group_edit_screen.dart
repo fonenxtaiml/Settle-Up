@@ -1,0 +1,417 @@
+// New group / edit group: name, type, currency, emoji, simplify debts and,
+// for a new group, the people in it.
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+
+import '../../../core/ids.dart';
+import '../../../core/models.dart';
+import '../../../core/money.dart';
+import '../../../data/repositories.dart';
+import '../../../theme/tokens.dart';
+import '../../providers.dart';
+import '../../router.dart';
+import '../../strings.dart';
+import '../../widgets/widgets.dart';
+import '../common.dart';
+import '../pickers.dart';
+
+const List<String> _emojis = ['🏖️', '🏠', '❤️', '🍽️', '🎉', '⛺', '✈️'];
+
+String groupTypeLabel(GroupType t) => switch (t) {
+  GroupType.trip => S.typeTrip,
+  GroupType.home => S.typeHome,
+  GroupType.couple => S.typeCouple,
+  _ => S.typeOther,
+};
+
+class GroupEditScreen extends ConsumerStatefulWidget {
+  const GroupEditScreen({super.key, this.groupId});
+
+  /// Null creates a new group.
+  final GroupId? groupId;
+
+  @override
+  ConsumerState<GroupEditScreen> createState() => _GroupEditScreenState();
+}
+
+class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
+  final _name = TextEditingController();
+  final _person = TextEditingController();
+  GroupType _type = GroupType.trip;
+  String? _currency;
+  String? _emoji;
+  bool? _simplify;
+  final List<String> _newNames = [];
+  final Set<PersonId> _existing = {};
+  bool _loaded = false;
+  bool _tried = false;
+  bool _saving = false;
+
+  bool get _isNew => widget.groupId == null;
+
+  @override
+  void dispose() {
+    _name.dispose();
+    _person.dispose();
+    super.dispose();
+  }
+
+  void _load(Group? g) {
+    if (_loaded) return;
+    _loaded = true;
+    if (g == null) return;
+    _name.text = g.name;
+    _type = g.type == GroupType.direct ? GroupType.other : g.type;
+    _currency = g.currency;
+    _emoji = g.emoji;
+    _simplify = g.simplifyDebts;
+  }
+
+  void _addPerson() {
+    final n = _person.text.trim();
+    if (n.isEmpty) return;
+    setState(() {
+      _newNames.add(n);
+      _person.clear();
+    });
+  }
+
+  Future<void> _save(Group? original, Map<PersonId, String> people) async {
+    setState(() => _tried = true);
+    final name = _name.text.trim();
+    if (name.isEmpty || _saving) {
+      Haptics.invalid(context);
+      return;
+    }
+    setState(() => _saving = true);
+    final ledger = ref.read(ledgerRepositoryProvider);
+    final profile = ref.read(profileProvider).value!;
+    final settings = ref.read(appSettingsProvider).value ?? const AppSettings();
+    final currency = _currency ?? profile.homeCurrency;
+    GroupId? created;
+    final ok = await runGuarded(context, () async {
+      if (_isNew) {
+        if (_person.text.trim().isNotEmpty) _addPerson();
+        created = await ledger.createGroup(
+          NewGroup(
+            name: name,
+            type: _type,
+            currency: currency,
+            emoji: _emoji,
+            simplifyDebts: _simplify ?? settings.simplifyByDefault,
+            newMemberNames: List.of(_newNames),
+            existingPeople: [
+              for (final p in _existing)
+                (personId: p, displayName: people[p] ?? S.someone),
+            ],
+          ),
+        );
+      } else {
+        final o = original!;
+        await ledger.updateGroup(
+          widget.groupId!,
+          GroupPatch(
+            name: name == o.name ? null : name,
+            type: _type == o.type ? null : _type,
+            currency: currency == o.currency ? null : currency,
+            emoji: _emoji == o.emoji ? null : (_emoji ?? ''),
+            simplifyDebts: _simplify == null || _simplify == o.simplifyDebts
+                ? null
+                : _simplify,
+          ),
+        );
+      }
+    });
+    if (!mounted) return;
+    setState(() => _saving = false);
+    if (!ok) return;
+    Haptics.medium(context);
+    if (created != null) {
+      showSnack(context, S.groupCreated);
+      context.pushReplacement(Routes.group(created!));
+    } else {
+      showSnack(context, S.groupSaved);
+      context.pop();
+    }
+  }
+
+  Future<void> _archive(Group g) async {
+    final ok = await runGuarded(
+      context,
+      () => ref
+          .read(ledgerRepositoryProvider)
+          .updateGroup(g.id, GroupPatch(archived: !g.archived)),
+    );
+    if (ok && mounted) {
+      showSnack(context, g.archived ? S.groupSaved : S.groupArchived);
+      context.pop();
+    }
+  }
+
+  Future<void> _delete(Group g, int expenses) async {
+    final yes = await confirmAction(
+      context,
+      title: S.deleteGroupTitle(g.name),
+      body: S.deleteGroupBody(expenses),
+      confirmLabel: S.delete,
+    );
+    if (!yes || !mounted) return;
+    final ok = await runGuarded(
+      context,
+      () => ref.read(ledgerRepositoryProvider).deleteGroup(g.id),
+    );
+    if (ok && mounted) {
+      showSnack(context, S.groupDeleted);
+      context.go(Routes.home);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final profile = ref.watch(profileProvider).value;
+    final snap = ref.watch(ledgerProvider).value;
+    final gs = widget.groupId == null
+        ? null
+        : snap?.state.groups[widget.groupId];
+    final original = gs?.group;
+    if (profile == null || snap == null || (!_isNew && original == null)) {
+      return Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(close: true),
+          title: const Text(S.editGroupTitle),
+        ),
+      );
+    }
+    _load(original);
+    final me = profile.personId;
+    final people = <PersonId, String>{
+      for (final g in snap.state.visibleGroups)
+        for (final m in g.activeMembers)
+          if (m.personId != me) m.personId: m.displayName,
+    };
+    final sortedPeople = people.entries.toList()
+      ..sort((a, b) => a.value.toLowerCase().compareTo(b.value.toLowerCase()));
+    final currency = Currencies.of(_currency ?? profile.homeCurrency);
+    final simplify =
+        _simplify ??
+        (ref.watch(appSettingsProvider).value ?? const AppSettings())
+            .simplifyByDefault;
+    final ink2 = theme.colorScheme.onSurfaceVariant;
+
+    return Scaffold(
+      appBar: screenAppBar(
+        leading: const BackArrow(close: true),
+        title: Text(_isNew ? S.newGroupTitle : S.editGroupTitle),
+      ),
+      bottomNavigationBar: SafeArea(
+        top: false,
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+          child: FilledButton(
+            onPressed: _saving ? null : () => _save(original, people),
+            style: KitButtonStyles.block,
+            child: Text(_isNew ? S.createGroupAction : S.saveChanges),
+          ),
+        ),
+      ),
+      body: ListView(
+        padding: const EdgeInsets.only(bottom: Space.xl),
+        children: [
+          const SizedBox(height: Space.sm),
+          gutter(
+            LabeledTextField(
+              label: S.groupName,
+              hintText: S.groupNameHint,
+              controller: _name,
+              maxLength: 60,
+              errorText: _tried && _name.text.trim().isEmpty
+                  ? S.nameNeeded
+                  : null,
+              onChanged: (_) => setState(() {}),
+            ),
+          ),
+          gutter(const SectionHeading(S.groupType)),
+          gutter(
+            SegmentedButton<GroupType>(
+              showSelectedIcon: false,
+              segments: [
+                for (final t in [
+                  GroupType.trip,
+                  GroupType.home,
+                  GroupType.couple,
+                  GroupType.other,
+                ])
+                  ButtonSegment(value: t, label: Text(groupTypeLabel(t))),
+              ],
+              selected: {_type},
+              onSelectionChanged: (s) => setState(() => _type = s.first),
+            ),
+          ),
+          const SizedBox(height: Space.md),
+          gutter(
+            PickerTile(
+              label: S.currency,
+              value: '${currency.name} (${currency.code})',
+              leading: Text(
+                currency.symbol,
+                style: theme.textTheme.titleMedium,
+              ),
+              onTap: () async {
+                final code = await pickCurrency(
+                  context,
+                  selected: currency.code,
+                  pinned: [profile.homeCurrency],
+                );
+                if (code != null) setState(() => _currency = code);
+              },
+            ),
+          ),
+          const SizedBox(height: Space.md),
+          gutter(
+            ListSection(
+              children: [
+                KitListRow(
+                  title: S.emoji,
+                  minHeight: Sizes.rowMinDense,
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        _emoji == null || _emoji!.isEmpty ? S.noEmoji : _emoji!,
+                        style: theme.textTheme.bodyLarge!.copyWith(color: ink2),
+                      ),
+                      const SizedBox(width: Space.xs),
+                      Icon(Icons.chevron_right_rounded, color: ink2),
+                    ],
+                  ),
+                  onTap: () async {
+                    final e = await pickOption<String>(
+                      context,
+                      title: S.emoji,
+                      selected: _emoji ?? '',
+                      options: [
+                        ('', S.noEmoji),
+                        for (final e in _emojis) (e, e),
+                      ],
+                    );
+                    if (e == null) return;
+                    setState(() => _emoji = e.isEmpty ? null : e);
+                  },
+                ),
+                MergeSemantics(
+                  child: KitListRow(
+                    title: S.simplifyDebts,
+                    subtitle: simplify ? S.simplifyHelpOn : S.simplifyHelpOff,
+                    trailing: Switch(
+                      value: simplify,
+                      onChanged: (v) => setState(() => _simplify = v),
+                    ),
+                    onTap: () => setState(() => _simplify = !simplify),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          if (_isNew) ...[
+            gutter(const SectionHeading(S.addPeople)),
+            textGutter(
+              Text(
+                S.youAreIncluded,
+                style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+              ),
+            ),
+            const SizedBox(height: Space.sm),
+            gutter(
+              LabeledTextField(
+                label: S.personName,
+                hintText: S.personNameHint,
+                controller: _person,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _addPerson(),
+                onChanged: (_) => setState(() {}),
+                trailing: FilledButton.tonal(
+                  onPressed: _person.text.trim().isEmpty ? null : _addPerson,
+                  style: KitButtonStyles.small(context),
+                  child: const Text(S.addPerson),
+                ),
+              ),
+            ),
+            if (_newNames.isNotEmpty)
+              gutter(
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.sm),
+                  child: Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.xs,
+                    children: [
+                      for (final (i, n) in _newNames.indexed)
+                        InputChip(
+                          label: Text(n),
+                          avatar: PersonAvatar(id: 'new-$i', name: n, size: 24),
+                          onDeleted: () =>
+                              setState(() => _newNames.removeAt(i)),
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+            if (sortedPeople.isNotEmpty) ...[
+              gutter(const SectionHeading(S.fromYourGroups)),
+              gutter(
+                Wrap(
+                  spacing: Space.sm,
+                  runSpacing: Space.xs,
+                  children: [
+                    for (final p in sortedPeople)
+                      FilterChip(
+                        label: Text(p.value),
+                        selected: _existing.contains(p.key),
+                        onSelected: (v) => setState(() {
+                          if (v) {
+                            _existing.add(p.key);
+                          } else {
+                            _existing.remove(p.key);
+                          }
+                        }),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+          ] else ...[
+            const SizedBox(height: Space.md),
+            gutter(
+              ListSection(
+                children: [
+                  KitListRow(
+                    title: S.members,
+                    minHeight: Sizes.rowMinDense,
+                    trailing: const Icon(Icons.chevron_right_rounded),
+                    onTap: () => context.push(Routes.members(widget.groupId!)),
+                  ),
+                  KitListRow(
+                    title: original!.archived
+                        ? S.unarchiveGroup
+                        : S.archiveGroup,
+                    minHeight: Sizes.rowMinDense,
+                    onTap: () => _archive(original),
+                  ),
+                  KitListRow(
+                    title: S.deleteGroup,
+                    minHeight: Sizes.rowMinDense,
+                    titleStyle: theme.textTheme.titleSmall!.copyWith(
+                      color: theme.colorScheme.error,
+                    ),
+                    onTap: () => _delete(original, gs!.liveExpenses.length),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
