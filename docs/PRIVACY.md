@@ -28,20 +28,21 @@ another phone only when you sync with a friend who is in the same group.
 | Settings (theme, default split, vibration) | App database | Your preferences. |
 
 The app database is a SQLite file in the app's private storage, which
-other apps cannot read. Cloud backup and
-the device-to-device transfer to a new phone are switched off, so this
-data is not copied to Google Drive or to another phone by Android.
+other apps cannot read. Cloud backup and the device-to-device transfer to
+a new phone are switched off, so Android does not copy this data to
+Google Drive or to another phone.
 
 ## What leaves your phone, and when
 
-**When you sync.** Only while the Sync screen is open, and only to phones
-nearby. Settle Up connects directly to the other phone over your Wi-Fi
+**When you sync.** Only when you sync, with the app open, and only to
+phones nearby. Settle Up connects directly to the other phone over your Wi-Fi
 network or hotspot, over Bluetooth, or through Nearby Connections. It sends
 only the groups that both phones are members of. All of it is encrypted
 with AES-256-GCM using keys that only members of those groups hold.
 
-While the Sync screen is looking for phones or hosting, nearby devices on
-the same Wi-Fi network or within Bluetooth range can see:
+While the app is looking for phones or waiting for one (the Sync screen
+and its QR code screen), nearby devices on the same Wi-Fi network or
+within Bluetooth range can see:
 
 - the phone name you chose in Settings (for example "Pixel 8"),
 - the first characters of this phone's random device id,
@@ -52,6 +53,8 @@ They cannot see group names, members or amounts.
 
 **When you invite someone.** An invite QR code or link contains the group
 id, the group name, its currency, your phone's name and the group key.
+It can also carry this phone's address on the local network and its
+device id, so that the first sync starts at once.
 Anyone who has it can join the group and see and add expenses. The QR code
 hides itself after 2 minutes and is kept out of screenshots; sharing the
 link is a separate step that warns you first.
