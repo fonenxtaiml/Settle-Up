@@ -104,6 +104,26 @@ void main() {
       );
     });
 
+    test('a peer announcing a tiny max frame is refused', () async {
+      final hi = await _start(true, {'g1': _key(1)});
+      final hr = await _start(false, {'g1': _key(1)});
+      final tiny = HelloMessage(
+        deviceId: 'x',
+        deviceName: 'x',
+        ephemeralPublicKey: hr.hello.ephemeralPublicKey,
+        nonce: hr.hello.nonce,
+        blindedGroups: hr.hello.blindedGroups,
+        maxFrame: kMinFrameBytes - 1,
+        transport: TransportKind.ble,
+      );
+      expect(
+        () => hi.onPeerHello(tiny, FrameCodec.plainFrame(tiny),
+            localMaxFrame: 1 << 20),
+        throwsA(isA<HandshakeException>()
+            .having((e) => e.code, 'code', ErrorCodes.badFrame)),
+      );
+    });
+
     test('HELLOs carry no group ids in clear and blind per nonce', () async {
       final a = await _start(true, {'g1': _key(1)});
       final b = await _start(false, {'g1': _key(1)});

@@ -102,7 +102,9 @@ final class FrameCipher {
       );
       _receiveCounter++;
       return plain is Uint8List ? plain : Uint8List.fromList(plain);
-    } on SecretBoxAuthenticationError {
+    } catch (_) {
+      // SecretBoxAuthenticationError from the Dart implementation; native
+      // implementations may surface other error types for a bad tag.
       throw const FrameAuthException('Frame authentication failed');
     }
   }

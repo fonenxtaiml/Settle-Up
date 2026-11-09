@@ -23,6 +23,9 @@ import '../protocol/messages.dart';
 import 'aead.dart';
 import 'tokens.dart';
 
+/// Smallest max frame size a peer may announce (fits any single op).
+const int kMinFrameBytes = 4096;
+
 /// A handshake failure; [code] is the `ERROR` code to send (ErrorCodes).
 final class HandshakeException implements Exception {
   const HandshakeException(this.code, [this.message = '']);
@@ -113,6 +116,11 @@ final class Handshake {
         ErrorCodes.protoUnsupported,
         'peer speaks ${peer.minProto}..${peer.proto}',
       );
+    }
+
+    if (peer.maxFrame < kMinFrameBytes) {
+      throw HandshakeException(
+          ErrorCodes.badFrame, 'maxFrame ${peer.maxFrame} is too small');
     }
 
     final peerBlinded = {for (final b in peer.blindedGroups) b64UrlEncode(b)};
