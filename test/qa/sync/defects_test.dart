@@ -2,10 +2,18 @@
 // the code under test and is skipped with its finding id so the suite
 // stays green. Remove the skip once the fix lands.
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/sync/sync_engine.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
 
+import 'package:settle_up/sync/crypto/tokens.dart';
+import 'package:settle_up/sync/transport/ble/ble_info.dart';
+import 'package:settle_up/sync/transport/lan/mdns.dart';
+import 'package:settle_up/sync/transport/nearby/nearby_endpoint_name.dart';
+import 'package:settle_up/sync/transport/transport.dart';
+
+import '../../sync/support/phone.dart' show groupIdOf, groupKeyOf;
 import 'qa_phone.dart';
 
 void main() {
@@ -187,4 +195,110 @@ void main() {
         'QA SYNC-R1-04: a drop after the peer BYE makes the responder '
         'record partial/connectionLost for a complete sync',
   );
+
+  group('SYNC-R1-06: phones set up within the same minute', () {
+    test(
+      'two phones whose UUIDv7 device ids share the 8-char prefix see each '
+      'other in discovery',
+      () async {
+        // Real device ids minted ~1 s apart (two friends installing the app
+        // together): UUIDv7 starts with the millisecond clock, so the first 8
+        // hex chars (the advertised "device id prefix") are identical for
+        // ids minted within the same 65.5 s.
+        const gen = UuidV7Generator();
+        var idA = gen.newId();
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        var idB = gen.newId();
+        if (idA.substring(0, 8) != idB.substring(0, 8)) {
+          // Crossed a 65.5 s boundary between the two calls: once more.
+          idA = gen.newId();
+          idB = gen.newId();
+        }
+        expect(idA.substring(0, 8), idB.substring(0, 8));
+        expect(idA, isNot(idB));
+        final alex = await QaPhone.create(
+          hub,
+          'a',
+          "Alex's Pixel",
+          deviceId: idA,
+        );
+        final priya = await QaPhone.create(
+          hub,
+          'b',
+          "Priya's Pixel",
+          deviceId: idB,
+        );
+        phones.addAll([alex, priya]);
+        expect(alex.deviceId, idA);
+        final seed = await alex.seedGroup(expenses: 1);
+        await priya.join(alex, seed.g);
+        await priya.engine.startHosting();
+
+        final peer = await alex.find(priya);
+        expect(peer.sharedGroupIds, [seed.g]);
+        expect((await alex.engine.syncWith(peer)).sentOps, 4);
+      },
+      skip:
+          'QA SYNC-R1-06: discovery treats a phone whose device id shares '
+          'the UUIDv7 time prefix as "self" and hides it',
+    );
+  });
+
+  group('SYNC-R1-07: a phone in many groups', () {
+    // A realistic user: 3 trips/homes + 17 friends (each 1:1 friend balance
+    // is its own group). The scanner shares exactly one of them.
+    final keys = {for (var i = 0; i < 20; i++) groupIdOf(i + 1): groupKeyOf(i)};
+    final shared = groupIdOf(7);
+    final scannerKeys = {shared: keys[shared]!};
+    final start = DateTime.utc(2026, 11, 9, 12);
+    const info = (id: 'aaaaaaaa-0000-7000-8000-000000000001', name: 'Alex');
+
+    Future<List<String>> advertised(DateTime t) =>
+        DiscoveryTokens.advertised(keys, t);
+
+    final transports = <String, Set<String> Function(AdvertiseInfo)>{
+      'nearby': (a) =>
+          NearbyEndpointName.tryParse(NearbyEndpointName.of(a).encode())!
+              .groupTokens
+              .toSet(),
+      'ble': (a) =>
+          BleInfo.tryParse(BleInfo.of(a).encode())!.groupTokens.toSet(),
+      'lan': (a) => MdnsSighting(
+        name: 'Alex',
+        addresses: const ['192.168.1.20'],
+        port: 47321,
+        attributes: MdnsAdvert.of(a, 47321).attributes,
+      ).toPeer()!.groupTokens,
+    };
+
+    for (final MapEntry(key: name, value: decode) in transports.entries) {
+      test(
+        'over $name, the shared group is recognised in every token window',
+        () async {
+          var missed = 0;
+          for (var w = 0; w < 12; w++) {
+            final t = start.add(Duration(minutes: 10 * w));
+            final advert = AdvertiseInfo(
+              deviceId: info.id,
+              deviceName: info.name,
+              groupTokens: await advertised(t),
+            );
+            final seen = decode(advert);
+            final index = await DiscoveryTokens.index(scannerKeys, t);
+            if (!seen.any(index.containsKey)) missed++;
+          }
+          expect(
+            missed,
+            0,
+            reason:
+                'shared group hidden in $missed of 12 windows over '
+                '$name: the peer shows "Pair" and tap-to-sync is refused',
+          );
+        },
+        skip:
+            'QA SYNC-R1-07: with more groups than the advert holds '
+            '(Nearby 4, BLE/LAN 16), a shared group is often not advertised',
+      );
+    }
+  });
 }
