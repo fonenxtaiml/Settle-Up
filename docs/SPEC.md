@@ -3230,6 +3230,7 @@ CLOSING ──recv BYE or 2 s──► CLOSED (success; SyncRecord outcome=compl
 - Accept every connection automatically (`acceptConnection`). Authentication happens in our session layer.
 - One channel frame = one BYTES payload (≤ 32 KiB).
 - `availability()` returns `unsupported` on iOS.
+- Nearby needs Google Play services. When a plugin call fails with API_UNAVAILABLE (status 17: Play services missing, disabled or too old, e.g. Huawei / HarmonyOS, Fire tablets, de-Googled ROMs) the transport remembers it until the app restarts: `availability()` and `requestPermissions()` return `unsupported`, and further calls throw `NearbyUnavailableException` (naming the reason) without calling the plugin. Hosting and discovery then use the other transports only.
 
 **BLE GATT (`BleTransport`, kind `ble`, maxFrame 16 KiB)** using `bluetooth_low_energy` 6.2.1:
 - Service `82101e6c-f454-4ceb-86a8-5375a3b1a414`. Characteristics:
