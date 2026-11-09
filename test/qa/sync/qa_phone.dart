@@ -4,6 +4,7 @@
 // engine over MemoryTransports (lan, nearby, ble) on a shared hub, and a
 // clock that can be skewed for both the HLC and the engine.
 import 'dart:async';
+import 'dart:typed_data';
 
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/ledger_state.dart';
@@ -75,6 +76,7 @@ final class QaPhone {
     SessionTimings timings = fastTimings,
     Duration connectTimeout = const Duration(seconds: 2),
     Duration linkConnectTimeout = const Duration(seconds: 1),
+    SyncTransport Function(MemoryTransport t)? wrap,
   }) async {
     final skew = clock ?? SkewedClock();
     final OpStore opStore = sqlite
@@ -111,7 +113,9 @@ final class QaPhone {
     };
     final engine = DefaultSyncEngine(
       store: spyStore ? spy : ledger,
-      transports: transports.values.toList(),
+      transports: [
+        for (final t in transports.values) wrap == null ? t : wrap(t),
+      ],
       clock: engineClock ?? skew,
       timings: timings,
       connectTimeout: connectTimeout,
@@ -298,4 +302,79 @@ Future<SyncSummary> syncByLink(QaPhone from, QaPhone to) async {
   // Let the responder finish recording before the next session.
   await waitFor(() => to.engine.status.session is! SessionActive);
   return summary;
+}
+
+/// Delegates to a [MemoryTransport]; [cut] turns every channel this side
+/// opened into a black hole (no frames either way, no close): the peer
+/// sees a half-open connection, like a phone that walked out of range.
+final class CuttableTransport implements SyncTransport {
+  CuttableTransport(this.inner);
+  final MemoryTransport inner;
+  final List<CuttableChannel> channels = [];
+
+  void cut() {
+    for (final c in channels) {
+      c.cut = true;
+    }
+  }
+
+  @override
+  TransportKind get kind => inner.kind;
+  @override
+  Future<TransportAvailability> availability() => inner.availability();
+  @override
+  Future<TransportAvailability> requestPermissions() =>
+      inner.requestPermissions();
+  @override
+  Future<void> startAdvertising(AdvertiseInfo info) =>
+      inner.startAdvertising(info);
+  @override
+  Future<void> stopAdvertising() => inner.stopAdvertising();
+  @override
+  Stream<FrameChannel> get inbound => inner.inbound;
+  @override
+  Stream<DiscoveredPeer> discover() => inner.discover();
+  @override
+  Future<FrameChannel> connect(
+    DiscoveredPeer peer, {
+    Duration timeout = const Duration(seconds: 10),
+  }) async {
+    final c = CuttableChannel(await inner.connect(peer, timeout: timeout));
+    channels.add(c);
+    return c;
+  }
+
+  @override
+  Future<void> dispose() => inner.dispose();
+}
+
+final class CuttableChannel implements FrameChannel {
+  CuttableChannel(this.inner);
+  final FrameChannel inner;
+  bool cut = false;
+  final StreamController<Uint8List> _dead = StreamController();
+
+  @override
+  TransportKind get kind => inner.kind;
+  @override
+  String get peerAddress => inner.peerAddress;
+  @override
+  int get maxFrameBytes => inner.maxFrameBytes;
+  @override
+  Stream<Uint8List> get frames => inner.frames.where((_) => !cut);
+  @override
+  Future<void> send(Uint8List frame) async {
+    if (cut) return;
+    await inner.send(frame);
+  }
+
+  @override
+  Future<void> close() async {
+    if (cut) {
+      // The peer never hears about it; end our own side locally.
+      unawaited(_dead.close());
+      return;
+    }
+    await inner.close();
+  }
 }
