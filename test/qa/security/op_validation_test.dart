@@ -293,9 +293,6 @@ void main() {
     test(
       'an earlier-stamped op for an expense id of another group cannot hide '
       'it from its own group',
-      skip:
-          'QA SECURITY-R1-04: a member of one group can hide an expense '
-          'of another group by reusing its id with an older HLC',
       () async {
         final other = await priya.seedGroup(expenses: 1, name: 'Private');
         final target = priya.state.groups[other.g]!.expenses.values.single;

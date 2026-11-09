@@ -15,6 +15,7 @@ import 'package:settle_up/data/ledger.dart';
 import 'package:settle_up/main.dart' as app;
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/ui/providers.dart';
+import 'package:settle_up/ui/screens/startup/startup_error_screen.dart';
 import 'package:settle_up/ui/startup.dart';
 
 const _pathChannel = MethodChannel('plugins.flutter.io/path_provider');
@@ -148,10 +149,7 @@ void main() {
       _mockSecureStorage();
       final container = ProviderContainer(overrides: await realOverrides());
       addTearDown(container.dispose);
-      expect(
-        container.read(startupFailureProvider)?.error,
-        isA<PlatformException>(),
-      );
+      expect(container.read(startupFailureProvider), StartupFailure.storage);
     });
 
     test(
@@ -163,7 +161,7 @@ void main() {
         File('${tmp.path}/settle_up.db').writeAsBytesSync(bytes);
         final container = ProviderContainer(overrides: await realOverrides());
         addTearDown(container.dispose);
-        expect(container.read(startupFailureProvider), isNotNull);
+        expect(container.read(startupFailureProvider), StartupFailure.database);
         expect(File('${tmp.path}/settle_up.db').readAsBytesSync(), bytes);
       },
     );
@@ -182,48 +180,42 @@ void main() {
     return thrown;
   }
 
-  group(
-    'main() never crashes on launch',
-    () {
-      testWidgets(
-        'getApplicationSupportDirectory throws: an error screen, no crash',
-        (tester) async {
-          _mockPaths(
-            error: PlatformException(code: 'IO', message: 'no dir'),
-          );
-          _mockSecureStorage();
-          final thrown = await runMain(tester);
-          expect(
-            thrown,
-            isNull,
-            reason: 'main() must catch bootstrap failures and still runApp',
-          );
-          expect(
-            find.byType(Text),
-            findsWidgets,
-            reason: 'the user must see a message, not a blank window',
-          );
-        },
-      );
-
-      testWidgets('corrupt database: an error screen, no crash', (
-        tester,
-      ) async {
-        _mockPaths(dir: tmp);
+  group('main() never crashes on launch', () {
+    testWidgets(
+      'getApplicationSupportDirectory throws: an error screen, no crash',
+      (tester) async {
+        _mockPaths(
+          error: PlatformException(code: 'IO', message: 'no dir'),
+        );
         _mockSecureStorage();
-        File('${tmp.path}/settle_up.db')
-            .writeAsBytesSync(Uint8List.fromList(List.filled(4096, 0x42)));
         final thrown = await runMain(tester);
         expect(
           thrown,
           isNull,
           reason: 'main() must catch bootstrap failures and still runApp',
         );
-        expect(find.byType(Text), findsWidgets);
-      });
-    },
-    skip: 'QA PLATFORM-R1-01: main() has no error handling around bootstrap()',
-  );
+        expect(
+          find.byType(Text),
+          findsWidgets,
+          reason: 'the user must see a message, not a blank window',
+        );
+      },
+    );
+
+    testWidgets('corrupt database: an error screen, no crash', (tester) async {
+      _mockPaths(dir: tmp);
+      _mockSecureStorage();
+      File('${tmp.path}/settle_up.db')
+          .writeAsBytesSync(Uint8List.fromList(List.filled(4096, 0x42)));
+      final thrown = await runMain(tester);
+      expect(
+        thrown,
+        isNull,
+        reason: 'main() must catch bootstrap failures and still runApp',
+      );
+      expect(find.byType(Text), findsWidgets);
+    });
+  });
 
   group('main() startup', () {
     testWidgets('happy path: main() boots to onboarding', (tester) async {

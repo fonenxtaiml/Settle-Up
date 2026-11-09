@@ -2,6 +2,7 @@
 // Materialized state = deterministic fold of the op SET (order independent).
 import 'package:meta/meta.dart';
 
+import 'hlc.dart';
 import 'ids.dart';
 import 'models.dart';
 import 'member_order.dart';
@@ -149,4 +150,10 @@ final class LedgerReducer {
 
   /// Immutable snapshot of the current state (safe to hand to the UI).
   LedgerState get state => _engine.state;
+
+  /// Max HLC over the ops applied to entity [id] of [type] in [groupId]
+  /// (null if none). A local write to it must be stamped later
+  /// ([HlcClock.tickAfter]) so it wins last-writer-wins.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      _engine.lastHlcOf(groupId, type, id);
 }

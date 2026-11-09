@@ -114,18 +114,104 @@ abstract final class BalanceCalculator {
     return out;
   }
 
-  /// simplifyDebts ? DebtSimplifier over groupNets : pairwiseDebts.
+  /// simplifyDebts ? DebtSimplifier over groupNets
+  ///               : cancelCycles(pairwiseDebts).
   ///
   /// Per currency in ascending code order. A group without a create op
-  /// uses the pairwise view.
+  /// uses the pairwise view. Both views settle [groupNets] exactly, so a
+  /// group whose nets are all zero suggests nothing either way.
   static List<Transfer> suggestedTransfers(GroupState group) {
     final simplify = group.group?.simplifyDebts ?? false;
-    if (!simplify) return pairwiseDebts(group);
+    if (!simplify) return cancelCycles(pairwiseDebts(group));
     final nets = groupNets(group);
     return [
       for (final c in nets.keys.toList()..sort())
         ...DebtSimplifier.simplify(nets[c]!, c),
     ];
+  }
+
+  /// Removes debts that go round in a circle (a owes b, b owes c, c owes a)
+  /// from [transfers], per currency (SPEC 6.3): while a directed cycle is
+  /// left, subtract its smallest debt from every debt on it and drop the
+  /// ones that reach zero. Nobody's net changes, no pair gets a new debt
+  /// and no debt changes direction or grows; it only shrinks or goes away.
+  /// So when every net is zero (a settled group) nothing is left, and the
+  /// result never asks anyone to pay money that only comes back to them.
+  ///
+  /// Deterministic: cycles are searched depth first from members in id
+  /// order, following debts in id order. Sorted by currency, from, to.
+  static List<Transfer> cancelCycles(List<Transfer> transfers) {
+    // currency -> from -> to -> amount (> 0).
+    final graphs = <String, Map<MemberId, Map<MemberId, int>>>{};
+    for (final t in transfers) {
+      if (t.amount <= 0 || t.from == t.to) continue;
+      final out = graphs
+          .putIfAbsent(t.currency, () => {})
+          .putIfAbsent(t.from, () => {});
+      out[t.to] = (out[t.to] ?? 0) + t.amount;
+    }
+    final result = <Transfer>[];
+    graphs.forEach((currency, graph) {
+      for (var cycle = _findCycle(graph);
+          cycle != null;
+          cycle = _findCycle(graph)) {
+        var least = graph[cycle.last]![cycle.first]!;
+        for (var i = 0; i + 1 < cycle.length; i++) {
+          final x = graph[cycle[i]]![cycle[i + 1]]!;
+          if (x < least) least = x;
+        }
+        for (var i = 0; i < cycle.length; i++) {
+          final from = cycle[i];
+          final to = cycle[(i + 1) % cycle.length];
+          final edges = graph[from]!;
+          final left = edges[to]! - least;
+          if (left == 0) {
+            edges.remove(to);
+          } else {
+            edges[to] = left;
+          }
+        }
+      }
+      graph.forEach((from, edges) {
+        edges.forEach((to, amount) {
+          result.add(
+              Transfer(from: from, to: to, amount: amount, currency: currency));
+        });
+      });
+    });
+    result.sort(_byCurrencyFromTo);
+    return result;
+  }
+
+  /// One directed cycle of [graph] as its members in order (the last one
+  /// owes the first), or null when there is none.
+  static List<MemberId>? _findCycle(Map<MemberId, Map<MemberId, int>> graph) {
+    final done = <MemberId>{};
+    final path = <MemberId>[];
+    final onPath = <MemberId>{};
+
+    List<MemberId>? visit(MemberId m) {
+      path.add(m);
+      onPath.add(m);
+      final next = [...?graph[m]?.keys]..sort();
+      for (final n in next) {
+        if (onPath.contains(n)) return path.sublist(path.indexOf(n));
+        if (done.contains(n)) continue;
+        final found = visit(n);
+        if (found != null) return found;
+      }
+      path.removeLast();
+      onPath.remove(m);
+      done.add(m);
+      return null;
+    }
+
+    for (final m in graph.keys.toList()..sort()) {
+      if (done.contains(m)) continue;
+      final found = visit(m);
+      if (found != null) return found;
+    }
+    return null;
   }
 
   static Map<MemberId, int> _resolvedSums(

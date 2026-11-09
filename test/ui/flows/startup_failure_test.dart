@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/ui/app.dart';
+import 'package:settle_up/ui/screens/startup/startup_error_screen.dart';
 import 'package:settle_up/ui/startup.dart';
 import 'package:settle_up/ui/strings.dart';
 
@@ -15,11 +16,7 @@ void main() {
         load: () async {
           loads++;
           return [
-            startupFailureProvider.overrideWithValue(
-              StartupFailure.from(
-                StateError('Database schema 2 is newer than this app (1)'),
-              ),
-            ),
+            startupFailureProvider.overrideWithValue(StartupFailure.tooNew),
           ];
         },
         app: const SettleUpApp(),
@@ -27,12 +24,12 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text(S.startupNewerTitle), findsOneWidget);
-    await tester.tap(find.text(S.tryAgain));
+    expect(find.text(S.startupTooNew), findsOneWidget);
+    await tester.tap(find.text(S.startupRetry));
     await tester.pump();
     await tester.pump();
     expect(loads, 2);
-    expect(find.text(S.startupNewerTitle), findsOneWidget);
+    expect(find.text(S.startupTooNew), findsOneWidget);
   });
 
   testWidgets('a load that throws still shows the failure screen', (
@@ -46,7 +43,8 @@ void main() {
     );
     await tester.pump();
     await tester.pump();
-    expect(find.text(S.startupFailedTitle), findsOneWidget);
+    expect(find.text(S.startupTitle), findsOneWidget);
+    expect(find.text(S.startupGeneric), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
   });
 }

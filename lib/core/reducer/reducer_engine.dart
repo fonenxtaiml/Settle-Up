@@ -38,20 +38,50 @@ final class _GroupMaterial {
   final Map<ExpenseId, Expense> expenses = {};
 }
 
+/// One group's claim on an entity id: its earliest op and, if any, its
+/// earliest create op.
+final class _Claim {
+  _Claim(this.first);
+  Hlc first;
+  Hlc? firstCreate;
+
+  void add(Operation op) {
+    if (op.hlc < first) first = op.hlc;
+    if (op.kind == OpKind.create) {
+      final c = firstCreate;
+      if (c == null || op.hlc < c) firstCreate = op.hlc;
+    }
+  }
+
+  /// Negative when this claim beats [other]: a group holding a create op
+  /// beats one holding only later edits (whatever their HLC), then the
+  /// earliest create (or, with no create anywhere, the earliest op).
+  int compareTo(_Claim other) {
+    final a = firstCreate, b = other.firstCreate;
+    if (a != null && b == null) return -1;
+    if (a == null && b != null) return 1;
+    return a != null ? a.compareTo(b!) : first.compareTo(other.first);
+  }
+}
+
 /// Decides which group owns a member/expense id when the same id shows up
-/// in several groups (only possible with malicious input). The owner is the
-/// group holding the lowest-HLC op for that id, ties by group id, so every
-/// replica picks the same one whatever the arrival order.
+/// in several groups (only possible with malicious input). A group that
+/// holds a create op for the id wins over groups that only hold updates,
+/// deletes or restores for it, so an op in another group can never take
+/// an entity away from the group it was created in (QA SECURITY-R1-04).
+/// Among groups with a create, the earliest create HLC wins; with no create
+/// anywhere, the earliest op. Ties by group id. The result depends only on
+/// the op set, so every replica picks the same owner whatever the arrival
+/// order.
 final class EntityOwnership {
-  final Map<_ClaimKey, Map<GroupId, Hlc>> _claims = {};
+  final Map<_ClaimKey, Map<GroupId, _Claim>> _claims = {};
 
   /// Records [op]; returns the owner before and after.
   (GroupId?, GroupId) record(Operation op) {
     final key = (op.entityType, op.entityId);
     final byGroup = _claims.putIfAbsent(key, () => {});
     final before = byGroup.isEmpty ? null : _ownerOf(byGroup);
-    final current = byGroup[op.groupId];
-    if (current == null || op.hlc < current) byGroup[op.groupId] = op.hlc;
+    (byGroup[op.groupId] ??= _Claim(op.hlc)).add(op);
     return (before, _ownerOf(byGroup));
   }
 
@@ -60,14 +90,14 @@ final class EntityOwnership {
     return byGroup == null || byGroup.isEmpty ? null : _ownerOf(byGroup);
   }
 
-  static GroupId _ownerOf(Map<GroupId, Hlc> byGroup) {
+  static GroupId _ownerOf(Map<GroupId, _Claim> byGroup) {
     GroupId? best;
-    Hlc? bestHlc;
+    _Claim? bestClaim;
     for (final e in byGroup.entries) {
-      final c = bestHlc == null ? -1 : e.value.compareTo(bestHlc);
+      final c = bestClaim == null ? -1 : e.value.compareTo(bestClaim);
       if (c < 0 || (c == 0 && e.key.compareTo(best!) < 0)) {
         best = e.key;
-        bestHlc = e.value;
+        bestClaim = e.value;
       }
     }
     return best!;
@@ -126,6 +156,11 @@ final class ReducerEngine {
     }
     return changed;
   }
+
+  /// Max HLC over the ops applied to one entity of [groupId], or null when
+  /// none was.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      _entities[_EntityKey(groupId, type, id)]?.maxHlc;
 
   Set<String> applyAll(Iterable<Operation> ops) => {
         for (final op in ops)
