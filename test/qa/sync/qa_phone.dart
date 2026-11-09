@@ -77,13 +77,16 @@ final class QaPhone {
     Duration connectTimeout = const Duration(seconds: 2),
     Duration linkConnectTimeout = const Duration(seconds: 1),
     SyncTransport Function(MemoryTransport t)? wrap,
+    String? deviceId,
   }) async {
     final skew = clock ?? SkewedClock();
     final OpStore opStore = sqlite
         ? SqliteOpStore(':memory:', nowMillis: skew.nowMillis)
         : MemoryOpStore();
     await opStore.open();
-    final ids = PhoneIds(letter);
+    final IdGenerator ids = deviceId == null
+        ? PhoneIds(letter)
+        : _FirstId(deviceId, PhoneIds(letter));
     final settings = await KvSettingsRepository.open(
       opStore,
       defaultDeviceName: deviceName,
@@ -376,5 +379,21 @@ final class CuttableChannel implements FrameChannel {
       return;
     }
     await inner.close();
+  }
+}
+
+/// Returns [first] once (the device id), then delegates.
+final class _FirstId implements IdGenerator {
+  _FirstId(this.first, this.rest);
+  final String first;
+  final IdGenerator rest;
+  bool _used = false;
+
+  @override
+  String newId() {
+    if (_used) return rest.newId();
+    _used = true;
+    rest.newId(); // keep the rest of the sequence unchanged
+    return first;
   }
 }
