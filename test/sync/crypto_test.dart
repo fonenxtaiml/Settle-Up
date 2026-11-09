@@ -402,6 +402,20 @@ void main() {
       await expectAuthFailed(onFirstSealed((f) => [f, f]));
     });
 
+    test('the responder-to-initiator direction rejects replay and tamper',
+        () async {
+      for (final transform in [
+        onFirstSealed((f) => [f, f]),
+        onFirstSealed((f) => [Uint8List.fromList(f)..[20] ^= 0x01]),
+        onFirstSealed((f) => const []),
+      ]) {
+        final (ra, rp) = await syncPair(alex, priya,
+            wrapInitiator: (c) => InterceptChannel(c, transform));
+        expect(ra.failure, SyncFailure.authFailed, reason: ra.message);
+        expect(rp.isSuccess, isFalse);
+      }
+    });
+
     test('reordered frames close the session', () async {
       Uint8List? held;
       await expectAuthFailed((i, frame) {
