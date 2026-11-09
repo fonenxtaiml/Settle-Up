@@ -96,6 +96,7 @@ final class LanPhone {
 AdvertiseInfo info(String name, [List<String> tokens = const []]) =>
     AdvertiseInfo(
       deviceId: deviceIdOf('z'),
+      advertId: 'abcd1234',
       deviceName: name,
       groupTokens: tokens,
     );
@@ -186,7 +187,9 @@ void main() {
       final peer = await alex.find((p) => p.name == "Priya's Pixel");
       expect(peer.transports, {TransportKind.lan});
       expect(peer.sharedGroupIds, [seed.g]);
-      expect(peer.deviceIdPrefix, priya.phone.deviceId.substring(0, 8));
+      // A per-window advert id, never a piece of the device id (SPEC 8.3).
+      expect(peer.advertId, matches(RegExp(r'^[0-9a-f]{8}$')));
+      expect(priya.phone.deviceId, isNot(contains(peer.advertId!)));
 
       final summary = await alex.engine.syncWith(peer);
       expect(summary.sentOps, 7);
@@ -253,7 +256,7 @@ void main() {
 
       final peer = await alex.find((p) => p.name == kGatewayPeerName);
       expect(peer.transports, {TransportKind.lan});
-      expect(peer.deviceIdPrefix, isNull);
+      expect(peer.advertId, isNull);
       expect(peer.sharedGroupIds, isEmpty);
       // Let a few more probes hit the host.
       await Future<void>.delayed(_fast * 4);
@@ -330,7 +333,7 @@ void main() {
       await sub.cancel();
       expect(seen, isNotEmpty);
       expect(seen.map((p) => p.name).toSet(), {"Priya's Pixel"});
-      expect(seen.every((p) => p.deviceIdPrefix != null), isTrue);
+      expect(seen.every((p) => p.advertId != null), isTrue);
     });
   });
 
@@ -338,7 +341,7 @@ void main() {
     test('discover re-emits visible peers well within 15 s', () async {
       final host = lanTransport(mdns: FakeMdns(hub));
       cleanup.add(host.dispose);
-      await host.startAdvertising(info('Host', ['0123456789abcdef']));
+      await host.startAdvertising(info('Host', ['Tk01']));
       final scanner = lanTransport(mdns: FakeMdns(hub));
       cleanup.add(scanner.dispose);
 
@@ -350,8 +353,8 @@ void main() {
       final p = seen.first;
       expect(p.address, '127.0.0.1:${host.boundPort}');
       expect(p.name, 'Host');
-      expect(p.groupTokens, {'0123456789abcdef'});
-      expect(p.deviceIdPrefix, deviceIdOf('z').substring(0, 8));
+      expect(p.groupTokens, {'Tk01'});
+      expect(p.advertId, 'abcd1234');
     });
 
     test('discover hides our own advert and stops browsing on cancel',
@@ -396,9 +399,9 @@ void main() {
       final inSub = host.inbound.listen(inbound.add);
       cleanup.add(inSub.cancel);
 
-      await host.startAdvertising(info('Host', ['0123456789abcdef']));
+      await host.startAdvertising(info('Host', ['Tk01']));
       final port = host.boundPort!;
-      expect(mdns.current!.attributes['t'], '0123456789abcdef');
+      expect(mdns.current!.attributes['t'], 'Tk01');
 
       final client = lanTransport(mdns: FakeMdns(FakeMdnsHub()));
       cleanup.add(client.dispose);
@@ -416,9 +419,9 @@ void main() {
       expect(fromClient.current, [1]);
 
       // New token window: same server, same connection, new TXT.
-      await host.startAdvertising(info('Host', ['fedcba9876543210']));
+      await host.startAdvertising(info('Host', ['Tk02']));
       expect(host.boundPort, port);
-      expect(mdns.current!.attributes['t'], 'fedcba9876543210');
+      expect(mdns.current!.attributes['t'], 'Tk02');
       expect(mdns.current!.port, port);
       await ch.send(Uint8List.fromList([2]));
       expect(await fromClient.moveNext(), isTrue);

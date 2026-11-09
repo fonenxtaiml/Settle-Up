@@ -6,6 +6,7 @@ import 'dart:io' show SocketException;
 import 'dart:typed_data';
 
 import '../../core/models.dart';
+import '../crypto/tokens.dart';
 import 'hosting_details.dart';
 import 'transport.dart';
 
@@ -54,10 +55,12 @@ final class MemoryTransportHub {
               kind: scanner.kind,
               address: e.key.$2,
               name: e.value.deviceName,
-              deviceIdPrefix: e.value.deviceId.length >= 8
-                  ? e.value.deviceId.substring(0, 8)
-                  : e.value.deviceId,
+              advertId: e.value.advertId,
               groupTokens: e.value.groupTokens.toSet(),
+              windowTag: switch (e.value.tokenWindow) {
+                final w? => w % DiscoveryTokens.windowTagModulus,
+                null => null,
+              },
             ),
       ];
 }
@@ -204,6 +207,10 @@ final class MemoryTransport implements SyncTransport, HostingDetails {
 
   @override
   Future<String?> wifiName() async => null;
+
+  /// Hub addresses are names, not IP addresses: every one is in-process.
+  @override
+  bool isLinkHost(String address) => true;
 
   void _checkAlive() {
     if (_disposed) throw StateError('MemoryTransport disposed');

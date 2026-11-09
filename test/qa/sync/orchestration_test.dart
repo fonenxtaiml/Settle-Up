@@ -391,8 +391,5 @@ void main() {
         reason: 'the host refused the same phone: $retry',
       );
     },
-    skip:
-        'QA SYNC-R1-05: host rejects the same phone as "busy: Syncing with '
-        'another phone" until the dead session idles out (20 s)',
   );
 }

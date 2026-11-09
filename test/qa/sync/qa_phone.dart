@@ -19,6 +19,7 @@ import 'package:settle_up/data/sqlite_op_store.dart';
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/sync/protocol/session.dart';
 import 'package:settle_up/sync/sync_engine.dart';
+import 'package:settle_up/sync/transport/hosting_details.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
@@ -310,7 +311,7 @@ Future<SyncSummary> syncByLink(QaPhone from, QaPhone to) async {
 /// Delegates to a [MemoryTransport]; [cut] turns every channel this side
 /// opened into a black hole (no frames either way, no close): the peer
 /// sees a half-open connection, like a phone that walked out of range.
-final class CuttableTransport implements SyncTransport {
+final class CuttableTransport implements SyncTransport, HostingDetails {
   CuttableTransport(this.inner);
   final MemoryTransport inner;
   final List<CuttableChannel> channels = [];
@@ -320,6 +321,15 @@ final class CuttableTransport implements SyncTransport {
       c.cut = true;
     }
   }
+
+  // Transparent for host mode and connect links, like the transport it
+  // wraps (SPEC 8.6: only hosts the transport accepts are dialed).
+  @override
+  Future<List<String>> hostAddresses() => inner.hostAddresses();
+  @override
+  Future<String?> wifiName() => inner.wifiName();
+  @override
+  bool isLinkHost(String address) => inner.isLinkHost(address);
 
   @override
   TransportKind get kind => inner.kind;

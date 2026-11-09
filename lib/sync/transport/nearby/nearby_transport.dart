@@ -276,7 +276,7 @@ final class NearbyTransport implements SyncTransport {
     final info = _info;
     if (info != null) return NearbyEndpointName.of(info).encode();
     return const NearbyEndpointName(
-      deviceIdPrefix: '',
+      advertId: '',
       deviceName: '',
       groupTokens: [],
     ).encode();

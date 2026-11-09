@@ -122,9 +122,6 @@ void main() {
                 'without shared groups',
           );
         },
-        skip:
-            'QA SYNC-R1-02: discovery tokens only match within one '
-            '10-minute window, so a skewed clock hides shared groups',
       );
     }
   });
@@ -158,9 +155,6 @@ void main() {
       );
       expect(priya.canonical, alex.canonical);
     },
-    skip:
-        'QA SYNC-R1-03: simultaneous mutual sync makes both phones reject '
-        'each other as busy',
   );
 
   test(
@@ -190,9 +184,6 @@ void main() {
       );
       expect(priya.engine.status.session, isA<SessionCompleted>());
     },
-    skip:
-        'QA SYNC-R1-04: a drop after the peer BYE makes the responder '
-        'record partial/connectionLost for a complete sync',
   );
 
   group('SYNC-R1-06: phones set up within the same minute', () {
@@ -237,9 +228,6 @@ void main() {
         expect(peer.sharedGroupIds, [seed.g]);
         expect((await alex.engine.syncWith(peer)).sentOps, 4);
       },
-      skip:
-          'QA SYNC-R1-06: discovery treats a phone whose device id shares '
-          'the UUIDv7 time prefix as "self" and hides it',
     );
   });
 
@@ -294,9 +282,6 @@ void main() {
                 '$name: the peer shows "Pair" and tap-to-sync is refused',
           );
         },
-        skip:
-            'QA SYNC-R1-07: with more groups than the advert holds '
-            '(Nearby 4, BLE/LAN 16), a shared group is often not advertised',
       );
     }
   });
