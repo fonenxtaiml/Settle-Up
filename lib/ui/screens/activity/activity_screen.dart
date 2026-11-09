@@ -1,10 +1,12 @@
 // Activity: every change in every group plus the sync sessions, newest
-// first, by day, with filters.
+// first, by day, with filters. With a group id, the same feed for one
+// group (SPEC 1.2 #10), pushed from the group's menu.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/activity.dart';
+import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
 import '../../../theme/tokens.dart';
@@ -19,7 +21,10 @@ import '../common.dart';
 enum ActivityFilter { all, expenses, payments, syncs }
 
 class ActivityScreen extends ConsumerStatefulWidget {
-  const ActivityScreen({super.key});
+  const ActivityScreen({super.key, this.groupId});
+
+  /// Only this group's changes (no sync sessions: those span groups).
+  final GroupId? groupId;
 
   @override
   ConsumerState<ActivityScreen> createState() => _ActivityScreenState();
@@ -61,15 +66,22 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activity = ref.watch(activityProvider(null));
-    final history = ref.watch(syncHistoryProvider).value ?? const [];
+    final groupId = widget.groupId;
+    final activity = ref.watch(activityProvider(groupId));
+    final history = groupId != null
+        ? const <SyncRecord>[]
+        : ref.watch(syncHistoryProvider).value ?? const <SyncRecord>[];
     final snap = ref.watch(ledgerProvider).value;
     final me = ref.watch(profileProvider).value?.personId;
     final now = ref.watch(clockProvider)();
+    final group = groupId == null ? null : snap?.state.groups[groupId];
 
     return Scaffold(
       appBar: screenAppBar(
-        title: const Text(S.activityTitle),
+        leading: groupId == null ? null : const BackArrow(),
+        title: group == null || me == null
+            ? const Text(S.activityTitle)
+            : AppBarTitle(S.activityTitle, subtitle: groupTitle(group, me)),
         actions: [
           IconButton(
             onPressed: () => context.push(Routes.search),
@@ -105,6 +117,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             children: [
               _Filters(
                 value: _filter,
+                withSyncs: groupId == null,
                 onChanged: (f) => setState(() => _filter = f),
               ),
               if (items.isEmpty)
@@ -144,9 +157,14 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 }
 
 class _Filters extends StatelessWidget {
-  const _Filters({required this.value, required this.onChanged});
+  const _Filters({
+    required this.value,
+    required this.onChanged,
+    this.withSyncs = true,
+  });
 
   final ActivityFilter value;
+  final bool withSyncs;
   final ValueChanged<ActivityFilter> onChanged;
 
   @override
@@ -162,18 +180,19 @@ class _Filters extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: Space.screen),
       child: Row(
         children: [
-          for (final f in ActivityFilter.values) ...[
-            if (f != ActivityFilter.all) const SizedBox(width: Space.sm),
-            ChoiceChip(
-              label: Text(labels[f]!),
-              selected: f == value,
-              showCheckmark: false,
-              onSelected: (_) {
-                Haptics.selection(context);
-                onChanged(f);
-              },
-            ),
-          ],
+          for (final f in ActivityFilter.values)
+            if (withSyncs || f != ActivityFilter.syncs) ...[
+              if (f != ActivityFilter.all) const SizedBox(width: Space.sm),
+              ChoiceChip(
+                label: Text(labels[f]!),
+                selected: f == value,
+                showCheckmark: false,
+                onSelected: (_) {
+                  Haptics.selection(context);
+                  onChanged(f);
+                },
+              ),
+            ],
         ],
       ),
     );

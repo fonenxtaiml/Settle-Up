@@ -43,6 +43,7 @@ abstract final class Routes {
   static String group(String gid) => '/groups/$gid';
   static String editGroup(String gid) => '/groups/$gid/edit';
   static String members(String gid) => '/groups/$gid/members';
+  static String groupActivity(String gid) => '/groups/$gid/activity';
   static String invite(String gid) => '/groups/$gid/invite';
   static String claim(String gid) => '/groups/$gid/claim';
   static String newExpense({String? groupId, String? personId}) => Uri(
@@ -176,6 +177,11 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: 'members',
             builder: (context, state) =>
                 MembersScreen(groupId: state.pathParameters['gid']!),
+          ),
+          GoRoute(
+            path: 'activity',
+            builder: (context, state) =>
+                ActivityScreen(groupId: state.pathParameters['gid']),
           ),
           GoRoute(
             path: 'invite',
