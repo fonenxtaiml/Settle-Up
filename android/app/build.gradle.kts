@@ -36,16 +36,13 @@ android {
     }
 
     defaultConfig {
-        // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "app.settleup.settle_up"
-        // You can update the following values to match your application needs.
-        // For more information, see: https://flutter.dev/to/review-gradle-config.
+        // Final store id (SPEC 9.1), the same as the iOS bundle id. It can
+        // never change after the first Play upload. The Kotlin namespace
+        // above is separate and stays as it is.
+        applicationId = "app.settleup.settleup"
         minSdk = 26 // LocalOnlyHotspot (P1); bluetooth_low_energy needs 24
         targetSdk = 36 // NOT 37: Android 17 local-network permission is unverified
-        // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
-        // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
-        // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
-        // flag during build.
+        // From `version:` in pubspec.yaml (name+code).
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }

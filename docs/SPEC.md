@@ -3287,7 +3287,7 @@ android {
     namespace = "app.settleup.settle_up"
     compileSdk = 36
     defaultConfig {
-        applicationId = "app.settleup.settle_up"   // codename; final store id chosen before release
+        applicationId = "app.settleup.settleup"   // final store id, same as the iOS bundle id; never change it after the first upload
         minSdk = 26          // LocalOnlyHotspot (P1); bluetooth_low_energy needs 24
         targetSdk = 36       // NOT 37: Android 17 local-network permission (ACCESS_LOCAL_NETWORK) is unverified
     }
