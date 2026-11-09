@@ -11,16 +11,17 @@ import 'package:settle_up/core/split.dart';
 const int kBaseMs = 1794182400000;
 
 final class FakeDevice {
-  FakeDevice(this.deviceId, {int skewMs = 0, int Function()? now})
-      : _skewMs = skewMs {
+  FakeDevice(this.deviceId, {this.skewMs = 0, int Function()? now}) {
     clock = HlcClock(
       deviceId: deviceId,
-      nowMillis: now ?? () => wallMs + _skewMs,
+      nowMillis: now ?? () => wallMs + skewMs,
     );
   }
 
   final DeviceId deviceId;
-  final int _skewMs;
+
+  /// How far this device's wall clock is off true time.
+  final int skewMs;
   late final HlcClock clock;
 
   /// Shared simulated wall clock (true time); devices add their own skew.
@@ -36,6 +37,7 @@ final class FakeDevice {
     }
     if (max != null) clock.receive(max);
   }
+
   int _opSeq = 0;
 
   Operation op(
@@ -94,7 +96,7 @@ final class FakeDevice {
         MemberFields.displayName: name,
         MemberFields.personId: personId ?? 'person-$m',
         MemberFields.createdAt: createdAt ?? clock.last.millis,
-        if (claimedBy != null) MemberFields.deviceId: claimedBy,
+        MemberFields.deviceId: ?claimedBy,
       });
 
   Operation updateMember(GroupId g, MemberId m, Map<String, Object?> fields) =>
@@ -131,7 +133,7 @@ final class FakeDevice {
       ExpenseFields.money: money.toJson(),
       ExpenseFields.createdBy: createdBy,
       ExpenseFields.createdAt: hlc.millis,
-      if (notes != null) ExpenseFields.notes: notes,
+      ExpenseFields.notes: ?notes,
       if (method != null) ExpenseFields.paymentMethod: method.name,
     }, hlc: hlc);
   }
