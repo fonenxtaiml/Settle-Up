@@ -96,7 +96,7 @@ void main() {
         () {
       expect(TextRules.clean('Bob\u202E5000 diap'), 'Bob5000 diap');
       expect(TextRules.clean('\u2066Al\u2069ex\u200F'), 'Alex');
-      expect(TextRules.clean('Al\u0000e\u0007x\u00AD'), 'Ale\u00ADx');
+      expect(TextRules.clean('Al\u0000e\u0007x\u00AD'), 'Alex\u00AD');
       expect(TextRules.clean('\u200B\u200B'), '');
       // Family emoji and a Devanagari conjunct keep their ZWJ.
       const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
@@ -308,6 +308,16 @@ void main() {
       await p.restart();
       expect(p.deviceId, id);
       expect(p.settings.device.deviceName, "Alex's Pixel");
+    });
+
+    test('a missing device row on a phone with ops keeps its id', () async {
+      final p = await _Phone.create();
+      addTearDown(() => p.ledger.close());
+      await _trip(p);
+      final id = p.deviceId;
+      await p.store.setKv(KvKeys.device, null);
+      await p.restart();
+      expect(p.deviceId, id);
     });
 
     test('without hlc.last a corrupt device row gets a new id', () async {
