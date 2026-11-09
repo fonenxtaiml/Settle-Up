@@ -68,13 +68,27 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     _simplify = g.simplifyDebts;
   }
 
-  void _addPerson() {
+  /// "Priya is already in this group" when the typed name repeats one.
+  String? _personError;
+
+  /// Adds the typed person; false when the name is already in the list.
+  bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
-    if (n.isEmpty) return;
+    if (n.isEmpty) return true;
+    final dup = duplicateName(n, [
+      ..._newNames,
+      for (final p in _existing) ?people[p],
+    ]);
+    if (dup != null) {
+      setState(() => _personError = S.alreadyInGroup(dup));
+      return false;
+    }
     setState(() {
       _newNames.add(n);
       _person.clear();
+      _personError = null;
     });
+    return true;
   }
 
   Future<void> _save(Group? original, Map<PersonId, String> people) async {
@@ -84,6 +98,12 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       Haptics.invalid(context);
       return;
     }
+    // A name still in the field joins the list; one that repeats a name
+    // already there is that person, so it is not added twice.
+    if (_isNew && _person.text.trim().isNotEmpty && !_addPerson(people)) {
+      _person.clear();
+      _personError = null;
+    }
     setState(() => _saving = true);
     final ledger = ref.read(ledgerRepositoryProvider);
     final profile = ref.read(profileProvider).value!;
@@ -92,7 +112,6 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     GroupId? created;
     final ok = await runGuarded(context, () async {
       if (_isNew) {
-        if (_person.text.trim().isNotEmpty) _addPerson();
         created = await ledger.createGroup(
           NewGroup(
             name: name,
@@ -328,11 +347,15 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
                 label: S.personName,
                 hintText: S.personNameHint,
                 controller: _person,
+                maxLength: kMemberNameMax,
+                errorText: _personError,
                 textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _addPerson(),
-                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _addPerson(people),
+                onChanged: (_) => setState(() => _personError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: _person.text.trim().isEmpty ? null : _addPerson,
+                  onPressed: _person.text.trim().isEmpty
+                      ? null
+                      : () => _addPerson(people),
                   style: KitButtonStyles.small(context),
                   child: const Text(S.addPerson),
                 ),

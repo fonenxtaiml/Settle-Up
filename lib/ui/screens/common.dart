@@ -193,6 +193,7 @@ Future<String?> promptText(
   String? hint,
   String? helper,
   String confirmLabel = S.save,
+  int? maxLength,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -201,6 +202,7 @@ Future<String?> promptText(
     hint: hint,
     helper: helper,
     confirmLabel: confirmLabel,
+    maxLength: maxLength,
   ),
 );
 
@@ -211,6 +213,7 @@ class _TextPrompt extends StatefulWidget {
     required this.confirmLabel,
     this.hint,
     this.helper,
+    this.maxLength,
   });
 
   final String title;
@@ -219,12 +222,19 @@ class _TextPrompt extends StatefulWidget {
   final String? helper;
   final String confirmLabel;
 
+  /// Caps the text (and the initial value) at this many characters.
+  final int? maxLength;
+
   @override
   State<_TextPrompt> createState() => _TextPromptState();
 }
 
 class _TextPromptState extends State<_TextPrompt> {
-  late final _controller = TextEditingController(text: widget.initial);
+  late final _controller = TextEditingController(
+    text: widget.maxLength == null
+        ? widget.initial
+        : widget.initial.characters.take(widget.maxLength!).toString(),
+  );
 
   @override
   void dispose() {
@@ -244,6 +254,7 @@ class _TextPromptState extends State<_TextPrompt> {
     content: TextField(
       controller: _controller,
       autofocus: true,
+      maxLength: widget.maxLength,
       textCapitalization: TextCapitalization.words,
       decoration: InputDecoration(
         hintText: widget.hint,
@@ -403,4 +414,20 @@ Set<ExpenseId> _findDuplicatePayments(GroupState g) {
     }
   }
   return out;
+}
+
+/// SPEC 5.16: member display names are 1..40 characters.
+const int kMemberNameMax = 40;
+
+/// The existing name [candidate] would duplicate (case and spaces
+/// ignored: "priya " is "Priya"), or null.
+String? duplicateName(String candidate, Iterable<String> existing) {
+  String key(String n) =>
+      n.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  final k = key(candidate);
+  if (k.isEmpty) return null;
+  for (final e in existing) {
+    if (key(e) == k) return e.trim();
+  }
+  return null;
 }

@@ -13,6 +13,7 @@ import 'dart:developer' as developer;
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:characters/characters.dart';
 import 'package:collection/collection.dart';
 
 import '../core/categories.dart';
@@ -320,6 +321,18 @@ final class Ledger implements LedgerRepository, SyncStore {
     return t;
   }
 
+  /// SPEC 5.16: a member display name is 1..40 characters.
+  static const int maxMemberName = 40;
+
+  static String _memberName(String value, String field) {
+    final t = _text(value, field);
+    if (t.characters.length > maxMemberName) {
+      _fail(LedgerErrorCode.invalidInput,
+          '$field is longer than $maxMemberName characters');
+    }
+    return t;
+  }
+
   static final RegExp _currencyPattern = RegExp(r'^[A-Z]{3}$');
 
   static String _currency(String code) {
@@ -412,7 +425,7 @@ final class Ledger implements LedgerRepository, SyncStore {
         final name = _text(draft.name, 'name');
         final currency = _currency(draft.currency);
         final newNames = [
-          for (final n in draft.newMemberNames) _text(n, 'member name'),
+          for (final n in draft.newMemberNames) _memberName(n, 'member name'),
         ];
         final existing = <PersonId, String>{};
         for (final p in draft.existingPeople) {
@@ -540,8 +553,16 @@ final class Ledger implements LedgerRepository, SyncStore {
   }) =>
       _serial(() async {
         final gs = _liveGroup(groupId);
-        final name = _text(displayName, 'displayName');
+        final name = _memberName(displayName, 'displayName');
         final person = personId == null ? null : _text(personId, 'personId');
+        // A 1:1 group stays two people.
+        if (gs.group?.isDirect ?? false) {
+          final known = person != null && gs.memberForPerson(person) != null;
+          if (!known && gs.activeMembers.length >= 2) {
+            _fail(LedgerErrorCode.invalidInput,
+                'A 1:1 group has exactly two people');
+          }
+        }
         if (person != null) {
           final existing = gs.memberForPerson(person);
           if (existing != null && _isActive(gs, existing)) return existing.id;
@@ -565,7 +586,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   ) =>
       _serial(() async {
         final member = _member(_liveGroup(groupId), memberId);
-        final displayName = _text(name, 'name');
+        final displayName = _memberName(name, 'name');
         if (displayName == member.displayName) return;
         await _commit(_factory.batch()
           ..update(groupId, EntityType.member, memberId,
