@@ -535,9 +535,6 @@ void main() {
               'plugin call and hides the reason from the user',
         );
       },
-      skip:
-          'QA PLATFORM-R1-09: Nearby reports ready on phones without '
-          'Google Play services',
     );
   });
 }
