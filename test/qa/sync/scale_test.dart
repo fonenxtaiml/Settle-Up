@@ -94,8 +94,9 @@ void main() {
       final sw = Stopwatch()..start();
       final sub = alex.engine.watchStatus().listen((s) {
         final session = s.session;
-        if (session is SessionActive)
+        if (session is SessionActive) {
           progress.add((sw.elapsed, session.progress));
+        }
       });
 
       final summary = await alex.engine

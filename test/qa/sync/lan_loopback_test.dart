@@ -1,6 +1,5 @@
 // QA SYNC-R1: the same multi-phone scenarios over the real LanTransport on
 // 127.0.0.1 (real TCP sockets and framing; mDNS faked).
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
