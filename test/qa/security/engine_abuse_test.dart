@@ -102,6 +102,51 @@ void main() {
     },
   );
 
+  test('a stranger holding the pending-handshake slots does not lock friends '
+      'out of the host', () async {
+    // SECURITY-R1-10 neighbour: kMaxPendingInbound (4) silent
+    // connections are held open; a friend's handshake evicts the
+    // oldest one.
+    for (var i = 0; i < kMaxPendingInbound; i++) {
+      final c = await dial('mallory-$i');
+      addTearDown(c.close);
+    }
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    final r = await honestSync();
+    expect(r.isSuccess, isTrue, reason: '${r.failure}: ${r.message}');
+  });
+
+  test('a stranger reconnecting in a tight loop does not lock friends out of '
+      'the host', () async {
+    // SECURITY-R2-03. Each new pre-auth connection evicts the oldest
+    // unauthenticated one, and the friend's handshake is unauthenticated
+    // until AUTH, so a stranger who opens connections faster than one
+    // handshake takes keeps evicting it.
+    var flooding = true;
+    final opened = <FrameChannel>[];
+    final flood = () async {
+      var i = 0;
+      while (flooding) {
+        // A burst per event-loop turn, as a LAN client easily manages.
+        for (var k = 0; k < 8; k++) {
+          opened.add(await dial('mallory-${i++}'));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 1));
+      }
+    }();
+    addTearDown(() async {
+      flooding = false;
+      await flood;
+      for (final c in opened) {
+        await c.close();
+      }
+    });
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    final r = await honestSync();
+    flooding = false;
+    expect(r.isSuccess, isTrue, reason: '${r.failure}: ${r.message}');
+  }, skip: 'SECURITY-R2-03');
+
   test('garbage before HELLO ends only that connection', () async {
     final ch = await dial('mallory');
     final frames = <Uint8List>[];
