@@ -8,7 +8,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/csv_export.dart';
 import 'package:settle_up/core/hlc.dart';
-import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
@@ -17,9 +16,12 @@ import 'package:settle_up/data/repositories.dart';
 import '../../sync/support/phone.dart';
 
 Matcher get invalidInput => throwsA(
-      isA<LedgerException>()
-          .having((e) => e.code, 'code', LedgerErrorCode.invalidInput),
-    );
+  isA<LedgerException>().having(
+    (e) => e.code,
+    'code',
+    LedgerErrorCode.invalidInput,
+  ),
+);
 
 void main() {
   late TestPhone phone;
@@ -36,81 +38,100 @@ void main() {
     String description = 'Dinner',
     String notes = '',
     int total = 1000,
-  }) =>
-      ExpenseDraft(
-        groupId: s.g,
-        description: description,
-        total: total,
-        currency: 'INR',
-        paidBy: SplitSpec.single(s.a, total),
-        owedBy: SplitSpec.equal([s.a, s.b]),
-        category: 'food.dining',
-        date: utcFromMillis(kBaseMs),
-        notes: notes,
-      );
+  }) => ExpenseDraft(
+    groupId: s.g,
+    description: description,
+    total: total,
+    currency: 'INR',
+    paidBy: SplitSpec.single(s.a, total),
+    owedBy: SplitSpec.equal([s.a, s.b]),
+    category: 'food.dining',
+    date: utcFromMillis(kBaseMs),
+    notes: notes,
+  );
 
   NewGroup newGroup(String name, {List<String> members = const []}) => NewGroup(
-        name: name,
-        type: GroupType.trip,
-        currency: 'INR',
-        newMemberNames: members,
-      );
+    name: name,
+    type: GroupType.trip,
+    currency: 'INR',
+    newMemberNames: members,
+  );
 
   group('limits at the boundary are accepted', () {
-    test('group name of 60, member of 40, description of 120, notes of 1000',
-        () async {
-      final g = await phone.ledger
-          .createGroup(newGroup('g' * 60, members: ['m' * 40]));
-      expect(phone.state.groups[g]!.group!.name.length, 60);
-      final id = await phone.ledger
-          .addExpense(draft(description: 'd' * 120, notes: 'n' * 1000));
-      final e = phone.state.groups[s.g]!.expenses[id]!;
-      expect(e.description.length, 120);
-      expect(e.notes.length, 1000);
-    });
+    test(
+      'group name of 60, member of 40, description of 120, notes of 1000',
+      () async {
+        final g = await phone.ledger.createGroup(
+          newGroup('g' * 60, members: ['m' * 40]),
+        );
+        expect(phone.state.groups[g]!.group!.name.length, 60);
+        final id = await phone.ledger.addExpense(
+          draft(description: 'd' * 120, notes: 'n' * 1000),
+        );
+        final e = phone.state.groups[s.g]!.expenses[id]!;
+        expect(e.description.length, 120);
+        expect(e.notes.length, 1000);
+      },
+    );
 
     test('total of 1 and Money.maxMinor', () async {
       await phone.ledger.addExpense(draft(total: 1));
       await phone.ledger.addExpense(draft(total: Money.maxMinor));
       await expectLater(phone.ledger.addExpense(draft(total: 0)), invalidInput);
       await expectLater(
-          phone.ledger.addExpense(draft(total: Money.maxMinor + 1)),
-          invalidInput);
-      await expectLater(phone.ledger.addExpense(draft(total: -5)), invalidInput);
+        phone.ledger.addExpense(draft(total: Money.maxMinor + 1)),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.addExpense(draft(total: -5)),
+        invalidInput,
+      );
     });
   });
 
   group('trimming', () {
     test('names and descriptions are stored trimmed', () async {
-      final g = await phone.ledger
-          .createGroup(newGroup('  Goa trip \n', members: ['\t Priya  ']));
+      final g = await phone.ledger.createGroup(
+        newGroup('  Goa trip \n', members: ['\t Priya  ']),
+      );
       final gs = phone.state.groups[g]!;
       expect(gs.group!.name, 'Goa trip');
       expect(gs.members.values.map((m) => m.displayName), contains('Priya'));
-      final id = await phone.ledger
-          .addExpense(draft(description: '  Taxi  ', notes: '  late  '));
+      final id = await phone.ledger.addExpense(
+        draft(description: '  Taxi  ', notes: '  late  '),
+      );
       final e = phone.state.groups[s.g]!.expenses[id]!;
       expect(e.description, 'Taxi');
       expect(e.notes, 'late');
     });
 
     test('whitespace-only names are refused', () async {
-      await expectLater(phone.ledger.createGroup(newGroup('   ')), invalidInput);
       await expectLater(
-          phone.ledger.addMember(s.g, displayName: '    '),
-          invalidInput);
+        phone.ledger.createGroup(newGroup('   ')),
+        invalidInput,
+      );
       await expectLater(
-          phone.ledger.addExpense(draft(description: '\n\t')), invalidInput);
+        phone.ledger.addMember(s.g, displayName: ' \u00A0\u2003 '),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.addExpense(draft(description: '\n\t')),
+        invalidInput,
+      );
     });
   });
 
   group(
     'SPEC 5.16 limits enforced by the Ledger',
-    skip: 'QA SECURITY-R1-05: Ledger does not enforce the SPEC 5.16 length '
+    skip:
+        'QA SECURITY-R1-05: Ledger does not enforce the SPEC 5.16 length '
         'and member-count limits',
     () {
       test('group name over 60 characters', () async {
-        await expectLater(phone.ledger.createGroup(newGroup('g' * 61)), invalidInput);
+        await expectLater(
+          phone.ledger.createGroup(newGroup('g' * 61)),
+          invalidInput,
+        );
         await expectLater(
           phone.ledger.updateGroup(s.g, GroupPatch(name: 'g' * 61)),
           invalidInput,
@@ -123,20 +144,27 @@ void main() {
           invalidInput,
         );
         await expectLater(
-            phone.ledger.addMember(s.g, displayName: 'm' * 41), invalidInput);
+          phone.ledger.addMember(s.g, displayName: 'm' * 41),
+          invalidInput,
+        );
         await expectLater(
-            phone.ledger.renameMember(s.g, s.b, 'm' * 41), invalidInput);
+          phone.ledger.renameMember(s.g, s.b, 'm' * 41),
+          invalidInput,
+        );
       });
 
       test('description over 120 characters', () async {
         await expectLater(
-            phone.ledger.addExpense(draft(description: 'd' * 121)),
-            invalidInput);
+          phone.ledger.addExpense(draft(description: 'd' * 121)),
+          invalidInput,
+        );
       });
 
       test('notes over 1000 characters', () async {
         await expectLater(
-            phone.ledger.addExpense(draft(notes: 'n' * 1001)), invalidInput);
+          phone.ledger.addExpense(draft(notes: 'n' * 1001)),
+          invalidInput,
+        );
       });
 
       test('a 51st active member', () async {
@@ -145,37 +173,42 @@ void main() {
         }
         expect(phone.state.groups[s.g]!.activeMembers, hasLength(50));
         await expectLater(
-            phone.ledger.addMember(s.g, displayName: 'One too many'),
-            invalidInput);
+          phone.ledger.addMember(s.g, displayName: 'One too many'),
+          invalidInput,
+        );
       });
 
-      test('a megabyte description is refused, not written to the op log',
-          () async {
-        final before = phone.opCount(s.g);
-        await expectLater(
+      test(
+        'a megabyte description is refused, not written to the op log',
+        () async {
+          final before = phone.opCount(s.g);
+          await expectLater(
             phone.ledger.addExpense(draft(description: 'x' * (1 << 20))),
-            invalidInput);
-        expect(phone.opCount(s.g), before);
-      });
+            invalidInput,
+          );
+          expect(phone.opCount(s.g), before);
+        },
+      );
     },
   );
 
   group(
     'control and bidi override characters',
-    skip: 'QA SECURITY-R1-06: names and descriptions accept control, '
+    skip:
+        'QA SECURITY-R1-06: names and descriptions accept control, '
         'zero-width and bidi override characters',
     () {
-      // U+202E RIGHT-TO-LEFT OVERRIDE makes "Bob‮evil" render as
+      // U+202E RIGHT-TO-LEFT OVERRIDE makes "Bob\u202Eevil" render as
       // "Bobvile" and flips the words after it in the same line, e.g.
       // "{name} paid {name}" in the activity feed.
       const hostile = <String, String>{
-        'RLO': 'Bob‮5000 diap',
-        'LRO': '‭Alex',
-        'RLI': 'Al⁧ex',
+        'RLO': 'Bob\u202E5000 diap',
+        'LRO': '\u202DAlex',
+        'RLI': 'Al\u2067ex',
         'NUL': 'Al\u0000ex',
         'BEL': 'Al\u0007ex',
         'newline inside': 'Al\nex',
-        'zero width only': '​​',
+        'zero width only': '\u200B\u200B',
       };
       for (final MapEntry(key: what, value: name) in hostile.entries) {
         test('member name with $what is refused or cleaned', () async {
@@ -194,29 +227,33 @@ void main() {
         });
       }
 
-      test('group name and description with RLO are refused or cleaned',
-          () async {
-        Future<String> storedGroupName() async {
-          final g =
-              await phone.ledger.createGroup(newGroup('Trip‮pirt'));
-          return phone.state.groups[g]!.group!.name;
-        }
-
-        Future<String> storedDescription() async {
-          final id = await phone.ledger
-              .addExpense(draft(description: 'Taxi‮00.005'));
-          return phone.state.groups[s.g]!.expenses[id]!.description;
-        }
-
-        for (final read in [storedGroupName, storedDescription]) {
-          try {
-            final v = await read();
-            expect(v.runes.any(_isControlOrBidi), isFalse);
-          } on LedgerException catch (e) {
-            expect(e.code, LedgerErrorCode.invalidInput);
+      test(
+        'group name and description with RLO are refused or cleaned',
+        () async {
+          Future<String> storedGroupName() async {
+            final g = await phone.ledger.createGroup(
+              newGroup('Trip\u202Epirt'),
+            );
+            return phone.state.groups[g]!.group!.name;
           }
-        }
-      });
+
+          Future<String> storedDescription() async {
+            final id = await phone.ledger.addExpense(
+              draft(description: 'Taxi\u202E00.005'),
+            );
+            return phone.state.groups[s.g]!.expenses[id]!.description;
+          }
+
+          for (final read in [storedGroupName, storedDescription]) {
+            try {
+              final v = await read();
+              expect(v.runes.any(_isControlOrBidi), isFalse);
+            } on LedgerException catch (e) {
+              expect(e.code, LedgerErrorCode.invalidInput);
+            }
+          }
+        },
+      );
     },
   );
 
@@ -226,25 +263,29 @@ void main() {
       required String description,
     }) async {
       final m = await phone.ledger.addMember(s.g, displayName: member);
-      await phone.ledger.addExpense(ExpenseDraft(
-        groupId: s.g,
-        description: description,
-        total: 1000,
-        currency: 'INR',
-        paidBy: SplitSpec.single(m, 1000),
-        owedBy: SplitSpec.equal([s.a, m]),
-        category: 'food.dining',
-        date: utcFromMillis(kBaseMs),
-      ));
-      await phone.ledger.recordPayment(PaymentDraft(
-        groupId: s.g,
-        from: m,
-        to: s.a,
-        amount: 100,
-        currency: 'INR',
-        method: PaymentMethod.cash,
-        date: utcFromMillis(kBaseMs + 1),
-      ));
+      await phone.ledger.addExpense(
+        ExpenseDraft(
+          groupId: s.g,
+          description: description,
+          total: 1000,
+          currency: 'INR',
+          paidBy: SplitSpec.single(m, 1000),
+          owedBy: SplitSpec.equal([s.a, m]),
+          category: 'food.dining',
+          date: utcFromMillis(kBaseMs),
+        ),
+      );
+      await phone.ledger.recordPayment(
+        PaymentDraft(
+          groupId: s.g,
+          from: m,
+          to: s.a,
+          amount: 100,
+          currency: 'INR',
+          method: PaymentMethod.cash,
+          date: utcFromMillis(kBaseMs + 1),
+        ),
+      );
       return CsvExport.group(phone.state.groups[s.g]!);
     }
 
@@ -295,40 +336,41 @@ void main() {
       });
     }
 
-    test('tab- and CR-led text from a peer (not trimmed) is neutralised',
-        () async {
-      await phone.ledger.addExpense(draft());
-      final template = phone.opsOf(s.g).last;
-      const peer = 'pppppppp-0000-7000-8000-000000000001';
-      final op = Operation(
-        id: 'peer-op-1',
-        groupId: s.g,
-        deviceId: peer,
-        counter: 1,
-        hlc: Hlc(template.hlc.millis + 1, 0, peer),
-        entityType: EntityType.expense,
-        entityId: 'peer-expense',
-        kind: OpKind.create,
-        payload: {
-          ...template.payload,
-          ExpenseFields.description: '\t=1+1',
-        },
-      );
-      await phone.ledger.applyRemote(s.g, [op]);
-      final csv = CsvExport.group(phone.state.groups[s.g]!);
-      expect(csv, contains("'\t=1+1"));
-      expect(csv, isNot(contains(',\t=1+1')));
-    });
+    test(
+      'tab- and CR-led text from a peer (not trimmed) is neutralised',
+      () async {
+        await phone.ledger.addExpense(draft());
+        final template = phone.opsOf(s.g).last;
+        const peer = 'pppppppp-0000-7000-8000-000000000001';
+        final op = Operation(
+          id: 'peer-op-1',
+          groupId: s.g,
+          deviceId: peer,
+          counter: 1,
+          hlc: Hlc(template.hlc.millis + 1, 0, peer),
+          entityType: EntityType.expense,
+          entityId: 'peer-expense',
+          kind: OpKind.create,
+          payload: {...template.payload, ExpenseFields.description: '\t=1+1'},
+        );
+        await phone.ledger.applyRemote(s.g, [op]);
+        final csv = CsvExport.group(phone.state.groups[s.g]!);
+        expect(csv, contains("'\t=1+1"));
+        expect(csv, isNot(contains(',\t=1+1')));
+      },
+    );
 
-    test('the payment line built from a hostile payer name is neutralised',
-        () async {
-      final csv = await csvWith(member: '=1+1', description: 'Lunch');
-      final paid = cells(csv).where((c) => c.contains(' paid ')).toList();
-      expect(paid, isNotEmpty);
-      for (final c in paid) {
-        expect(c, startsWith("'"), reason: c);
-      }
-    });
+    test(
+      'the payment line built from a hostile payer name is neutralised',
+      () async {
+        final csv = await csvWith(member: '=1+1', description: 'Lunch');
+        final paid = cells(csv).where((c) => c.contains(' paid ')).toList();
+        expect(paid, isNotEmpty);
+        for (final c in paid) {
+          expect(c, startsWith("'"), reason: c);
+        }
+      },
+    );
   });
 }
 
