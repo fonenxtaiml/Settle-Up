@@ -158,9 +158,6 @@ void main() {
       );
       expect(priya.canonical, alex.canonical);
     },
-    skip:
-        'QA SYNC-R1-03: simultaneous mutual sync makes both phones reject '
-        'each other as busy',
   );
 
   test(

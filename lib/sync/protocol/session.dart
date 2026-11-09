@@ -100,6 +100,7 @@ final class SessionResult {
     this.peerDeviceId,
     this.verificationCode,
     this.receivedAnyFrame = true,
+    this.peerErrorCode,
   });
 
   final SyncOutcome outcome;
@@ -125,6 +126,9 @@ final class SessionResult {
   /// False when the channel ended before the peer sent anything (probe
   /// connections; the engine does not record those).
   final bool receivedAnyFrame;
+
+  /// The `ERROR.code` the peer ended the session with, if it did.
+  final String? peerErrorCode;
 
   bool get isSuccess => outcome == SyncOutcome.completed;
 
@@ -184,6 +188,8 @@ final class SyncSession {
     DateTime Function()? now,
     this.onProgress,
     this.onLive,
+    this.onPeerHello,
+    this.admit,
     this.peerNameHint = '',
   }) : _now = now ?? DateTime.now;
 
@@ -198,6 +204,15 @@ final class SyncSession {
 
   /// Called once when the session enters LIVE, with the result so far.
   final void Function(SessionResult soFar)? onLive;
+
+  /// Called when the peer's HELLO arrives. Its device id is a claim until
+  /// the AUTH verifies.
+  final void Function(SyncSession session)? onPeerHello;
+
+  /// Called once the peer's AUTH verifies, before any group data is sent:
+  /// the engine decides whether this session may run now (SPEC 8.7.1).
+  /// A non-null result refuses it with `ERROR busy` and that message.
+  final Future<String?> Function(SyncSession session)? admit;
 
   /// Shown until the peer's HELLO arrives (e.g. the discovered name).
   final String peerNameHint;
@@ -228,6 +243,10 @@ final class SyncSession {
   HandshakeKeys? _keys;
   bool _authenticated = false;
   bool _receivedAnyFrame = false;
+  String? _peerErrorCode;
+
+  /// Waiting for the engine to admit this session (after AUTH).
+  bool _admitting = false;
   HelloMessage? _peerHello;
   int _maxFrame = 0;
 
@@ -294,14 +313,14 @@ final class SyncSession {
   }
 
   /// Sends `ERROR cancelled` and closes (outcome cancelled).
-  Future<void> cancel() async {
+  Future<void> cancel({String message = 'Cancelled'}) async {
     if (!_started) {
       _started = true;
       _startedAt = _now();
     }
     await _fail(
       SyncFailure.cancelled,
-      'Cancelled',
+      message,
       sendCode: ErrorCodes.cancelled,
     );
   }
@@ -477,6 +496,7 @@ final class SyncSession {
       throw const ProtocolException(
           ErrorCodes.internal, 'Connected to this phone itself');
     }
+    onPeerHello?.call(this);
     final keys = await _handshake!.onPeerHello(
       peer,
       frame,
@@ -496,6 +516,18 @@ final class SyncSession {
     }
     _authenticated = true;
     _state = SessionState.authenticated;
+    // The engine bounds its own wait; the handshake timer pauses meanwhile.
+    _admitting = true;
+    final String? refusal;
+    try {
+      refusal = await admit?.call(this);
+    } finally {
+      _admitting = false;
+    }
+    if (_finished) return;
+    if (refusal != null) {
+      throw ProtocolException(ErrorCodes.busy, refusal);
+    }
     _phase = SyncPhase.comparing;
     // Buffer local ops from now on (pushed only in LIVE).
     _localOps = store.localOps.listen(_onLocalOp);
@@ -636,10 +668,13 @@ final class SyncSession {
     await _checkComplete();
   }
 
-  Future<void> _onPeerError(ErrorMessage msg) => _fail(
-        failureForErrorCode(msg.code),
-        msg.msg.isEmpty ? 'Peer error: ${msg.code}' : '${msg.code}: ${msg.msg}',
-      );
+  Future<void> _onPeerError(ErrorMessage msg) {
+    _peerErrorCode = msg.code;
+    return _fail(
+      failureForErrorCode(msg.code),
+      msg.msg.isEmpty ? 'Peer error: ${msg.code}' : '${msg.code}: ${msg.msg}',
+    );
+  }
 
   /// Answers the peer's BYE and ends as completed. Everything was sent,
   /// ACKed and said DONE on both sides, so a link that drops before our BYE
@@ -770,7 +805,7 @@ final class SyncSession {
             SessionState.helloSent ||
             SessionState.authSent ||
             SessionState.authenticated:
-        if (now > timings.handshakeTimeout) {
+        if (now > timings.handshakeTimeout && !_admitting) {
           _timeout('No answer from the other phone');
         }
       case SessionState.exchanging:
@@ -863,6 +898,7 @@ final class SyncSession {
         groupIds: sharedGroups,
         verificationCode: verificationCode,
         receivedAnyFrame: _receivedAnyFrame,
+        peerErrorCode: _peerErrorCode,
       );
 
   Future<void> _finishSuccess() async {
