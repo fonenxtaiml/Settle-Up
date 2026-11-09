@@ -444,6 +444,24 @@ abstract final class S {
 
   static const wifi = 'Wi-Fi';
   static const bluetooth = 'Bluetooth';
+  static const radiosAskTitle = 'Allow Bluetooth sync';
+  static const radiosAskBody =
+      'Settle Up needs the Nearby devices permission to find phones over '
+      'Bluetooth, without Wi-Fi.';
+  static const allow = 'Allow';
+  static const radiosDeniedTitle = 'Bluetooth sync is not allowed';
+  static const radiosDeniedBody =
+      'Turn on Nearby devices (and Location on older phones) for Settle Up '
+      'in its app settings to sync over Bluetooth.';
+  static const openSettings = 'Open settings';
+  static const bluetoothOffTitle = 'Bluetooth is off';
+  static const bluetoothOffBody =
+      'Turn it on to sync with phones that are not on your Wi-Fi.';
+  static const turnOnBluetooth = 'Turn on Bluetooth';
+  static const wifiOffTitle = 'Wi-Fi is off';
+  static const wifiOffBody =
+      'Turn on Wi-Fi, or join a friend\'s hotspot, to sync over Wi-Fi.';
+  static const turnOnWifi = 'Turn on Wi-Fi';
   static const pairHint = 'Scan their QR code to join a group';
   static const recentSyncs = 'Recent syncs';
   static String recentLine(String when, String transport) =>
