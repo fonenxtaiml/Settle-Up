@@ -14,7 +14,14 @@ const int kGroupKeyLength = 32;
 
 final class SecureGroupKeyStore implements GroupKeyStore {
   SecureGroupKeyStore([FlutterSecureStorage? storage])
-      : _storage = storage ?? const FlutterSecureStorage();
+      : _storage = storage ?? const FlutterSecureStorage(aOptions: android);
+
+  /// `resetOnError: false`: the plugin's default erases EVERY entry when
+  /// one read fails (Keystore key unusable, keystore locked before the
+  /// first unlock, an OEM reset). Group keys cannot be re-derived, so a
+  /// failure is reported instead (the Ledger keeps working locally, marks
+  /// the groups without a key, and an invite scan restores each key).
+  static const AndroidOptions android = AndroidOptions(resetOnError: false);
 
   static const String _prefix = 'gk.';
 
