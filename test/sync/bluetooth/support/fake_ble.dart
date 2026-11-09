@@ -58,6 +58,13 @@ final class FakeBleCentral implements BleCentralApi {
   /// Peripherals that answer INFO reads with garbage.
   final Set<String> garbageInfo = {};
 
+  /// The disconnect report for a connection arrives this much later than
+  /// the disconnect() call returns (a slow platform callback).
+  Duration disconnectReportDelay = Duration.zero;
+
+  /// How long connect() takes.
+  Duration connectDelay = Duration.zero;
+
   final StreamController<String> _adverts = StreamController.broadcast();
   final StreamController<String> _disconnects = StreamController.broadcast();
   final StreamController<(String, Uint8List)> _notifications =
@@ -120,7 +127,7 @@ final class FakeBleCentral implements BleCentralApi {
     if (!p.advertising && !p.connectable) {
       throw StateError('Peripheral $peripheralId not connectable');
     }
-    await Future<void>.delayed(Duration.zero);
+    await Future<void>.delayed(connectDelay);
     final conn = _Conn(this, p, defaultMtu);
     _conns[peripheralId] = conn;
     p._conns[id] = conn;
@@ -132,8 +139,13 @@ final class FakeBleCentral implements BleCentralApi {
     final conn = _conns.remove(peripheralId);
     if (conn == null) return;
     conn.peripheral._conns.remove(id);
-    _disconnects.add(peripheralId);
     conn.peripheral._handler?.onCentralDisconnected(id);
+    final delay = disconnectReportDelay;
+    if (delay == Duration.zero) {
+      _disconnects.add(peripheralId);
+    } else {
+      unawaited(Future<void>.delayed(delay, () => _disconnects.add(peripheralId)));
+    }
   }
 
   /// The radio link dies.

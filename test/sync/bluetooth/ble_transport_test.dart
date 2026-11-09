@@ -408,6 +408,28 @@ void main() {
           ca.send(frame(kBleMaxFrameBytes + 1)), throwsArgumentError);
     });
 
+    test('a late disconnect report from the INFO probe spares the session',
+        () async {
+      // Probe, then tap Sync while the probe's disconnect report is still
+      // on its way from the platform: it lands during the new connect.
+      centralA
+        ..disconnectReportDelay = const Duration(milliseconds: 100)
+        ..connectDelay = const Duration(milliseconds: 250);
+      final c = transport('C');
+      await c.startAdvertising(info('c', 'Third phone'));
+      final scan = a.discover().listen((_) {});
+      await pumpUntil(() => centralA.count('disconnect') >= 2);
+      await scan.cancel();
+      final inboundC = c.inbound.first;
+      final ca = await a.connect(const DiscoveredPeer(
+          kind: TransportKind.ble, address: 'C', name: ''));
+      final cc = await inboundC;
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      final got = cc.frames.first;
+      await ca.send(frame(50));
+      expect(await got, frame(50));
+    });
+
     test('one link at a time: a second connect is refused', () async {
       await open();
       await expectLater(a.connect(peer), throwsA(isA<SocketException>()));

@@ -408,9 +408,10 @@ final class BleTransport implements SyncTransport {
       info = await attempt.timeout(probeTimeout);
     } on TimeoutException catch (e) {
       _log('probe $id timed out', e);
-      // A connect that completes late must not stay up.
+      // A connect that completes late must not stay up (unless a session
+      // took the peripheral meanwhile).
       unawaited(attempt.then(
-        (_) => _disconnectPeripheral(id),
+        (_) => _byPeripheral.containsKey(id) ? null : _disconnectPeripheral(id),
         onError: (Object _) {},
       ));
     } catch (e) {
@@ -471,6 +472,7 @@ final class BleTransport implements SyncTransport {
     _byPeripheral[id] = link;
     final setUp = () async {
       await api.connect(id);
+      link.linked = true;
       try {
         final mtu = await api.requestMtu(id, kBleRequestedMtu);
         if (mtu != null) _log('MTU $mtu with $id');
@@ -489,7 +491,7 @@ final class BleTransport implements SyncTransport {
       if (e is TimeoutException) {
         // A set-up that completes late must not leave the link up.
         unawaited(setUp.then(
-          (_) => _disconnectPeripheral(id),
+          (_) => _byPeripheral.containsKey(id) ? null : _disconnectPeripheral(id),
           onError: (Object _) {},
         ));
       }
@@ -508,7 +510,11 @@ final class BleTransport implements SyncTransport {
   }
 
   void _onPeripheralDisconnected(String peripheralId) {
-    _byPeripheral[peripheralId]?.channel._remoteClosed();
+    final link = _byPeripheral[peripheralId];
+    // A disconnect reported before our connect() returned belongs to the
+    // previous connection (typically the INFO probe hanging up late).
+    if (link == null || !link.linked) return;
+    link.channel._remoteClosed();
   }
 
   // ------------------------------------------------------------- links --
@@ -632,6 +638,9 @@ final class _Link {
 
   /// The channel was handed out (connect() returned it / inbound got it).
   bool announced = false;
+
+  /// Central role: the platform connect for this link has completed.
+  bool linked = false;
 }
 
 final class _BleChannel implements FrameChannel {
