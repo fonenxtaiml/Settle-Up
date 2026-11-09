@@ -173,6 +173,9 @@ base class TestLedger implements SyncStore {
   @override
   Stream<Operation> get localOps => _local.stream;
 
+  /// Whether a session still listens to [localOps] (leak checks).
+  bool get hasLocalOpsListener => _local.hasListener;
+
   @override
   Future<bool> registerJoinedGroup(
     GroupId groupId,

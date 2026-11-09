@@ -412,7 +412,10 @@ final class SyncSession {
         throw const ProtocolException(
             ErrorCodes.badFrame, 'sealed frame before AUTH');
       }
-      final msg = FrameCodec.decodePlainFrame(frame);
+      final msg = FrameCodec.decodePlainFrame(
+        frame,
+        maxBodyBytes: kMaxPreAuthBodyBytes,
+      );
       switch (msg) {
         case ErrorMessage():
           await _onPeerError(msg);
@@ -430,7 +433,10 @@ final class SyncSession {
     if (frame[0] == FrameKind.plain) {
       // Only an ERROR may still arrive in clear (the peer may have failed
       // to verify our AUTH). It can only end the session.
-      final msg = FrameCodec.decodePlainFrame(frame);
+      final msg = FrameCodec.decodePlainFrame(
+        frame,
+        maxBodyBytes: kMaxPreAuthBodyBytes,
+      );
       if (msg is ErrorMessage) return _onPeerError(msg);
       throw const ProtocolException(
           ErrorCodes.badFrame, 'plain frame after AUTH');

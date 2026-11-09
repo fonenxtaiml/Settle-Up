@@ -28,6 +28,11 @@ const int kGzipThreshold = 1024;
 /// generous.
 const int kMaxDecompressedBytes = 8 << 20;
 
+/// Upper bound on the body of a frame from a peer that has not proven a
+/// group key yet (HELLO, AUTH, ERROR). A HELLO with 256 blinded ids is
+/// under 8 KiB, so anything bigger only costs us memory and parse time.
+const int kMaxPreAuthBodyBytes = 64 << 10;
+
 abstract final class FrameCodec {
   /// `type | flags | body` for [message].
   static Uint8List encodePlain(SyncMessage message) {
@@ -47,8 +52,12 @@ abstract final class FrameCodec {
 
   /// Parses `type | flags | body`. Throws [ProtocolException]: `bad_frame`
   /// for an unknown type, unknown flags, bad gzip, bad UTF-8 or JSON that is
-  /// not an object; `bad_op` for a malformed op inside OPS.
-  static SyncMessage decodePlain(Uint8List plain) {
+  /// not an object; `bad_op` for a malformed op inside OPS; `too_large` for
+  /// a (decompressed) body over [maxBodyBytes].
+  static SyncMessage decodePlain(
+    Uint8List plain, {
+    int maxBodyBytes = kMaxDecompressedBytes,
+  }) {
     if (plain.length < 2) {
       throw const ProtocolException(ErrorCodes.badFrame, 'short frame');
     }
@@ -61,7 +70,10 @@ abstract final class FrameCodec {
       throw ProtocolException(ErrorCodes.badFrame, 'unknown flags $flags');
     }
     var body = Uint8List.sublistView(plain, 2);
-    if (flags & kFlagGzip != 0) body = _gunzip(body);
+    if (flags & kFlagGzip != 0) body = _gunzip(body, maxBodyBytes);
+    if (body.length > maxBodyBytes) {
+      throw const ProtocolException(ErrorCodes.tooLarge, 'body too large');
+    }
     final Object? json;
     try {
       json = jsonDecode(utf8.decode(body));
@@ -84,16 +96,22 @@ abstract final class FrameCodec {
   }
 
   /// Parses a plain channel frame (`0x00 | plain`).
-  static SyncMessage decodePlainFrame(Uint8List frame) {
+  static SyncMessage decodePlainFrame(
+    Uint8List frame, {
+    int maxBodyBytes = kMaxDecompressedBytes,
+  }) {
     if (frame.isEmpty || frame[0] != FrameKind.plain) {
       throw const ProtocolException(ErrorCodes.badFrame, 'not a plain frame');
     }
-    return decodePlain(Uint8List.sublistView(frame, 1));
+    return decodePlain(
+      Uint8List.sublistView(frame, 1),
+      maxBodyBytes: maxBodyBytes,
+    );
   }
 
-  static Uint8List _gunzip(Uint8List data) {
+  static Uint8List _gunzip(Uint8List data, int limit) {
     final out = BytesBuilder(copy: false);
-    final limited = _LimitedSink(out);
+    final limited = _LimitedSink(out, limit);
     try {
       final decoder = gzip.decoder.startChunkedConversion(limited);
       decoder.add(data);
@@ -107,14 +125,15 @@ abstract final class FrameCodec {
   }
 }
 
-/// Collects decompressed bytes and aborts past [kMaxDecompressedBytes].
+/// Collects decompressed bytes and aborts past [_limit].
 final class _LimitedSink implements Sink<List<int>> {
-  _LimitedSink(this._out);
+  _LimitedSink(this._out, this._limit);
   final BytesBuilder _out;
+  final int _limit;
 
   @override
   void add(List<int> chunk) {
-    if (_out.length + chunk.length > kMaxDecompressedBytes) {
+    if (_out.length + chunk.length > _limit) {
       throw const ProtocolException(ErrorCodes.tooLarge, 'body too large');
     }
     _out.add(chunk);
