@@ -12,9 +12,20 @@ import '../ops.dart';
 
 /// One LWW register: the value written by the op with the highest HLC.
 final class FieldValue {
-  const FieldValue(this.hlc, this.value);
+  const FieldValue(this.hlc, this.opId, this.value);
   final Hlc hlc;
+
+  /// Tiebreak for two different ops carrying the same HLC.
+  final OpId opId;
   final Object? value;
+
+  /// True if a write by [hlc]/[opId] beats this one. HLCs are unique per
+  /// op in honest logs; if a buggy or hostile device reuses one, the higher
+  /// op id wins, so the outcome still does not depend on arrival order.
+  bool losesTo(Hlc hlc, OpId opId) {
+    final c = hlc.compareTo(this.hlc);
+    return c > 0 || (c == 0 && opId.compareTo(this.opId) > 0);
+  }
 }
 
 /// Reducer-internal state of one entity in one group.

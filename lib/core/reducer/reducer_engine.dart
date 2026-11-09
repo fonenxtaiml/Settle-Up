@@ -112,8 +112,8 @@ final class ReducerEngine {
     final s = _entities.putIfAbsent(key, EntityState.new);
     for (final e in op.payload.entries) {
       final current = s.fields[e.key];
-      if (current == null || op.hlc > current.hlc) {
-        s.fields[e.key] = FieldValue(op.hlc, e.value);
+      if (current == null || current.losesTo(op.hlc, op.id)) {
+        s.fields[e.key] = FieldValue(op.hlc, op.id, e.value);
       }
     }
     if (op.kind == OpKind.create) s.created = true;
