@@ -102,7 +102,11 @@ class PersonAvatar extends StatelessWidget {
         foregroundPainter: _DashedRing(color: scheme.outline),
         child: disc,
       );
-      return Semantics(label: KitStrings.notOnSettleUp, child: disc);
+      return Semantics(
+        label: KitStrings.notOnSettleUp,
+        excludeSemantics: true,
+        child: disc,
+      );
     }
     return ExcludeSemantics(child: disc);
   }

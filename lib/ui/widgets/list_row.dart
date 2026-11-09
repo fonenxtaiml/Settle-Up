@@ -94,6 +94,10 @@ class KitListRow extends StatelessWidget {
           vertical: keepTrailingBeside ? verticalPadding - 2 : verticalPadding,
         ),
         child: Row(
+          // Stacked rows are tall; keep the avatar or icon by the title.
+          crossAxisAlignment: stacked
+              ? CrossAxisAlignment.start
+              : CrossAxisAlignment.center,
           children: [
             if (leading != null) ...[leading!, const SizedBox(width: 14)],
             Expanded(child: text),
