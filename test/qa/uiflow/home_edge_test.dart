@@ -104,7 +104,7 @@ void main() {
     expect(find.text(S.homeEmptyHeadline), findsNothing);
     expect(find.text(KitStrings.heroOwed), findsOneWidget);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-15
+  });
 
   testWidgets('UIFLOW-R1-16: the Home FAB starts a new expense in an archived '
       'group when that group sorts first (it has an open balance)', (
@@ -136,7 +136,7 @@ void main() {
     expect(find.text('Old trip'), findsNothing);
     expect(find.text('Flat 4B'), findsOneWidget);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-16
+  });
 
   testWidgets('UIFLOW-R1-17: there is no per-group activity feed (SPEC 1.2 '
       'feature 10: "Activity feed per group and global")', (tester) async {
@@ -165,7 +165,7 @@ void main() {
     }
     expect(found, isTrue);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-17
+  });
 
   testWidgets('UIFLOW-R1-21: a 1:1 group ("Just you two") accepts a third '
       'person from its Members screen', (tester) async {
@@ -197,5 +197,5 @@ void main() {
     // Expected: a 1:1 group stays two people.
     expect(w.group(direct).activeMembers, hasLength(2));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-21
+  });
 }

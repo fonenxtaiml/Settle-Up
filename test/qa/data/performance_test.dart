@@ -263,8 +263,7 @@ void main() {
         '($n unshared)');
     expect(perKeystroke, lessThan(16 * 4),
         reason: 'a search keystroke must not drop frames for seconds');
-  }, skip: 'QA DATA-R1-09: search_screen calls the O(ops) '
-      'LedgerSnapshot.unsharedEntityIds getter once per result row');
+  });
 
   test('a 1000-op remote batch applies quickly with 20k ops present',
       () async {

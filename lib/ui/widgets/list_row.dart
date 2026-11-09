@@ -23,6 +23,7 @@ class KitListRow extends StatelessWidget {
     this.subtitleStyle,
     this.subtitleTrailing,
     this.keepTrailingBeside = false,
+    this.subtitleLines = 1,
   });
 
   final String title;
@@ -41,6 +42,11 @@ class KitListRow extends StatelessWidget {
 
   /// Keep [trailing] beside the text at every text scale (buttons).
   final bool keepTrailingBeside;
+
+  /// Lines the subline may take below the large-text threshold (it always
+  /// may wrap to three at large text). Rows whose subline carries an amount
+  /// ("Sam paid ¥5,000") take two, so the amount is never cut off.
+  final int subtitleLines;
 
   @override
   Widget build(BuildContext context) {
@@ -64,7 +70,7 @@ class KitListRow extends StatelessWidget {
               Flexible(
                 child: Text(
                   subtitle!,
-                  maxLines: maxLines,
+                  maxLines: large ? maxLines : subtitleLines,
                   overflow: TextOverflow.ellipsis,
                   style:
                       subtitleStyle ??

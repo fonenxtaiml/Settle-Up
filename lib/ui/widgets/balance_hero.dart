@@ -58,15 +58,21 @@ class BalanceHero extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(caption, style: captionStyle),
-        Text(
-          MoneyFormat.format(
-            dir == MoneyDirection.owe ? -minor : minor,
-            mainCurrency,
-            signed: true,
-          ),
-          maxLines: 1,
-          style: AppType.amount(context).copyWith(
-            color: minor == 0 ? money.settled : money.forDirection(dir),
+        // Half the hero wide: a large amount at large text scales down
+        // rather than being cut.
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          alignment: AlignmentDirectional.centerStart,
+          child: Text(
+            MoneyFormat.format(
+              dir == MoneyDirection.owe ? -minor : minor,
+              mainCurrency,
+              signed: true,
+            ),
+            maxLines: 1,
+            style: AppType.amount(context).copyWith(
+              color: minor == 0 ? money.settled : money.forDirection(dir),
+            ),
           ),
         ),
       ],

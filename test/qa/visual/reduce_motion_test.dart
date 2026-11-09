@@ -78,7 +78,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-13: busy nearby phone spinner ignores reduce motion',
-    skip: true, // QA VISUAL-R1-13: raw CircularProgressIndicator spins
     (tester) async {
       await tester.pumpWidget(
         kitApp(

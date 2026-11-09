@@ -120,10 +120,16 @@ final class LedgerSnapshot {
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
   /// Entity ids touched by an unshared op (for the "not yet shared" dot).
-  Set<String> get unsharedEntityIds => {
-        for (final op in ops)
-          if (unsharedOpIds.contains(op.id)) op.entityId,
-      };
+  /// Computed once per snapshot (the snapshot never changes): screens ask
+  /// for it per row, and a scan of every op per row is O(rows x ops).
+  Set<String> get unsharedEntityIds =>
+      _unsharedEntityIds[this] ??= Set.unmodifiable(<String>{
+        if (unsharedOpIds.isNotEmpty)
+          for (final op in ops)
+            if (unsharedOpIds.contains(op.id)) op.entityId,
+      });
+
+  static final _unsharedEntityIds = Expando<Set<String>>('unsharedEntityIds');
 }
 
 @immutable

@@ -109,8 +109,6 @@ void main() {
 
   testWidgets(
     'QA MONEY-R1-01: picking the USD payment records USD, not INR',
-    // testWidgets only takes a bool skip; the id is in the name.
-    skip: true, // QA MONEY-R1-01: Settle up ignores the picked currency
     (tester) async {
       await world(tester);
       final c = await pumpReal(tester, p);
@@ -132,7 +130,6 @@ void main() {
 
   testWidgets(
     'QA MONEY-R1-01: the "Who is paying?" list honours the picked currency',
-    skip: true, // QA MONEY-R1-01: Settle up ignores the picked currency
     (tester) async {
       await world(tester);
       final c = await pumpReal(tester, p);
@@ -159,7 +156,6 @@ void main() {
   testWidgets(
     'QA MONEY-R1-06: two identical payments within 24 h are hinted as a '
     'possible duplicate',
-    skip: true, // QA MONEY-R1-06: no "possible duplicate" hint anywhere
     (tester) async {
       await tester.runAsync(() async {
         p = await QaPhone.create(home: 'INR');
@@ -199,7 +195,6 @@ void main() {
 
   testWidgets(
     'QA MONEY-R1-07: expense rows count my merged duplicate member',
-    skip: true, // QA MONEY-R1-07: rows use unresolved member ids
     (tester) async {
       late MemberId oldMe;
       await tester.runAsync(() async {

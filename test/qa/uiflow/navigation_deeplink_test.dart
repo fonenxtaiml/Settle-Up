@@ -128,7 +128,7 @@ void main() {
     expect(await androidBack(tester), isTrue);
     expect(w.location, Routes.home);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-06
+  });
 
   testWidgets('deep link after onboarding: settleup://join opens the '
       'invitation; Join registers the group and asks "Which one are you?"',
@@ -182,7 +182,7 @@ void main() {
     expect(find.text(S.joinTitle), findsOneWidget);
     expect(find.text('Cabin weekend'), findsOneWidget);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-07
+  });
 
   testWidgets('UIFLOW-R1-07b: an invite deep link arriving while onboarding '
       'is on screen is lost', (tester) async {
@@ -195,7 +195,7 @@ void main() {
     await onboardThroughUi(tester, 'Arjun');
     expect(find.text(S.joinTitle), findsOneWidget);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-07
+  });
 
   testWidgets('UIFLOW-R1-08: the Close button on an invitation opened by '
       'deep link does nothing (nothing below it on the stack)', (tester) async {
@@ -210,7 +210,7 @@ void main() {
     expect(find.text(S.joinTitle), findsNothing);
     expect(w.location, Routes.home);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-08
+  });
 
   testWidgets('UIFLOW-R1-08b: after joining by deep link, "Not now" leads '
       'to a group screen whose Back arrow cannot reach Home', (tester) async {
@@ -225,7 +225,7 @@ void main() {
     await qaTap(tester, find.byTooltip(S.back));
     expect(w.location, Routes.home);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-08
+  });
 
   testWidgets('settleup://sync deep link opens Scan with the link and starts '
       'a session (fails cleanly: no transport can reach the host)', (

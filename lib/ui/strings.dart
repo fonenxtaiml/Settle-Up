@@ -23,6 +23,14 @@ abstract final class S {
   static const remove = 'Remove';
   static const rename = 'Rename';
   static const tryAgain = 'Try again';
+  static const startupFailedTitle = "Settle Up couldn't open your data";
+  static const startupFailedBody =
+      'Nothing was deleted. Make sure the phone has some free storage, '
+      'then try again.';
+  static const startupNewerTitle = 'Update Settle Up';
+  static const startupNewerBody =
+      'Your expenses were saved by a newer version of Settle Up. Update the '
+      'app to open them. Nothing was deleted.';
   static const you = 'You';
   static const optional = 'Optional';
   static const moreOptions = 'More options';
@@ -70,6 +78,7 @@ abstract final class S {
   static const joinWithQr = 'Join with a QR code';
 
   // -------------------------------------------------------------- group --
+  static String groupSpent(String spent) => '$spent spent';
   static String groupSubtitle(int people, String spent) =>
       '${S.people(people)}, $spent spent';
   static String groupDetail(String paid, String share) =>
@@ -158,6 +167,12 @@ abstract final class S {
   static const youSub = 'You, on this phone';
   static const renameTitle = 'Rename';
   static const memberAdded = 'Person added';
+  static String alreadyInGroup(String name) =>
+      '$name is already in this group';
+  static String cannotRemoveTitle(String name) => "$name can't be removed yet";
+  static String cannotRemoveBody(String name, String balance) =>
+      '$name has $balance open in this group. Settle up first, then remove.';
+  static const ok = 'OK';
 
   // ------------------------------------------------------------- invite --
   static String inviteTitle(String group) => 'Join $group';
@@ -169,6 +184,10 @@ abstract final class S {
   static const showAgain = 'Show again';
   static const inviteQrLabel = 'QR code to join this group';
   static const shareLink = 'Share link';
+  static const shareLinkTitle = 'Share the invite link?';
+  static String shareLinkWarning(String group) =>
+      'Anyone with this link can see and add to $group. Send it only to '
+      'people in the group.';
   static String inviteShareText(String group, String link) =>
       'Join $group on Settle Up: $link';
 
@@ -222,6 +241,17 @@ abstract final class S {
   static const descriptionNeeded = 'Add a short description, like Groceries';
   static String amountNeeded(String zero) => 'Enter an amount above $zero';
   static const splitNotDone = 'Finish the split first';
+  static String payersAddUp(String paid, String total) =>
+      'Paid by adds up to $paid, not $total. Tap Paid by to fix it.';
+  static const splitNobody = 'Pick at least one person';
+  static const splitBelowZero = 'A share would be below zero';
+  static const splitUnreadable = 'Check the amounts in the split';
+  static const discardTitle = 'Discard this expense?';
+  static const discardBody = 'What you typed here will be lost.';
+  static const keepEditing = 'Keep editing';
+  static const sharesTitle = 'Shares';
+  static String sharesHelper(int max) => 'A whole number from 1 to $max';
+  static String setSharesOf(String name) => 'Shares for $name. Tap to type';
   static const youOweShort = 'you owe';
   static String youOweName(String name) => 'you owe $name';
   static String youGetBack(String amount) => 'you get back $amount';
@@ -414,6 +444,24 @@ abstract final class S {
 
   static const wifi = 'Wi-Fi';
   static const bluetooth = 'Bluetooth';
+  static const radiosAskTitle = 'Allow Bluetooth sync';
+  static const radiosAskBody =
+      'Settle Up needs permission to find phones near you over Bluetooth, '
+      'without Wi-Fi.';
+  static const allow = 'Allow';
+  static const radiosDeniedTitle = 'Bluetooth sync is not allowed';
+  static const radiosDeniedBody =
+      'Allow the Nearby permission (Location on older phones) in the app '
+      'settings for Settle Up to sync over Bluetooth.';
+  static const openSettings = 'Open settings';
+  static const bluetoothOffTitle = 'Bluetooth is off';
+  static const bluetoothOffBody =
+      'Turn it on to sync with phones that are not on your Wi-Fi.';
+  static const turnOnBluetooth = 'Turn on Bluetooth';
+  static const wifiOffTitle = 'Wi-Fi is off';
+  static const wifiOffBody =
+      'Turn on Wi-Fi, or join a friend\'s hotspot, to sync over Wi-Fi.';
+  static const turnOnWifi = 'Turn on Wi-Fi';
   static const pairHint = 'Scan their QR code to join a group';
   static const recentSyncs = 'Recent syncs';
   static String recentLine(String when, String transport) =>

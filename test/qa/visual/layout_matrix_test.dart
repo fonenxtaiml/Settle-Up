@@ -9,31 +9,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'visual_harness.dart';
 
 /// (world, screen) -> finding id.
-const Map<(String, String), String> kKnown = {
-  ('realistic', 'home'): 'VISUAL-R1-02',
-  ('realistic', 'group'): 'VISUAL-R1-03',
-  ('realistic', 'group KWD'): 'VISUAL-R1-03',
-  ('realistic', 'settle'): 'VISUAL-R1-03',
-  ('realistic', 'settle KWD'): 'VISUAL-R1-04',
-  ('realistic', 'expense'): 'VISUAL-R1-01',
-  ('realistic', 'payment'): 'VISUAL-R1-01',
-  ('long names', 'home'): 'VISUAL-R1-02',
-  ('long names', 'group'): 'VISUAL-R1-03',
-  ('long names', 'settle'): 'VISUAL-R1-03',
-  ('long names', 'settle KWD'): 'VISUAL-R1-04',
-  ('long names', 'expense'): 'VISUAL-R1-01',
-  ('long names', 'payment'): 'VISUAL-R1-01',
-  ('long names', 'edit expense'): 'VISUAL-R1-05',
-  ('long names', 'new expense'): 'VISUAL-R1-05',
-  ('huge', 'home'): 'VISUAL-R1-02',
-  ('huge', 'group'): 'VISUAL-R1-03',
-  ('huge', 'group KWD'): 'VISUAL-R1-03',
-  ('huge', 'settle'): 'VISUAL-R1-03',
-  ('huge', 'settle KWD'): 'VISUAL-R1-04',
-  ('huge', 'expense'): 'VISUAL-R1-01',
-  ('huge', 'payment'): 'VISUAL-R1-01',
-  ('huge', 'activity'): 'VISUAL-R1-08',
-};
+const Map<(String, String), String> kKnown = {};
 
 void main() {
   configureVisualTests();

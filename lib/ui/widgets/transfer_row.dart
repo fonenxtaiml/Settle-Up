@@ -82,18 +82,33 @@ class TransferRow extends StatelessWidget {
           tether,
           const SizedBox(height: Space.xs),
           text,
-          Align(alignment: AlignmentDirectional.centerEnd, child: amount),
+          Align(
+            alignment: AlignmentDirectional.centerEnd,
+            child: FittedBox(fit: BoxFit.scaleDown, child: amount),
+          ),
         ],
       );
     } else {
-      body = Row(
-        children: [
-          tether,
-          const SizedBox(width: Space.md),
-          Expanded(child: text),
-          const SizedBox(width: Space.sm),
-          amount,
-        ],
+      // The sentence wraps or ellipsizes; the amount keeps at most about
+      // 40% of the row and scales down within it, so it is never pushed
+      // past the card edge.
+      body = LayoutBuilder(
+        builder: (context, constraints) => Row(
+          children: [
+            tether,
+            const SizedBox(width: Space.md),
+            Expanded(child: text),
+            const SizedBox(width: Space.sm),
+            ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.4),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: AlignmentDirectional.centerEnd,
+                child: amount,
+              ),
+            ),
+          ],
+        ),
       );
     }
 

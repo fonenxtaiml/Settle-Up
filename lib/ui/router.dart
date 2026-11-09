@@ -43,6 +43,7 @@ abstract final class Routes {
   static String group(String gid) => '/groups/$gid';
   static String editGroup(String gid) => '/groups/$gid/edit';
   static String members(String gid) => '/groups/$gid/members';
+  static String groupActivity(String gid) => '/groups/$gid/activity';
   static String invite(String gid) => '/groups/$gid/invite';
   static String claim(String gid) => '/groups/$gid/claim';
   static String newExpense({String? groupId, String? personId}) => Uri(
@@ -51,14 +52,26 @@ abstract final class Routes {
   ).toString();
   static String expense(String eid) => '/expense/$eid';
   static String editExpense(String eid) => '/expense/$eid/edit';
-  static String settle({required String groupId, String? from, String? to}) =>
-      Uri(
-        path: '/settle',
-        queryParameters: {'gid': groupId, 'from': ?from, 'to': ?to},
-      ).toString();
+  static String settle({
+    required String groupId,
+    String? from,
+    String? to,
+    String? currency,
+  }) => Uri(
+    path: '/settle',
+    queryParameters: {
+      'gid': groupId,
+      'from': ?from,
+      'to': ?to,
+      'cur': ?currency,
+    },
+  ).toString();
   static String person(String pid) => '/people/$pid';
-  static String join(String link) =>
-      Uri(path: '/join', queryParameters: {'link': link}).toString();
+
+  /// The invitation, stacked over Home so Close and Back land there. The
+  /// link rides in the path: a query would stay on /home after a pop.
+  static String join(String link) => '$joinPath/${Uri.encodeComponent(link)}';
+  static const joinPath = '/home/join';
 }
 
 final _rootKey = GlobalKey<NavigatorState>(debugLabel: 'root');
@@ -69,24 +82,40 @@ final routerProvider = Provider<GoRouter>((ref) {
   ref.listen(profileProvider, (_, _) => refresh.value++);
   ref.onDispose(refresh.dispose);
 
+  // A join or sync link that arrived before onboarding finished: opened
+  // once the profile exists, instead of being lost on the way to Home.
+  String? pendingLink;
+
   String? redirect(BuildContext context, GoRouterState state) {
     final uri = state.uri;
     // settleup://join?... and settleup://sync?... deep links.
+    String? target;
     if (uri.scheme == 'settleup' || uri.host == 'join' || uri.host == 'sync') {
-      if (uri.host == 'join') return Routes.join(uri.toString());
+      if (uri.host == 'join') target = Routes.join(uri.toString());
       if (uri.host == 'sync') {
-        return Uri(
+        target = Uri(
           path: Routes.syncScan,
           queryParameters: {'link': uri.toString()},
         ).toString();
       }
+    } else if (uri.path.startsWith('${Routes.joinPath}/') ||
+        (uri.path == Routes.syncScan && uri.queryParameters['link'] != null)) {
+      target = uri.toString();
     }
     final profile = ref.read(profileProvider);
-    if (profile.isLoading && !profile.hasValue) return null;
+    if (profile.isLoading && !profile.hasValue) return target;
     final onboarded = profile.value != null;
     final atOnboarding = uri.path == Routes.onboarding;
-    if (!onboarded && !atOnboarding) return Routes.onboarding;
-    if (onboarded && atOnboarding) return Routes.home;
+    if (!onboarded) {
+      if (target != null) pendingLink = target;
+      return atOnboarding ? null : Routes.onboarding;
+    }
+    if (atOnboarding) {
+      final link = pendingLink;
+      pendingLink = null;
+      return link ?? Routes.home;
+    }
+    if (target != null && target != uri.toString()) return target;
     if (uri.path == '/' || uri.path.isEmpty) return Routes.home;
     return null;
   }
@@ -109,6 +138,14 @@ final routerProvider = Provider<GoRouter>((ref) {
               GoRoute(
                 path: Routes.home,
                 builder: (context, state) => const HomeScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'join/:link',
+                    parentNavigatorKey: _rootKey,
+                    builder: (context, state) =>
+                        JoinScreen(link: state.pathParameters['link']!),
+                  ),
+                ],
               ),
             ],
           ),
@@ -169,6 +206,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                 MembersScreen(groupId: state.pathParameters['gid']!),
           ),
           GoRoute(
+            path: 'activity',
+            builder: (context, state) =>
+                ActivityScreen(groupId: state.pathParameters['gid']),
+          ),
+          GoRoute(
             path: 'invite',
             builder: (context, state) =>
                 InviteScreen(groupId: state.pathParameters['gid']!),
@@ -207,6 +249,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             groupId: q['gid'] ?? '',
             from: q['from'],
             to: q['to'],
+            currency: q['cur'],
           );
         },
       ),
@@ -223,18 +266,19 @@ final routerProvider = Provider<GoRouter>((ref) {
         path: Routes.settings,
         builder: (context, state) => const SettingsScreen(),
       ),
+      // Older links to /join: the invitation now sits over Home.
       GoRoute(
         path: '/join',
-        builder: (context, state) {
+        redirect: (context, state) {
           final q = state.uri.queryParameters;
-          final link =
-              q['link'] ??
-              Uri(
-                scheme: 'settleup',
-                host: 'join',
-                query: state.uri.query,
-              ).toString();
-          return JoinScreen(link: link);
+          return Routes.join(
+            q['link'] ??
+                Uri(
+                  scheme: 'settleup',
+                  host: 'join',
+                  query: state.uri.query,
+                ).toString(),
+          );
         },
       ),
     ],

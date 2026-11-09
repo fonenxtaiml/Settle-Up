@@ -226,7 +226,7 @@ void main() {
     // three people called Priya that nobody can tell apart in pickers.
     expect(names.where((n) => n == 'priya').length, 1);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-01
+  });
 
   testWidgets('UIFLOW-R1-02: Members screen accepts a 51st active member '
       '(SPEC 5.16 caps a group at 50)', (tester) async {
@@ -263,7 +263,7 @@ void main() {
       expect(m.displayName.length, lessThanOrEqualTo(40));
     }
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-03
+  });
 
   testWidgets('UIFLOW-R1-19: Members lets you remove someone who still owes '
       'money (SPEC 6.7: the UI blocks Remove when the net is non-zero)', (
@@ -305,5 +305,5 @@ void main() {
     // Expected: Priya (owes ₹4,000) is still a member.
     expect(w.group(gid).members[priya]!.isRemoved, isFalse);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-19
+  });
 }
