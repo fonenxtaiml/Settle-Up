@@ -1,6 +1,7 @@
+import 'dart:async';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
-import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/sync/pairing/links.dart';
 import 'package:settle_up/sync/sync_engine.dart';
@@ -8,26 +9,7 @@ import 'package:settle_up/sync/transport/memory_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
 import 'support/harness.dart';
-import 'support/test_ledger.dart';
-
-/// A store that is also the LedgerRepository, like the real Ledger, so the
-/// engine can read group names for invites.
-final class RepoLedger extends TestLedger implements LedgerRepository {
-  RepoLedger(super.localDeviceId, {super.localDeviceName});
-
-  @override
-  LedgerSnapshot get current => LedgerSnapshot(
-        state: state,
-        ops: const [],
-        pendingJoins: pendingJoins,
-        unsharedOpIds: const {},
-        unsharedCounts: const {},
-        localDeviceId: localDeviceId,
-      );
-
-  @override
-  dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
-}
+import 'support/phone.dart';
 
 final class TestClock implements SyncClock {
   DateTime value = DateTime.utc(2026, 11, 9, 12);
@@ -35,33 +17,61 @@ final class TestClock implements SyncClock {
   DateTime now() => value;
 }
 
-/// One phone: a store plus an engine over LAN and BLE memory transports.
+/// One phone: the real Ledger plus an engine over LAN and BLE memory
+/// transports.
 final class Phone {
-  Phone(MemoryTransportHub hub, String letter, String name, {this.clock})
-      : store = RepoLedger(deviceIdOf(letter), localDeviceName: name) {
-    lan = MemoryTransport(hub, kind: TransportKind.lan, address: '$letter-lan');
-    ble = MemoryTransport(hub,
-        kind: TransportKind.ble, address: '$letter-ble', maxFrameBytes: 16384);
-    engine = DefaultSyncEngine(
-      store: store,
+  Phone._(this.phone, this.lan, this.ble, this.engine, this.clock);
+
+  static Future<Phone> create(
+    MemoryTransportHub hub,
+    String letter,
+    String name, {
+    TestClock? clock,
+  }) async {
+    final phone = await TestPhone.create(letter, deviceName: name);
+    final lan = MemoryTransport(
+      hub,
+      kind: TransportKind.lan,
+      address: '$letter-lan',
+    );
+    final ble = MemoryTransport(
+      hub,
+      kind: TransportKind.ble,
+      address: '$letter-ble',
+      maxFrameBytes: 16384,
+    );
+    final engine = DefaultSyncEngine(
+      store: phone.ledger,
       transports: [lan, ble],
       clock: clock,
       timings: fastTimings,
     );
+    final p = Phone._(phone, lan, ble, engine, clock);
+    p._records = phone.ledger.watchSyncRecords().listen((r) => p.records = r);
+    return p;
   }
 
-  final TestLedger store;
+  final TestPhone phone;
   final TestClock? clock;
-  late final MemoryTransport lan;
-  late final MemoryTransport ble;
-  late final DefaultSyncEngine engine;
+  final MemoryTransport lan;
+  final MemoryTransport ble;
+  final DefaultSyncEngine engine;
+
+  /// Sync history, newest first (kept current).
+  List<SyncRecord> records = const [];
+  late final StreamSubscription<List<SyncRecord>> _records;
+
+  Future<void> dispose() async {
+    await engine.dispose();
+    await _records.cancel();
+    await phone.close();
+  }
 
   /// Discovers [other] once it is seen on [transports] transports.
   Future<NearbyPeer> find(Phone other, {int transports = 2}) async {
     if (!engine.status.discovering) await engine.startDiscovery();
     bool match(NearbyPeer p) =>
-        p.name == other.store.localDeviceName &&
-        p.transports.length == transports;
+        p.name == other.phone.deviceName && p.transports.length == transports;
     final list = await engine
         .watchNearby()
         .firstWhere((l) => l.any(match))
@@ -77,16 +87,15 @@ void main() {
 
   setUp(() async {
     hub = MemoryTransportHub();
-    alex = Phone(hub, 'a', "Alex's Pixel");
-    priya = Phone(hub, 'b', "Priya's Pixel");
-    seed = await seedGroup(alex.store, expenses: 4);
-    await priya.store.registerJoinedGroup(
-        seed.g, groupKeyOf(1), 'Goa trip');
+    alex = await Phone.create(hub, 'a', "Alex's Pixel");
+    priya = await Phone.create(hub, 'b', "Priya's Pixel");
+    seed = await alex.phone.seedGroup(expenses: 4);
+    await priya.phone.join(alex.phone, seed.g);
   });
 
   tearDown(() async {
-    await alex.engine.dispose();
-    await priya.engine.dispose();
+    await alex.dispose();
+    await priya.dispose();
   });
 
   test('host, discover across transports, sync, record history', () async {
@@ -94,14 +103,14 @@ void main() {
     expect(host.transports, {TransportKind.lan, TransportKind.ble});
     expect(host.addresses, containsAll(['b-lan', 'b-ble']));
     final link = ConnectLink.tryParse(host.connectLink)!;
-    expect(link.deviceId, priya.store.localDeviceId);
+    expect(link.deviceId, priya.phone.deviceId);
     expect(priya.engine.status.host, isNotNull);
     expect(host.expiresAt.isAfter(DateTime.now()), isTrue);
 
     final peer = await alex.find(priya);
     expect(peer.transports.toList(), [TransportKind.lan, TransportKind.ble]);
     expect(peer.sharedGroupIds, [seed.g]);
-    expect(peer.deviceIdPrefix, priya.store.localDeviceId.substring(0, 8));
+    expect(peer.deviceIdPrefix, priya.phone.deviceId.substring(0, 8));
     expect(alex.engine.status.discovering, isTrue);
 
     final statuses = <SyncStatus>[];
@@ -110,12 +119,14 @@ void main() {
 
     expect(summary.sentOps, 7);
     expect(summary.transport, TransportKind.lan);
-    expect(summary.peerDeviceId, priya.store.localDeviceId);
+    expect(summary.peerDeviceId, priya.phone.deviceId);
     expect(summary.groupIds, [seed.g]);
-    expect(priya.store.canonical, alex.store.canonical);
+    expect(priya.phone.canonical, alex.phone.canonical);
     await eventually(() => alex.engine.status.session is SessionCompleted);
-    expect(statuses.map((s) => s.session).whereType<SessionActive>(),
-        isNotEmpty);
+    expect(
+      statuses.map((s) => s.session).whereType<SessionActive>(),
+      isNotEmpty,
+    );
     expect(
       statuses
           .map((s) => s.session)
@@ -125,9 +136,9 @@ void main() {
           .phase,
       SyncPhase.connecting,
     );
-    await eventually(() => priya.store.records.isNotEmpty);
-    expect(alex.store.records.single.outcome, SyncOutcome.completed);
-    expect(priya.store.records.single.receivedOps, 7);
+    await eventually(() => priya.records.isNotEmpty);
+    expect((await alex.phone.records()).single.outcome, SyncOutcome.completed);
+    expect((await priya.phone.records()).single.receivedOps, 7);
     expect(priya.engine.status.session, isA<SessionCompleted>());
     final history = await alex.engine.watchHistory().first;
     expect(history.single.peerName, "Priya's Pixel");
@@ -149,7 +160,7 @@ void main() {
     final summary = await alex.engine.syncWith(peer);
 
     expect(summary.transport, TransportKind.ble);
-    expect(priya.store.canonical, alex.store.canonical);
+    expect(priya.phone.canonical, alex.phone.canonical);
   });
 
   test('peerUnreachable when every transport fails', () async {
@@ -160,33 +171,42 @@ void main() {
 
     await expectLater(
       alex.engine.syncWith(peer),
-      throwsA(isA<SyncException>()
-          .having((e) => e.failure, 'failure', SyncFailure.peerUnreachable)),
+      throwsA(
+        isA<SyncException>().having(
+          (e) => e.failure,
+          'failure',
+          SyncFailure.peerUnreachable,
+        ),
+      ),
     );
     expect(alex.engine.status.session, isA<SessionFailed>());
-    expect(alex.store.records.single.outcome, SyncOutcome.failed);
+    expect((await alex.phone.records()).single.outcome, SyncOutcome.failed);
   });
 
   test('a peer without shared groups is reported as such', () async {
-    final stranger = Phone(hub, 'c', "Ravi's iPhone");
-    await seedGroup(stranger.store, group: 5);
+    final stranger = await Phone.create(hub, 'c', "Ravi's iPhone");
+    await stranger.phone.seedGroup();
     await stranger.engine.startHosting();
     final peer = await alex.find(stranger);
     expect(peer.sharesGroups, isFalse);
 
     await expectLater(
       alex.engine.syncWith(peer),
-      throwsA(isA<SyncException>()
-          .having((e) => e.failure, 'failure', SyncFailure.noSharedGroups)),
+      throwsA(
+        isA<SyncException>().having(
+          (e) => e.failure,
+          'failure',
+          SyncFailure.noSharedGroups,
+        ),
+      ),
     );
-    await stranger.engine.dispose();
+    await stranger.dispose();
   });
 
-  test('busy: a second inbound connection is refused while syncing',
-      () async {
+  test('busy: a second inbound connection is refused while syncing', () async {
     hub.latency = const Duration(milliseconds: 20);
-    final ravi = Phone(hub, 'c', "Ravi's iPhone");
-    await ravi.store.registerJoinedGroup(seed.g, groupKeyOf(1), 'Goa trip');
+    final ravi = await Phone.create(hub, 'c', "Ravi's iPhone");
+    await ravi.phone.join(alex.phone, seed.g);
     await priya.engine.startHosting();
     final fromAlex = await alex.find(priya);
     final fromRavi = await ravi.find(priya);
@@ -197,16 +217,18 @@ void main() {
 
     await expectLater(
       second,
-      throwsA(isA<SyncException>()
-          .having((e) => e.failure, 'failure', SyncFailure.peerUnreachable)
-          .having((e) => e.message, 'message', contains('busy'))),
+      throwsA(
+        isA<SyncException>()
+            .having((e) => e.failure, 'failure', SyncFailure.peerUnreachable)
+            .having((e) => e.message, 'message', contains('busy')),
+      ),
     );
     expect((await first).sentOps, 7);
     // Once free, Ravi gets in.
     await eventually(() => priya.engine.status.session is SessionCompleted);
     final later = await ravi.engine.syncWith(fromRavi);
     expect(later.receivedOps, 7);
-    await ravi.engine.dispose();
+    await ravi.dispose();
   });
 
   test('one session at a time on the initiating side too', () async {
@@ -214,8 +236,10 @@ void main() {
     await priya.engine.startHosting();
     final peer = await alex.find(priya);
     final first = alex.engine.syncWith(peer);
-    await expectLater(alex.engine.syncWith(peer),
-        throwsA(isA<SyncException>()));
+    await expectLater(
+      alex.engine.syncWith(peer),
+      throwsA(isA<SyncException>()),
+    );
     await first;
   });
 
@@ -230,17 +254,21 @@ void main() {
     expect(alex.engine.status.session, isA<SessionCompleted>());
 
     final sw = Stopwatch()..start();
-    await alex.store.authorExpense(seed.g,
-        payer: seed.a, owers: [seed.a, seed.b], total: 1234);
-    expect(await eventually(() => priya.store.opCount(seed.g) == 8), isTrue);
+    await alex.phone.addExpense(
+      seed.g,
+      payer: seed.a,
+      owers: [seed.a, seed.b],
+      total: 1234,
+    );
+    expect(await eventually(() => priya.phone.opCount(seed.g) == 8), isTrue);
     expect(sw.elapsed, lessThan(const Duration(seconds: 1)));
-    expect(priya.store.canonical, alex.store.canonical);
+    expect(priya.phone.canonical, alex.phone.canonical);
 
     // Leaving the Sync screen ends the session gracefully.
     alex.engine.liveMode = false;
-    await eventually(() => alex.store.records.isNotEmpty);
-    expect(alex.store.records.single.outcome, SyncOutcome.completed);
-    expect(alex.store.records.single.sentOps, 8);
+    await eventually(() => alex.records.isNotEmpty);
+    expect((await alex.phone.records()).single.outcome, SyncOutcome.completed);
+    expect((await alex.phone.records()).single.sentOps, 8);
   });
 
   test('syncWithLink connects to the hosts in a connect link', () async {
@@ -254,7 +282,7 @@ void main() {
     await priya.engine.startHosting();
     final link = ConnectLink(
       hosts: const ['nowhere:1', 'b-lan'],
-      deviceId: priya.store.localDeviceId,
+      deviceId: priya.phone.deviceId,
       deviceName: 'Priya',
     ).encode();
     final summary = await alex.engine.syncWithLink(link);
@@ -272,79 +300,102 @@ void main() {
     ]) {
       await expectLater(
         alex.engine.syncWithLink(bad),
-        throwsA(isA<SyncException>()
-            .having((e) => e.failure, 'failure', SyncFailure.invalidCode)),
+        throwsA(
+          isA<SyncException>().having(
+            (e) => e.failure,
+            'failure',
+            SyncFailure.invalidCode,
+          ),
+        ),
       );
       await expectLater(
         alex.engine.acceptInvite(bad),
-        throwsA(isA<SyncException>()
-            .having((e) => e.failure, 'failure', SyncFailure.invalidCode)),
+        throwsA(
+          isA<SyncException>().having(
+            (e) => e.failure,
+            'failure',
+            SyncFailure.invalidCode,
+          ),
+        ),
       );
     }
   });
 
-  test('invite with a host: join, then the first sync brings the group',
-      () async {
-    final ravi = Phone(hub, 'c', "Ravi's iPhone");
-    final link = await alex.engine.inviteLinkFor(seed.g);
-    final invite = InviteLink.tryParse(link)!;
-    expect(invite.host, 'a-lan');
-    expect(invite.groupName, 'Goa trip');
-    expect(invite.currency, 'INR');
-    expect(invite.deviceId, alex.store.localDeviceId);
-    expect(invite.fromName, "Alex's Pixel");
-    expect(alex.engine.status.host, isNotNull);
+  test(
+    'invite with a host: join, then the first sync brings the group',
+    () async {
+      final ravi = await Phone.create(hub, 'c', "Ravi's iPhone");
+      final link = await alex.engine.inviteLinkFor(seed.g);
+      final invite = InviteLink.tryParse(link)!;
+      expect(invite.host, 'a-lan');
+      expect(invite.groupName, 'Goa trip');
+      expect(invite.currency, 'INR');
+      expect(invite.deviceId, alex.phone.deviceId);
+      expect(invite.fromName, "Alex's Pixel");
+      expect(alex.engine.status.host, isNotNull);
 
-    final result = await ravi.engine.acceptInvite(link);
+      final result = await ravi.engine.acceptInvite(link);
 
-    expect(result.groupId, seed.g);
-    expect(result.alreadyMember, isFalse);
-    expect(result.firstSync, isNotNull);
-    expect(result.firstSync!.receivedOps, 7);
-    expect(ravi.store.canonical, alex.store.canonical);
+      expect(result.groupId, seed.g);
+      expect(result.alreadyMember, isFalse);
+      expect(result.firstSync, isNotNull);
+      expect(result.firstSync!.receivedOps, 7);
+      expect(ravi.phone.canonical, alex.phone.canonical);
 
-    final again = await ravi.engine.acceptInvite(link);
-    expect(again.alreadyMember, isTrue);
-    await ravi.engine.dispose();
-  });
+      final again = await ravi.engine.acceptInvite(link);
+      expect(again.alreadyMember, isTrue);
+      await ravi.dispose();
+    },
+  );
 
   test('invite without a reachable host still joins', () async {
-    final ravi = Phone(hub, 'c', "Ravi's iPhone");
+    final ravi = await Phone.create(hub, 'c', "Ravi's iPhone");
     final link = await alex.engine.inviteLinkFor(seed.g, includeHost: false);
     expect(InviteLink.tryParse(link)!.host, isNull);
     expect(alex.engine.status.host, isNull);
 
     final result = await ravi.engine.acceptInvite(link);
     expect(result.firstSync, isNull);
-    expect(await ravi.store.groupKeys(), contains(seed.g));
-    expect(ravi.store.pendingJoins[seed.g], isNotEmpty);
-    await ravi.engine.dispose();
+    expect(await ravi.phone.ledger.groupKeys(), contains(seed.g));
+    expect(ravi.phone.snapshot.pendingJoins[seed.g], isNotEmpty);
+    await ravi.dispose();
   });
 
   test('cancel stops a running session', () async {
     for (var i = 0; i < 300; i++) {
-      await alex.store.authorExpense(seed.g,
-          payer: seed.a, owers: [seed.a, seed.b], total: 100 + i);
+      await alex.phone.addExpense(
+        seed.g,
+        payer: seed.a,
+        owers: [seed.a, seed.b],
+        total: 100 + i,
+      );
     }
     hub.latency = const Duration(milliseconds: 15);
     await priya.engine.startHosting();
     final peer = await alex.find(priya);
     final run = alex.engine.syncWith(peer);
-    await eventually(() =>
-        alex.engine.status.session is SessionActive &&
-        (alex.engine.status.session as SessionActive).progress.phase !=
-            SyncPhase.connecting);
+    await eventually(
+      () =>
+          alex.engine.status.session is SessionActive &&
+          (alex.engine.status.session as SessionActive).progress.phase !=
+              SyncPhase.connecting,
+    );
 
     await alex.engine.cancel();
 
     await expectLater(
       run,
-      throwsA(isA<SyncException>()
-          .having((e) => e.failure, 'failure', SyncFailure.cancelled)),
+      throwsA(
+        isA<SyncException>().having(
+          (e) => e.failure,
+          'failure',
+          SyncFailure.cancelled,
+        ),
+      ),
     );
     final s = alex.engine.status.session as SessionFailed;
     expect(s.failure, SyncFailure.cancelled);
-    expect(alex.store.records.single.outcome, SyncOutcome.cancelled);
+    expect((await alex.phone.records()).single.outcome, SyncOutcome.cancelled);
   });
 
   test('availability and permissions per transport', () async {
@@ -353,42 +404,53 @@ void main() {
       TransportKind.lan: TransportAvailability.ready,
       TransportKind.ble: TransportAvailability.needsPermission,
     });
-    expect(await alex.engine.requestPermissions({TransportKind.ble}),
-        {TransportKind.ble: TransportAvailability.ready});
+    expect(await alex.engine.requestPermissions({TransportKind.ble}), {
+      TransportKind.ble: TransportAvailability.ready,
+    });
   });
 
-  test('hosting skips transports that are not ready, fails if none is',
-      () async {
-    priya.ble.availabilityState = TransportAvailability.radioOff;
-    final host = await priya.engine.startHosting();
-    expect(host.transports, {TransportKind.lan});
-    await priya.engine.stopHosting();
+  test(
+    'hosting skips transports that are not ready, fails if none is',
+    () async {
+      priya.ble.availabilityState = TransportAvailability.radioOff;
+      final host = await priya.engine.startHosting();
+      expect(host.transports, {TransportKind.lan});
+      await priya.engine.stopHosting();
 
-    priya.lan.availabilityState = TransportAvailability.needsPermission;
-    await expectLater(
-      priya.engine.startHosting(),
-      throwsA(isA<SyncException>()
-          .having((e) => e.failure, 'failure', SyncFailure.permissionDenied)),
-    );
-  });
+      priya.lan.availabilityState = TransportAvailability.needsPermission;
+      await expectLater(
+        priya.engine.startHosting(),
+        throwsA(
+          isA<SyncException>().having(
+            (e) => e.failure,
+            'failure',
+            SyncFailure.permissionDenied,
+          ),
+        ),
+      );
+    },
+  );
 
   test('concurrent startHosting calls share one start', () async {
-    final both = await Future.wait(
-        [priya.engine.startHosting(), priya.engine.startHosting()]);
+    final both = await Future.wait([
+      priya.engine.startHosting(),
+      priya.engine.startHosting(),
+    ]);
     expect(identical(both[0], both[1]), isTrue);
     expect(identical(await priya.engine.startHosting(), both[0]), isTrue);
   });
 
   test('hosting expires on its own', () async {
     await priya.engine.startHosting(
-        duration: const Duration(milliseconds: 100));
+      duration: const Duration(milliseconds: 100),
+    );
     expect(await eventually(() => priya.engine.status.host == null), isTrue);
     expect(priya.lan.isAdvertising, isFalse);
   });
 
   test('a peer not seen for 15 s is dropped', () async {
     final clock = TestClock();
-    final carol = Phone(hub, 'c', 'Carol', clock: clock);
+    final carol = await Phone.create(hub, 'c', 'Carol', clock: clock);
     carol.lan.rediscoverInterval = const Duration(hours: 1);
     carol.ble.rediscoverInterval = const Duration(hours: 1);
     await priya.engine.startHosting();
@@ -400,7 +462,7 @@ void main() {
         .firstWhere((l) => l.isEmpty)
         .timeout(const Duration(seconds: 3));
     expect(empty, isEmpty);
-    await carol.engine.dispose();
+    await carol.dispose();
   });
 
   test('watchStatus and watchNearby emit the current value first', () async {

@@ -7,7 +7,7 @@ import 'package:settle_up/sync/protocol/session.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
-import 'test_ledger.dart';
+import 'phone.dart';
 
 /// Fast timers for tests (the defaults are seconds long).
 const SessionTimings fastTimings = SessionTimings(
@@ -42,9 +42,9 @@ final class InterceptChannel implements FrameChannel {
 
   @override
   Stream<Uint8List> get frames => inner.frames.expand((f) {
-        receivedSizes.add(f.length);
-        return transform(_index++, f);
-      });
+    receivedSizes.add(f.length);
+    return transform(_index++, f);
+  });
 
   @override
   Future<void> send(Uint8List frame) {
@@ -66,29 +66,36 @@ Future<(FrameChannel, FrameChannel)> channelPair({
   TransportKind kind = TransportKind.lan,
 }) async {
   final hub = MemoryTransportHub(latency: latency);
-  final ti = MemoryTransport(hub,
-      kind: kind, address: 'initiator', maxFrameBytes: maxFrameBytes)
-    ..dropAfterFrames = dropAfterFrames;
-  final tr = MemoryTransport(hub,
-      kind: kind, address: 'responder', maxFrameBytes: maxFrameBytes);
-  await tr.startAdvertising(const AdvertiseInfo(
-    deviceId: 'rrrrrrrr',
-    deviceName: 'Responder',
-    groupTokens: [],
-  ));
-  final inbound = tr.inbound.first;
-  final ci = await ti.connect(DiscoveredPeer(
+  final ti = MemoryTransport(
+    hub,
+    kind: kind,
+    address: 'initiator',
+    maxFrameBytes: maxFrameBytes,
+  )..dropAfterFrames = dropAfterFrames;
+  final tr = MemoryTransport(
+    hub,
     kind: kind,
     address: 'responder',
-    name: 'Responder',
-  ));
+    maxFrameBytes: maxFrameBytes,
+  );
+  await tr.startAdvertising(
+    const AdvertiseInfo(
+      deviceId: 'rrrrrrrr',
+      deviceName: 'Responder',
+      groupTokens: [],
+    ),
+  );
+  final inbound = tr.inbound.first;
+  final ci = await ti.connect(
+    DiscoveredPeer(kind: kind, address: 'responder', name: 'Responder'),
+  );
   return (ci, await inbound);
 }
 
 /// Runs one session between [initiator] and [responder].
 Future<(SessionResult, SessionResult)> syncPair(
-  TestLedger initiator,
-  TestLedger responder, {
+  TestPhone initiator,
+  TestPhone responder, {
   int maxFrameBytes = 1 << 20,
   int? dropAfterFrames,
   SessionTimings timings = fastTimings,
@@ -102,14 +109,14 @@ Future<(SessionResult, SessionResult)> syncPair(
   );
   final si = SyncSession(
     channel: wrapInitiator == null ? ci : wrapInitiator(ci),
-    store: initiator,
+    store: initiator.store,
     role: SessionRole.initiator,
     timings: timings,
     liveMode: live,
   );
   final sr = SyncSession(
     channel: wrapResponder == null ? cr : wrapResponder(cr),
-    store: responder,
+    store: responder.store,
     role: SessionRole.responder,
     timings: timings,
     liveMode: live,
