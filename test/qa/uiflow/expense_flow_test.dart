@@ -316,4 +316,21 @@ void main() {
     expect(explained, isTrue);
     await w.shutdown(tester);
   }, skip: true); // QA UIFLOW-R1-05
+
+  testWidgets('UIFLOW-R1-20: Android back on a filled-in Add expense '
+      'discards it without asking (S.discardAndClose is never used)', (
+    tester,
+  ) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await openAddExpense(tester, w);
+    await typeAmountAndDescription(tester, '4200', 'Houseboat');
+    await qaTap(tester, find.text(KitStrings.splitExact));
+    await tester.binding.handlePopRoute();
+    await qaSettle(tester);
+    // Expected: a confirmation (Discard and close) and the draft kept.
+    expect(find.text(S.discardAndClose), findsOneWidget);
+    expect(w.location, isNot(Routes.group(gid)));
+    await w.shutdown(tester);
+  }, skip: true); // QA UIFLOW-R1-20
 }
