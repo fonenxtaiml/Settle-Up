@@ -783,7 +783,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
                 hintText: S.notesHint,
                 controller: _notes,
                 maxLength: 500,
-                onChanged: (_) => _touch(),
+                onChanged: (_) => setState(_touch),
               ),
             ),
           ],
