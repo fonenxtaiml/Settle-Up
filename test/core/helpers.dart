@@ -27,6 +27,15 @@ final class FakeDevice {
   static int wallMs = kBaseMs;
 
   final Map<GroupId, int> _counters = {};
+
+  /// Simulates receiving [ops] from a peer: merges their max HLC.
+  void saw(Iterable<Operation> ops) {
+    Hlc? max;
+    for (final op in ops) {
+      if (max == null || op.hlc > max) max = op.hlc;
+    }
+    if (max != null) clock.receive(max);
+  }
   int _opSeq = 0;
 
   Operation op(
