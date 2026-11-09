@@ -68,6 +68,7 @@ final class DefaultSyncEngine implements SyncEngine {
   final Set<SyncTransport> _advertising = {};
   Timer? _hostExpiry;
   Timer? _tokenRefresh;
+  Future<HostInfo>? _hostStart;
 
   // discovery
   final List<StreamSubscription<DiscoveredPeer>> _discoverySubs = [];
@@ -157,6 +158,16 @@ final class DefaultSyncEngine implements SyncEngine {
     _checkAlive();
     final current = _host;
     if (current != null) return current;
+    // Concurrent callers (e.g. the host screen and an invite) share one start.
+    final pending = _hostStart ??= _startHosting(duration);
+    try {
+      return await pending;
+    } finally {
+      _hostStart = null;
+    }
+  }
+
+  Future<HostInfo> _startHosting(Duration duration) async {
 
     final info = await _advertiseInfo();
     final availabilities = <TransportAvailability>[];

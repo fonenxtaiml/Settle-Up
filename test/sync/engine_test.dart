@@ -365,6 +365,13 @@ void main() {
     );
   });
 
+  test('concurrent startHosting calls share one start', () async {
+    final both = await Future.wait(
+        [priya.engine.startHosting(), priya.engine.startHosting()]);
+    expect(identical(both[0], both[1]), isTrue);
+    expect(identical(await priya.engine.startHosting(), both[0]), isTrue);
+  });
+
   test('hosting expires on its own', () async {
     await priya.engine.startHosting(
         duration: const Duration(milliseconds: 100));
