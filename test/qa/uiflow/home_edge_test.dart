@@ -166,4 +166,36 @@ void main() {
     expect(found, isTrue);
     await w.shutdown(tester);
   }, skip: true); // QA UIFLOW-R1-17
+
+  testWidgets('UIFLOW-R1-21: a 1:1 group ("Just you two") accepts a third '
+      'person from its Members screen', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup(people: const ['Priya']);
+    final priyaPerson = w
+        .group(gid)
+        .activeMembers
+        .firstWhere((m) => m.displayName == 'Priya')
+        .personId;
+    final direct = await w.ledger.directGroupWith(
+      personId: priyaPerson,
+      displayName: 'Priya',
+      currency: 'INR',
+    );
+    await pumpReal(tester, w);
+    w.push(Routes.group(direct));
+    await qaSettle(tester);
+    expect(find.text(S.justYouTwo), findsOneWidget);
+    await qaTap(tester, find.byTooltip(S.moreOptions));
+    await qaTap(tester, find.text(S.members).last);
+    final field = fieldLabeled(S.personName);
+    if (field.evaluate().isNotEmpty) {
+      await tester.enterText(field, 'Rahul');
+      await tester.pump();
+      await qaTap(tester, find.text(S.addPerson));
+    }
+    // Expected: a 1:1 group stays two people.
+    expect(w.group(direct).activeMembers, hasLength(2));
+    await w.shutdown(tester);
+  }, skip: true); // QA UIFLOW-R1-21
 }
