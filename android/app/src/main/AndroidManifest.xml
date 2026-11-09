@@ -43,14 +43,18 @@
          group:
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" /> -->
 
-    <!-- allowBackup off: a restored op log with a cloned device id would
-         fork the per-device counters (SPEC 7.4). -->
+    <!-- No backup and no device-to-device transfer: a restored or copied op
+         log with a cloned device id would fork the per-device counters
+         (SPEC 7.4). allowBackup and fullBackupContent cover API <= 30;
+         dataExtractionRules covers API 31+, where allowBackup="false" no
+         longer stops device-to-device transfer. -->
     <application
         android:label="Settle Up"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules"
         tools:replace="android:allowBackup">
         <activity
             android:name=".MainActivity"

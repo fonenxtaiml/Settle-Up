@@ -64,9 +64,6 @@ void main() {
 
   test(
     'API 31+ device-to-device transfer is excluded by dataExtractionRules',
-    skip:
-        'QA SECURITY-R1-07: no android:dataExtractionRules; on Android 12+ '
-        'allowBackup=false does not stop device-to-device transfer',
     () {
       final app = _openings(xml, 'application').single;
       final m = RegExp(r'android:dataExtractionRules="@xml/([^"]+)"')
