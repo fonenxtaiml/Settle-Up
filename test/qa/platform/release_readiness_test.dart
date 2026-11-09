@@ -137,9 +137,6 @@ void main() {
           );
         }
       },
-      skip:
-          'QA PLATFORM-R1-05: launcher icon is the Flutter default; no '
-          'adaptive icon',
     );
 
     test(
@@ -160,9 +157,6 @@ void main() {
           reason: 'Android 13+ themed icons',
         );
       },
-      skip:
-          'QA PLATFORM-R1-05: launcher icon is the Flutter default; no '
-          'adaptive icon',
     );
   });
 
@@ -188,9 +182,6 @@ void main() {
           reason: 'a debug fallback must be conditional and logged',
         );
       },
-      skip:
-          'QA PLATFORM-R1-06: release build is always signed with the '
-          'debug key',
     );
   });
 
@@ -211,9 +202,6 @@ void main() {
         }
         expect(hits, isEmpty);
       },
-      skip:
-          'QA PLATFORM-R1-07: template TODOs (applicationId, signing) '
-          'still in android/app/build.gradle.kts',
     );
   });
 
@@ -236,9 +224,6 @@ void main() {
         expect(rules, contains('<device-transfer>'));
         expect(rules, contains('<exclude'));
       },
-      skip:
-          'QA PLATFORM-R1-03: no dataExtractionRules; device-to-device '
-          'transfer clones the device id',
     );
   });
 

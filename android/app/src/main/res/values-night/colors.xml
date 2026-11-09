@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Palette.stoneDark / Palette.inkDark -->
+    <color name="launch_background">#FF0F1316</color>
+    <color name="launch_mark">#FFE9EBEC</color>
+</resources>
