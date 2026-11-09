@@ -232,9 +232,19 @@ class ExpenseRow extends StatelessWidget {
         title: title,
         subtitle: metaText,
         leading: leading,
-        trailing: trailing,
+        // The trailing amount scales down within about a third of the
+        // width, so the subline ("You paid ₹1,20,000.50") keeps room.
+        trailing: trailing == null
+            ? null
+            : ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.sizeOf(context).width * 0.32,
+                ),
+                child: trailing,
+              ),
         onTap: onTap,
         minHeight: Sizes.rowMinDense,
+        subtitleLines: 2,
         verticalPadding: 7,
         titleStyle: deleted
             ? titleStyle.copyWith(

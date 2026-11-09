@@ -70,6 +70,7 @@ abstract final class S {
   static const joinWithQr = 'Join with a QR code';
 
   // -------------------------------------------------------------- group --
+  static String groupSpent(String spent) => '$spent spent';
   static String groupSubtitle(int people, String spent) =>
       '${S.people(people)}, $spent spent';
   static String groupDetail(String paid, String share) =>

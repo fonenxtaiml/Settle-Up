@@ -52,7 +52,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-01: expense detail total is clipped, not scaled down',
-    skip: true, // QA VISUAL-R1-01: expense detail amount clipped
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -84,7 +83,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-02: Home hero "Coming to you" amount is clipped at 2.0x',
-    skip: true, // QA VISUAL-R1-02: Home hero columns clip amounts
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -102,7 +100,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-03: suggested payment row overflows at 320 dp, 1.3x',
-    skip: true, // QA VISUAL-R1-03: TransferRow RenderFlex overflow
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -120,7 +117,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-04: Settle up "What changes" clips KD1,250.750 at 1.3x',
-    skip: true, // QA VISUAL-R1-04: BeforeAfterTable fixed 96 dp columns
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -137,7 +133,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-05: expense editor app bar overflows with a long group name',
-    skip: true, // QA VISUAL-R1-05: unconstrained group name in app bar
     (tester) async {
       // The group editor allows 60 characters; 39 is enough at 320 dp, 1.3x.
       for (final (name, v) in [
@@ -162,7 +157,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-06: expense row subline hides "Sam paid ¥5,000" at 1.3x',
-    skip: true, // QA VISUAL-R1-06: expense subline ellipsizes the amount
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -180,7 +174,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-07: group app bar "N people, ₹X spent" is cut at 2.0x',
-    skip: true, // QA VISUAL-R1-07: group subtitle ellipsizes the total
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -198,7 +191,6 @@ void main() {
 
   testWidgets(
     'QA VISUAL-R1-08: Activity amounts at Money.maxMinor clip at 320 dp, 2.0x',
-    skip: true, // QA VISUAL-R1-08: BalanceTrailing amount has no fit
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.huge());
