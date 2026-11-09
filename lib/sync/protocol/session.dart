@@ -319,6 +319,7 @@ final class SyncSession {
   }
 
   Future<void> _onError(Object e, StackTrace st) async {
+    if (_finished) return; // e.g. a send racing a cancel
     switch (e) {
       case ProtocolException(:final code, :final message):
         await _fail(failureForErrorCode(code), message, sendCode: code);
