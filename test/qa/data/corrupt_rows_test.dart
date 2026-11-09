@@ -197,9 +197,6 @@ void main() {
     test(
       'a corrupt row holding MY latest op does not make the next command '
       'reuse its counter and silently drop the new expense',
-      skip: 'QA DATA-R1-01: Ledger.open derives the next counter from '
-          'decoded ops only; the next local op collides on '
-          'UNIQUE(group_id, device_id, counter) and is ignored',
       () async {
         final mine = a.mineIn(t.g);
         expect(mine.last.counter, 5); // the expense
@@ -324,7 +321,8 @@ void main() {
         await tamper((db) => db.execute(
             'UPDATE kv SET value = ? WHERE key = ?', [bad, KvKeys.hlcLast]));
         a.clock.now = kQaBaseMs;
-        await a.ledger.renameMember(t.g, t.sam, 'S $bad');
+        // A distinct short name each time (member names are 1..40).
+        await a.ledger.renameMember(t.g, t.sam, 'S ${bad.length}');
         expect(a.mineIn(t.g).last.hlc > last, isTrue, reason: bad);
       }
     });
