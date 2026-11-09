@@ -5,6 +5,8 @@ import 'dart:convert';
 
 import '../../core/ids.dart';
 import '../../core/ops.dart';
+import '../crypto/aead.dart';
+import 'codec.dart';
 import 'messages.dart';
 
 /// At most this many un-ACKed OPS batches in flight per session.
@@ -19,6 +21,29 @@ const int _envelopeBytes = 96 + kMaxIdLength;
 
 /// UTF-8 length of the op's wire JSON.
 int opJsonBytes(Operation op) => utf8.encode(jsonEncode(op.toJson())).length;
+
+/// Frame size of the smallest real transport (BLE GATT, SPEC 8.7.2).
+const int kSmallestTransportFrame = 16 * 1024;
+
+/// Whether [op] alone fits a sealed OPS frame on every transport.
+///
+/// The app never writes a bigger op (SPEC 5.16), and one that does not fit
+/// could never be relayed over Bluetooth: every later BLE sync of its group
+/// with a phone that lacks it would end in `too_large`. So ops from peers
+/// are checked before they are stored.
+bool fitsEveryTransport(Operation op) {
+  const fixed = 2 + _envelopeBytes + kSealOverhead;
+  if (opJsonBytes(op) + fixed <= kSmallestTransportFrame) return true;
+  // Large JSON is gzipped on the wire; measure the real frame.
+  final plain = FrameCodec.encodePlain(OpsMessage(
+    groupId: op.groupId,
+    batch: 1 << 31,
+    total: 1 << 31,
+    ops: [op],
+    more: true,
+  ));
+  return plain.length + kSealOverhead <= kSmallestTransportFrame;
+}
 
 /// Splits [ops] (already in send order) into batches for [maxFrame].
 /// A single op larger than the budget gets a batch of its own; the session

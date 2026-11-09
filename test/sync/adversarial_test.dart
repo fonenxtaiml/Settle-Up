@@ -2,13 +2,16 @@
 // hostile or confused peers, size limits, links, leaks and resume.
 import 'dart:convert';
 import 'dart:io' show gzip;
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/sync/crypto/handshake.dart';
+import 'package:settle_up/sync/protocol/batching.dart';
 import 'package:settle_up/sync/protocol/codec.dart';
 import 'package:settle_up/sync/protocol/messages.dart';
 import 'package:settle_up/sync/protocol/session.dart';
@@ -100,6 +103,86 @@ void main() {
       expect(r.failure, SyncFailure.protocolMismatch);
       expect(priya.opCount(g1), 0);
       expect(priya.opCount(g2), 0);
+    });
+
+    test('cannot plant an op too big to relay over Bluetooth', () async {
+      // Over LAN (1 MiB frames) the op would arrive, but no BLE frame
+      // (16 KiB) can carry it, so every later BLE sync of the group with a
+      // phone lacking it would fail with too_large.
+      final (evil, result, _) = await victim(priya);
+      await evil.handshake(only1);
+      final template = alex.opsOf(g1).last; // an expense create
+      const mallory = 'eeeeeeee-0000-7000-8000-000000000001';
+      final rnd = Random(7);
+      final notes = String.fromCharCodes(
+          List.generate(20000, (_) => 0x4e00 + rnd.nextInt(0x5000)));
+      final big = Operation(
+        id: 'big-1',
+        groupId: g1,
+        deviceId: mallory,
+        counter: 1,
+        hlc: const Hlc(kBaseMs, 0, mallory),
+        entityType: template.entityType,
+        entityId: 'e-big',
+        kind: template.kind,
+        payload: {...template.payload, ExpenseFields.notes: notes},
+      );
+      await evil.sendSealed(OpsMessage(
+          groupId: g1, batch: 1, total: 1, ops: [big], more: false));
+      final r = await result;
+      expect(r.failure, SyncFailure.protocolMismatch, reason: r.message);
+      expect(r.message, contains('too large'));
+      expect(priya.opsOf(g1).where((o) => o.id == big.id), isEmpty);
+      final error = evil.received.whereType<ErrorMessage>().firstOrNull ??
+          await evil.until((m) => m is ErrorMessage);
+      expect((error! as ErrorMessage).code, ErrorCodes.badOp);
+    });
+
+    test('can still send the largest op the app itself writes', () async {
+      // 50 members, exact amounts on both sides, 1,000 characters of notes
+      // that JSON escapes to 6 bytes each.
+      final (evil, result, _) = await victim(priya);
+      await evil.handshake(only1);
+      final template = alex.opsOf(g1).last;
+      const mallory = 'eeeeeeee-0000-7000-8000-000000000001';
+      final members = [
+        for (var i = 0; i < 50; i++)
+          'mmmmmmmm-0000-7000-9000-${i.toString().padLeft(12, '0')}',
+      ];
+      final shares = {for (final m in members) m: 99999999};
+      final total = 99999999 * 50;
+      final big = Operation(
+        id: 'big-ok',
+        groupId: g1,
+        deviceId: mallory,
+        counter: 1,
+        hlc: const Hlc(kBaseMs, 0, mallory),
+        entityType: template.entityType,
+        entityId: 'e-big',
+        kind: template.kind,
+        payload: {
+          ...template.payload,
+          ExpenseFields.description: '\u0001' * 120,
+          ExpenseFields.notes: '\u0001' * 1000,
+          ExpenseFields.money: {
+            'total': total,
+            'currency': 'INR',
+            'paidBy': SplitSpec(SplitMethod.exact, shares).toJson(),
+            'owedBy': SplitSpec(SplitMethod.exact, shares).toJson(),
+            'paid': shares,
+            'owed': shares,
+          },
+        },
+      );
+      await evil.sendSealed(OpsMessage(
+          groupId: g1, batch: 1, total: 1, ops: [big], more: false));
+      // Bigger than one uncompressed BLE frame; it fits once gzipped.
+      expect(opJsonBytes(big), greaterThan(kSmallestTransportFrame));
+      final ack = await evil.until((m) => m is AckMessage || m is ErrorMessage);
+      expect(ack, isA<AckMessage>(), reason: '$ack');
+      expect(priya.opsOf(g1).where((o) => o.id == big.id), hasLength(1));
+      await evil.close();
+      await result;
     });
 
     test('asking for the other group (VV) gets nothing from it', () async {

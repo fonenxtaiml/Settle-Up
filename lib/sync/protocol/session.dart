@@ -595,6 +595,10 @@ final class SyncSession {
       if (op.groupId != g) {
         throw const ProtocolException(ErrorCodes.badOp, 'op of another group');
       }
+      if (!fitsEveryTransport(op)) {
+        throw ProtocolException(
+            ErrorCodes.badOp, 'op ${op.id} is too large to relay');
+      }
     }
     _lastBatchReceived[g] = msg.batch;
     final prevTotal = _peerTotal[g] ?? 0;
