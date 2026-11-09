@@ -134,6 +134,9 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
                             memberNames: memberNames(entry.key, me),
                             myMemberId: myMemberIn(entry.key, me),
                             resolve: entry.key.resolve,
+                            possibleDuplicate: possibleDuplicatePayments(
+                              entry.key,
+                            ).contains(e.id),
                             unshared: snap.unsharedEntityIds.contains(e.id),
                             onTap: () => context.push(Routes.expense(e.id)),
                           ),
