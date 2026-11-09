@@ -5,6 +5,7 @@ import 'package:settle_up/core/balances.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
+import 'package:settle_up/core/split.dart';
 
 import 'helpers.dart';
 
@@ -79,6 +80,65 @@ void main() {
       );
       final r = reduce([...base(), alex.addExpense(g, 'e1', money: huge)]);
       expect(r.state.groups[g]!.expenses.containsKey('e1'), isFalse);
+    });
+  });
+
+  group('splits', () {
+    test('check never throws, even for oversize shares', () {
+      final spec = SplitSpec(SplitMethod.shares, {'a': 1 << 40, 'b': 1});
+      expect(
+        () => SplitCalculator.check(Money.maxMinor, spec),
+        returnsNormally,
+      );
+    });
+
+    test('allocate stays exact when total * weight exceeds 64 bits', () {
+      final shares = SplitCalculator.allocate(999999999, {
+        'a': 1 << 40,
+        'b': 1 << 40,
+        'c': 1,
+      });
+      expect(shares.values.fold(0, (a, b) => a + b), 999999999);
+      expect(shares.keys, ['a', 'b']);
+      expect((shares['a']! - shares['b']!).abs(), lessThanOrEqualTo(1));
+    });
+
+    test(
+      'exact values that sum to total only through overflow are rejected',
+      () {
+        const big = 1 << 62;
+        final spec = SplitSpec(SplitMethod.exact, {
+          'a': big,
+          'b': big,
+          'c': big,
+          'd': big + 100,
+        });
+        expect(
+          () => SplitCalculator.compute(100, spec),
+          throwsA(
+            isA<SplitException>().having(
+              (e) => e.error,
+              'error',
+              SplitError.sumMismatch,
+            ),
+          ),
+        );
+        expect(SplitCalculator.check(100, spec).error, SplitError.sumMismatch);
+      },
+    );
+
+    test('huge adjustments never escape as StateError', () {
+      const k = 1 << 62;
+      final spec = SplitSpec(SplitMethod.adjustment, {
+        'a': -k,
+        'b': -k,
+        'c': -k,
+      });
+      expect(() => SplitCalculator.check(100, spec), returnsNormally);
+      // Mathematically every adjustment cancels: 34/33/33.
+      expect(SplitCalculator.compute(100, spec), {'a': 34, 'b': 33, 'c': 33});
+      final over = SplitSpec(SplitMethod.adjustment, {'a': k, 'b': k, 'c': 0});
+      expect(SplitCalculator.check(100, over).error, SplitError.negativeShare);
     });
   });
 }
