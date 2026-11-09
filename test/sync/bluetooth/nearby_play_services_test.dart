@@ -7,7 +7,6 @@
 // called again. Ordinary failures are not remembered.
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -154,6 +153,12 @@ void main() {
         isFalse,
       );
       expect(isNearbyApiUnavailable(const SocketException('gone')), isFalse);
+      expect(
+        isNearbyApiUnavailable(
+          const SocketException('connect to 10.0.0.17: refused'),
+        ),
+        isFalse,
+      );
     });
   });
 
