@@ -3,6 +3,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/balances.dart';
 import 'package:settle_up/core/csv_export.dart';
+import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
@@ -154,6 +155,34 @@ void main() {
       );
       final rows = parseCsv(CsvExport.group(gs));
       expect(rows[1][4], "'=HYPERLINK(1)");
+    });
+  });
+  group('hlc', () {
+    test('only the canonical encoding parses', () {
+      // int.parse accepts a sign, surrounding whitespace, a 0x prefix and
+      // upper-case hex, so these decoded to valid clocks although their
+      // text sorts differently from Hlc.compareTo (the op log and sync
+      // rely on encoded order == compareTo).
+      for (final bad in [
+        '+00000000000009-0000-dev',
+        ' 00000000000009-0000-dev',
+        '00000000000009 -0000-dev',
+        '0x000000000000f-0000-dev',
+        '000000000000001-000B-dev',
+        '000000000000001-+00b-dev',
+        '000000000000001- 00b-dev',
+        '000000000000001-0x0b-dev',
+      ]) {
+        expect(() => Hlc.parse(bad), throwsFormatException, reason: bad);
+      }
+      const ok = '000000000000001-000b-dev';
+      expect(Hlc.parse(ok).encode(), ok);
+    });
+
+    test('an op carrying a non-canonical HLC is rejected as malformed', () {
+      final json = alex.createGroup(g).toJson();
+      json['hlc'] = '000000000000001-000B-${alex.deviceId}';
+      expect(() => Operation.fromJson(json), throwsFormatException);
     });
   });
 }
