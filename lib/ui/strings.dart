@@ -176,6 +176,10 @@ abstract final class S {
   static const showAgain = 'Show again';
   static const inviteQrLabel = 'QR code to join this group';
   static const shareLink = 'Share link';
+  static const shareLinkTitle = 'Share the invite link?';
+  static String shareLinkWarning(String group) =>
+      'Anyone with this link can see and add to $group. Send it only to '
+      'people in the group.';
   static String inviteShareText(String group, String link) =>
       'Join $group on Settle Up: $link';
 
