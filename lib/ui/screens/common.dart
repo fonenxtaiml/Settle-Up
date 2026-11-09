@@ -84,7 +84,7 @@ class AsyncBody<T> extends StatelessWidget {
     _ => const Center(
       child: SizedBox.square(
         dimension: 24,
-        child: CircularProgressIndicator(strokeWidth: 2.5),
+        child: KitSpinner(strokeWidth: 2.5),
       ),
     ),
   };

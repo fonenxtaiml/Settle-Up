@@ -333,7 +333,7 @@ class _SessionStrip extends StatelessWidget {
     final Widget icon = switch (session) {
       SessionActive() => const SizedBox.square(
         dimension: 20,
-        child: CircularProgressIndicator(strokeWidth: 2),
+        child: KitSpinner(),
       ),
       SessionFailed() => Icon(Icons.error_outline_rounded, color: scheme.error),
       _ => const Icon(Icons.check_rounded),
