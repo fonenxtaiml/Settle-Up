@@ -167,8 +167,11 @@ class SyncBanner extends StatelessWidget {
         : onSync == null
         ? null
         : Semantics(
+            // Its own button inside the card's.
+            container: true,
             label: '${KitStrings.sync}, $title',
             button: true,
+            onTap: onSync,
             excludeSemantics: true,
             child: FilledButton.tonal(
               onPressed: onSync,
