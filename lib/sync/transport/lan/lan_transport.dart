@@ -14,6 +14,7 @@ import '../hosting_details.dart';
 import '../transport.dart';
 import 'gateway_probe.dart';
 import 'lan_network.dart';
+import 'local_address.dart';
 import 'mdns.dart';
 import 'tcp_framing.dart';
 
@@ -249,6 +250,9 @@ final class LanTransport implements SyncTransport, HostingDetails {
 
   @override
   Future<String?> wifiName() => _network.wifiName();
+
+  @override
+  bool isLinkHost(String address) => isLocalNetworkHostPort(address);
 
   // --------------------------------------------------------- discovery --
 
