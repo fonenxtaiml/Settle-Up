@@ -93,6 +93,23 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
+        <!-- No usage metrics to Google (SECURITY-R1-13, docs/PRIVACY.md).
+             mobile_scanner bundles ML Kit barcode scanning, which reports
+             API usage and performance events through Firebase data
+             transport ("cct" backend, firebaselogging-pa.googleapis.com).
+             Removing the backend from the discovery service leaves the
+             runtime with no backend: every event is dropped before it is
+             stored or scheduled (DefaultScheduler: "Transport backend 'cct'
+             is not registered"). Barcode decoding is on-device and does not
+             use this path. This element declares nothing of ours; it only
+             strips that meta-data from the merged manifest. -->
+        <service
+            android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
+            tools:node="merge">
+            <meta-data
+                android:name="backend:com.google.android.datatransport.cct.CctBackendFactory"
+                tools:node="remove" />
+        </service>
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and

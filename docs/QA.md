@@ -143,6 +143,7 @@ Also verify (SPEC 9.1):
 | P5 | `adb shell dumpsys package app.settleup.settleup | grep permission`: `BLUETOOTH`, `BLUETOOTH_ADMIN` capped at 30, both location permissions capped at 32 after manifest merge. | | |
 | P6 | Settings, Apps, Settle Up, Backup: app data is excluded (allowBackup off). | | |
 | P7 | Tap a `settleup://join?...` link in a chat app: Settle Up opens on the join screen. | | |
+| P8 | No usage metrics to Google (docs/PRIVACY.md). Release APK, Wi-Fi with internet, a traffic monitor such as PCAPdroid filtered to Settle Up. Scan an invite QR code, sync once, keep the app open 10 minutes, then lock the screen for an hour. Nothing goes to `firebaselogging-pa.googleapis.com` (or any internet host); only the other phone's LAN address appears. `adb logcat | grep -i transport` may show "Transport backend 'cct' is not registered": that is the expected drop. | | |
 
 ---
 
