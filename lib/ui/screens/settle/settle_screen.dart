@@ -21,11 +21,21 @@ import '../../widgets/widgets.dart';
 import '../common.dart';
 
 class SettleScreen extends ConsumerStatefulWidget {
-  const SettleScreen({super.key, required this.groupId, this.from, this.to});
+  const SettleScreen({
+    super.key,
+    required this.groupId,
+    this.from,
+    this.to,
+    this.currency,
+  });
 
   final GroupId groupId;
   final MemberId? from;
   final MemberId? to;
+
+  /// The currency of the payment the user picked (SPEC 6.6: a payment
+  /// settles only its own currency). Null: the pair's only debt, or a pick.
+  final String? currency;
 
   @override
   ConsumerState<SettleScreen> createState() => _SettleScreenState();
@@ -34,6 +44,7 @@ class SettleScreen extends ConsumerStatefulWidget {
 class _SettleScreenState extends ConsumerState<SettleScreen> {
   MemberId? _from;
   MemberId? _to;
+  String? _currency;
   int? _amount;
   PaymentMethod? _method;
   DateTime? _date;
@@ -51,15 +62,28 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     super.initState();
     _from = widget.from;
     _to = widget.to;
+    _currency = widget.currency;
   }
 
-  /// The suggested amount from [from] to [to] in [g] (0 if none).
-  static Transfer? _transfer(GroupState g, MemberId from, MemberId to) {
-    for (final t in BalanceCalculator.suggestedTransfers(g)) {
-      if (t.from == from && t.to == to) return t;
+  /// The suggested payment from [from] to [to] in [currency] (null if none).
+  static Transfer? _transfer(
+    List<Transfer> transfers,
+    MemberId from,
+    MemberId to,
+    String currency,
+  ) {
+    for (final t in transfers) {
+      if (t.from == from && t.to == to && t.currency == currency) return t;
     }
     return null;
   }
+
+  void _pick(Transfer t) => setState(() {
+    _from = t.from;
+    _to = t.to;
+    _currency = t.currency;
+    _amount = null;
+  });
 
   Future<void> _payPart(String currency, int max) async {
     final picked = await showModalBottomSheet<int>(
@@ -171,6 +195,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
       if (mine.length == 1 && !_recorded) {
         _from = mine.first.from;
         _to = mine.first.to;
+        _currency = mine.first.currency;
       } else {
         return _PickPayment(
           group: g,
@@ -178,18 +203,41 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
           transfers: [...mine, ...transfers.where((t) => !mine.contains(t))],
           myId: myId,
           full: full,
-          onPick: (t) => setState(() {
-            _from = t.from;
-            _to = t.to;
-          }),
+          onPick: _pick,
         );
+      }
+    }
+
+    // A pair but no currency: the pair's only debt, or let the user pick
+    // when the two owe each other in more than one currency.
+    if (_currency == null) {
+      final pair = [
+        for (final t in transfers)
+          if ((t.from == _from && t.to == _to) ||
+              (t.from == _to && t.to == _from))
+            t,
+      ];
+      if (pair.length > 1 && !_recorded) {
+        return _PickPayment(
+          group: g,
+          groupName: groupName,
+          transfers: pair,
+          myId: myId,
+          full: full,
+          onPick: _pick,
+        );
+      }
+      if (pair.length == 1) {
+        _from = pair.first.from;
+        _to = pair.first.to;
+        _currency = pair.first.currency;
       }
     }
 
     final from = _from!;
     final to = _to!;
-    final suggested = _transfer(g, from, to);
-    final currency = suggested?.currency ?? g.group!.currency;
+    final currency = _currency ?? g.group!.currency;
+    final suggested = _transfer(transfers, from, to, currency);
     final owed = _frozenOwed ?? suggested?.amount ?? 0;
     final amount = _amount ?? (owed > 0 ? owed : 0);
     final method =

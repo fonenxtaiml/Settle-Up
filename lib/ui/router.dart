@@ -51,11 +51,20 @@ abstract final class Routes {
   ).toString();
   static String expense(String eid) => '/expense/$eid';
   static String editExpense(String eid) => '/expense/$eid/edit';
-  static String settle({required String groupId, String? from, String? to}) =>
-      Uri(
-        path: '/settle',
-        queryParameters: {'gid': groupId, 'from': ?from, 'to': ?to},
-      ).toString();
+  static String settle({
+    required String groupId,
+    String? from,
+    String? to,
+    String? currency,
+  }) => Uri(
+    path: '/settle',
+    queryParameters: {
+      'gid': groupId,
+      'from': ?from,
+      'to': ?to,
+      'cur': ?currency,
+    },
+  ).toString();
   static String person(String pid) => '/people/$pid';
   static String join(String link) =>
       Uri(path: '/join', queryParameters: {'link': link}).toString();
@@ -207,6 +216,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             groupId: q['gid'] ?? '',
             from: q['from'],
             to: q['to'],
+            currency: q['cur'],
           );
         },
       ),
