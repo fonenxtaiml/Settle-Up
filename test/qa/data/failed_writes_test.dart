@@ -122,9 +122,6 @@ void main() {
 
     test(
       'a storage failure reaches the caller as a LedgerException',
-      skip: 'QA DATA-R1-07: store errors (SqliteException / I/O) escape '
-          'Ledger commands raw; LedgerErrorCode has no storage code, so the '
-          'UI can only show the generic "That did not work. Try again."',
       () async {
         faulty.failNextInsert = true;
         await expectLater(a.ledger.addExpense(qaDraft(t.g, [t.me])),
@@ -137,10 +134,6 @@ void main() {
     test(
       'a failed hlc.last save after a committed insert does not report '
       'the command as failed with a stale snapshot',
-      skip: 'QA DATA-R1-04: _commit runs insertAll, _integrate, then '
-          '_saveClock; if _saveClock throws the op is durable and applied to '
-          'the reducer but no snapshot is emitted, localOps never fires and '
-          'the UI shows an error, so a retry duplicates the expense',
       () async {
         faulty.failNextSetKvKey = KvKeys.hlcLast;
         Object? error;
@@ -161,16 +154,33 @@ void main() {
       },
     );
 
-    test('consequence today: the user retries and gets two expenses',
-        skip: 'QA DATA-R1-04: see above', () async {
+    test('the user retries only on an error, so one entry gives one '
+        'expense (DATA-R1-04)', () async {
       faulty.failNextSetKvKey = KvKeys.hlcLast;
       try {
         await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
-      } catch (_) {}
-      // The UI showed "That did not work. Try again." -> the user retries.
-      await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+      } catch (_) {
+        // The UI showed "That did not work. Try again." -> the user retries.
+        await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+      }
       expect(a.group(t.g).liveExpenses, hasLength(1),
           reason: 'one expense entered successfully, one shown');
+    });
+
+    test('a committed command still publishes its op and snapshot when '
+        'the clock save fails (DATA-R1-04)', () async {
+      final local = <Operation>[];
+      final sub = a.ledger.localOps.listen(local.add);
+      faulty.failNextSetKvKey = KvKeys.hlcLast;
+      final e = await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+      await pumpEventQueue();
+      expect(local.map((o) => o.entityId), [e]);
+      expect(a.snap.unsharedOpIds, contains(local.single.id));
+      // The clock is rebuilt from the stored op on the next start.
+      await a.restart();
+      await a.ledger.renameMember(t.g, t.sam, 'S');
+      expect(a.mineIn(t.g).last.hlc > local.single.hlc, isTrue);
+      await sub.cancel();
     });
   });
 }

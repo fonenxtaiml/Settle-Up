@@ -194,10 +194,6 @@ void main() {
     test(
       'an orphaned key with no ops and no pending hint (app killed between '
       'keystore write and op commit) is not shown as a nameless pending join',
-      skip: 'QA DATA-R1-08: Ledger._load turns every key without a group '
-          'create op into pendingJoins[g] = "" (hint ?? ""), so a half-'
-          'created group shows forever as an untitled "Waiting for first '
-          'sync" row',
       () async {
         await a.close();
         final keys = await SecureGroupKeyStore().all();
