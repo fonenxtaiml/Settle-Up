@@ -67,12 +67,16 @@ final class Handshake {
     final nonce = Uint8List.fromList(
       List<int>.generate(16, (_) => rnd.nextInt(256)),
     );
-    final keys = Map<GroupId, Uint8List>.of(groupKeys);
+    // Shuffle so the order does not tie a blinded id to a group. Only the
+    // groups that fit in the HELLO take part in S: the peer cannot match
+    // the others, so counting them here would make the two sides disagree.
+    final ids = groupKeys.keys.toList()..shuffle(rnd);
+    final keys = {
+      for (final g in ids.take(kMaxHelloGroups)) g: groupKeys[g]!,
+    };
     final blinded = [
       for (final key in keys.values) await DiscoveryTokens.blind(key, nonce),
     ];
-    // Shuffle so the order does not tie a blinded id to a group.
-    blinded.shuffle(rnd);
     final hello = HelloMessage(
       deviceId: deviceId,
       deviceName: deviceName.length > kMaxDeviceNameLength
@@ -80,7 +84,7 @@ final class Handshake {
           : deviceName,
       ephemeralPublicKey: Uint8List.fromList(pub.bytes),
       nonce: nonce,
-      blindedGroups: blinded.take(kMaxHelloGroups).toList(),
+      blindedGroups: blinded,
       maxFrame: maxFrame,
       transport: transport,
     );

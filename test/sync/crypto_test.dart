@@ -132,6 +132,38 @@ void main() {
       expect(a.hello.blindedGroups.single,
           isNot(b.hello.blindedGroups.single));
     });
+    test('more shared groups than fit in a HELLO still agree on S', () async {
+      final keys = {
+        for (var i = 0; i < 300; i++) groupIdOf(i): groupKeyOf(i),
+      };
+      final hi = await Handshake.start(
+        initiator: true,
+        groupKeys: keys,
+        deviceId: deviceIdOf('a'),
+        deviceName: 'A',
+        maxFrame: 1 << 20,
+        transport: TransportKind.lan,
+        random: Random(1),
+      );
+      final hr = await Handshake.start(
+        initiator: false,
+        groupKeys: keys,
+        deviceId: deviceIdOf('b'),
+        deviceName: 'B',
+        maxFrame: 1 << 20,
+        transport: TransportKind.lan,
+        random: Random(2),
+      );
+      expect(hi.hello.blindedGroups, hasLength(kMaxHelloGroups));
+      final ki =
+          await hi.onPeerHello(hr.hello, hr.helloFrame, localMaxFrame: 1 << 20);
+      final kr =
+          await hr.onPeerHello(hi.hello, hi.helloFrame, localMaxFrame: 1 << 20);
+      expect(ki.sharedGroups, kr.sharedGroups);
+      expect(ki.sharedGroups, isNotEmpty);
+      expect(ki.keyFingerprint, kr.keyFingerprint);
+      expect(kr.verifyPeerMac(ki.myMac), isTrue);
+    });
   });
 
   group('FrameCipher', () {
