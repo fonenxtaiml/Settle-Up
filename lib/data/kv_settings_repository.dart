@@ -5,6 +5,8 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
+import 'package:characters/characters.dart';
+
 import '../core/ids.dart';
 import '../core/models.dart';
 import '../core/money.dart';
@@ -143,7 +145,9 @@ final class KvSettingsRepository implements SettingsRepository {
     }
     await _saveProfile(Profile(
       personId: current.personId,
-      displayName: _name(profile.displayName, 'profile.displayName'),
+      // A name saved before the 40 limit is kept until it is changed.
+      displayName: _name(profile.displayName, 'profile.displayName',
+          capped: profile.displayName.trim() != current.displayName),
       homeCurrency: _currency(profile.homeCurrency),
     ));
   }
@@ -179,9 +183,16 @@ final class KvSettingsRepository implements SettingsRepository {
     _profiles.add(profile);
   }
 
-  static String _name(String value, String field) {
+  /// Your name and the phone name: 1..40 characters (SPEC 5.16, 8.9).
+  static const int maxNameLength = 40;
+
+  static String _name(String value, String field, {bool capped = true}) {
     final t = value.trim();
     if (t.isEmpty) throw ArgumentError.value(value, field, 'must not be empty');
+    if (capped && t.characters.length > maxNameLength) {
+      throw ArgumentError.value(
+          value, field, 'must be at most $maxNameLength characters');
+    }
     return t;
   }
 

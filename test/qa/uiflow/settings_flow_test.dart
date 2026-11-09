@@ -226,7 +226,7 @@ void main() {
     expect(snackText(tester), isNot(S.noGroupsToExport));
     expect(find.text(S.exportPick), findsOneWidget);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-13
+  });
 
   testWidgets('UIFLOW-R1-09: the exported CSV is not named after the group '
       '(share_plus ignores XFile.fromData name; a random id is used)', (
@@ -244,7 +244,7 @@ void main() {
     final path = (p.shares.single['paths']! as List).cast<String>().single;
     expect(path.split('/').last, 'Goa trip.csv');
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-09
+  });
 
   testWidgets('UIFLOW-R1-10: CSV export failure (share sheet error) is '
       'unhandled: no copy is shown', (tester) async {
@@ -271,7 +271,7 @@ void main() {
     expect(tester.takeException(), isNull);
     expect(snackText(tester), S.errGeneric);
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-10
+  });
 
   testWidgets('UIFLOW-R1-11: Settings rename accepts a name over 40 '
       'characters (onboarding caps it at 40)', (tester) async {
@@ -282,7 +282,7 @@ void main() {
     await promptAndSave(tester, 'N' * 80);
     expect(w.settings.profile!.displayName.length, lessThanOrEqualTo(40));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-11
+  });
 
   testWidgets('UIFLOW-R1-11b: phone name accepts any length (SPEC 8.9: the '
       'mDNS service name is the device name, at most 40 characters)', (
@@ -295,7 +295,7 @@ void main() {
     await promptAndSave(tester, 'P' * 90);
     expect(w.settings.device.deviceName.length, lessThanOrEqualTo(40));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-11
+  });
 
   testWidgets('UIFLOW-R1-18: renaming yourself in Settings never reaches '
       'your groups, although the prompt says "Friends see this when you '
@@ -313,7 +313,7 @@ void main() {
     // Expected: the member that friends sync shows the new name.
     expect(mine.displayName, 'Arjun Mehta');
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-18
+  });
 
   test('UIFLOW-R1-12: Settings shows version "1.0.0 (1)" while pubspec '
       'builds 0.1.0+1', () {

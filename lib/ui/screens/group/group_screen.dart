@@ -1,14 +1,10 @@
 // Group detail (render 2): your position, Settle up and All balances,
 // suggested payments with the simplify switch, then the expenses by day.
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/balances.dart';
-import '../../../core/csv_export.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
@@ -21,6 +17,7 @@ import '../../router.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import '../csv_share.dart';
 
 enum _Menu { edit, members, activity, export }
 
@@ -104,7 +101,7 @@ class GroupScreen extends ConsumerWidget {
               _Menu.edit => context.push(Routes.editGroup(groupId)),
               _Menu.members => context.push(Routes.members(groupId)),
               _Menu.activity => context.push(Routes.groupActivity(groupId)),
-              _Menu.export => _exportCsv(g, title),
+              _Menu.export => shareGroupCsv(context, g, title),
             },
             itemBuilder: (context) => [
               if (!info.isDirect)
@@ -129,22 +126,6 @@ class GroupScreen extends ConsumerWidget {
         onPressed: () => context.push(Routes.newExpense(groupId: groupId)),
       ),
       body: _GroupBody(group: g, me: me, myId: myId, snapshot: snap),
-    );
-  }
-
-  Future<void> _exportCsv(GroupState g, String title) async {
-    final csv = CsvExport.group(g);
-    await SharePlus.instance.share(
-      ShareParams(
-        subject: S.csvSubject(title),
-        files: [
-          XFile.fromData(
-            utf8.encode(csv),
-            mimeType: 'text/csv',
-            name: '${title.replaceAll(RegExp(r'[^\w\- ]'), '')}.csv',
-          ),
-        ],
-      ),
     );
   }
 }
