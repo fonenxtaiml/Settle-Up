@@ -92,7 +92,7 @@ class GroupScreen extends ConsumerWidget {
             IconButton(
               onPressed: () => context.push(Routes.members(groupId)),
               tooltip: S.members,
-              icon: const Icon(Icons.person_add_outlined),
+              icon: const Icon(Icons.person_add_alt_1_outlined),
             ),
           PopupMenuButton<_Menu>(
             tooltip: S.moreOptions,

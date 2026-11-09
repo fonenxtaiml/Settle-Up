@@ -217,7 +217,10 @@ class SettingsScreen extends ConsumerWidget {
                 KitListRow(
                   title: S.licenses,
                   minHeight: Sizes.rowMinDense,
-                  trailing: const Icon(Icons.chevron_right_rounded),
+                  trailing: Icon(
+                    Icons.chevron_right_rounded,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
                   onTap: () => showLicensePage(
                     context: context,
                     applicationName: S.appName,

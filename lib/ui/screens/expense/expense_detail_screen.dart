@@ -112,10 +112,7 @@ class ExpenseDetailScreen extends ConsumerWidget {
     return Scaffold(
       appBar: screenAppBar(
         leading: const BackArrow(),
-        title: AppBarTitle(
-          e.isPayment ? S.paymentTitle : S.expenseTitle,
-          subtitle: groupTitle(g, me),
-        ),
+        title: AppBarTitle(title, subtitle: groupTitle(g, me)),
         actions: [
           if (!e.isDeleted)
             IconButton(
@@ -179,10 +176,9 @@ class ExpenseDetailScreen extends ConsumerWidget {
             ),
           textGutter(
             Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Padding(
-                  padding: const EdgeInsets.only(top: 4, right: Space.md),
+                  padding: const EdgeInsets.only(right: Space.md),
                   child: e.isPayment
                       ? const TetherGlyph(direction: MoneyDirection.neutral)
                       : CategoryGlyph(categoryId: e.category, size: 28),
@@ -192,23 +188,14 @@ class ExpenseDetailScreen extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        title,
-                        style: theme.textTheme.headlineSmall!.copyWith(
-                          decoration: e.isDeleted
-                              ? TextDecoration.lineThrough
-                              : null,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
                         e.isPayment
-                            ? ExpenseRow.methodLabel(
-                                e.paymentMethod ?? PaymentMethod.other,
+                            ? S.paymentMethodLine(
+                                ExpenseRow.methodLabel(
+                                  e.paymentMethod ?? PaymentMethod.other,
+                                ),
                               )
                             : categoryLabel(e.category),
-                        style: theme.textTheme.bodyMedium!.copyWith(
-                          color: ink2,
-                        ),
+                        style: theme.textTheme.titleSmall,
                       ),
                       Text(
                         DateLabels.pickerDate(e.date, now: now),
