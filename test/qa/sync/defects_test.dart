@@ -77,9 +77,6 @@ void main() {
           await syncByLink(behind, ahead);
           expect(ahead.state.expense(e)!.description, 'Fixed later');
         },
-        skip:
-            'QA SYNC-R1-01: after syncing with a phone whose clock is '
-            'more than 1 h ahead, edits on the other phone are silent no-ops',
       );
     }
   });

@@ -14,11 +14,18 @@ final class OpFactory {
     required this.deviceId,
     required this.clock,
     this.ids = const UuidV7Generator(),
+    this.lastHlcOf,
   });
 
   final DeviceId deviceId;
   final HlcClock clock;
   final IdGenerator ids;
+
+  /// The newest HLC already applied to an entity (the reducer's view). Each
+  /// op is stamped after it, so a local edit always beats the value the
+  /// user saw, even one written by a phone whose clock is ahead.
+  final Hlc? Function(GroupId groupId, EntityType type, String entityId)?
+      lastHlcOf;
   final Map<GroupId, int> _maxCounter = {};
 
   /// Highest counter this device has used in [groupId] (0 if none).
@@ -99,7 +106,9 @@ final class OpBatch {
     if (_committed) throw StateError('batch already committed');
     final counter =
         (_used[groupId] ?? _factory.maxCounter(groupId)) + 1;
-    final hlc = _factory.clock.tick();
+    final floor = _factory.lastHlcOf?.call(groupId, type, entityId);
+    final hlc =
+        floor == null ? _factory.clock.tick() : _factory.clock.tickAfter(floor);
     final op = Operation(
       id: _factory.ids.newId(),
       groupId: groupId,

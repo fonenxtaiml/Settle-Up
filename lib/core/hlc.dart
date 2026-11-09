@@ -97,6 +97,31 @@ final class HlcClock {
     return _last = _normalize(l, c);
   }
 
+  /// Remote timestamps up to this far ahead of our wall clock are adopted
+  /// by [tickAfter] when a local write replaces a value stamped with them.
+  /// Beyond it the stamp is treated as broken or hostile and not adopted.
+  static const int maxAdoptDriftMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  /// Timestamp for a new local event that replaces state last written at
+  /// [floor] (an edit, delete or restore of an entity): greater than [floor]
+  /// as well as everything [tick] would give, so last-writer-wins keeps
+  /// what the user just saved even when [floor] came from a phone whose
+  /// clock is ahead of ours (beyond the [receive] skew guard). [floor] is
+  /// adopted only within [maxAdoptDriftMs] of our wall clock; past that
+  /// this is a plain [tick].
+  Hlc tickAfter(Hlc floor) {
+    final now = _now();
+    final adopt = floor.millis <= now + maxAdoptDriftMs &&
+        (floor.millis > _last.millis ||
+            (floor.millis == _last.millis && floor.counter >= _last.counter));
+    if (adopt) {
+      if (floor.millis > now + maxForwardDriftMs) skewDetected = true;
+      // Re-home the floor on this device; tick() then moves past it.
+      _last = Hlc(floor.millis, floor.counter, deviceId);
+    }
+    return tick();
+  }
+
   /// Merge a remote timestamp (call once per received batch with its max).
   Hlc receive(Hlc remote) {
     final now = _now();

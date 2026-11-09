@@ -189,4 +189,60 @@ void main() {
       expect(const Hlc(1, 3, 'a') > const Hlc(1, 2, 'z'), isTrue);
     });
   });
+
+  group('tickAfter (SYNC-R1-01)', () {
+    const h = 60 * 60 * 1000;
+    const now = 1000000000000;
+
+    test('moves past a floor ahead of the skew guard and keeps it', () {
+      final clock = HlcClock(deviceId: dev, nowMillis: () => now);
+      const floor = Hlc(now + 2 * h, 5, 'dev-z');
+      final t = clock.tickAfter(floor);
+      expect(t > floor, isTrue);
+      expect(t, const Hlc(now + 2 * h, 6, dev));
+      expect(clock.last, t);
+      expect(clock.skewDetected, isTrue);
+      expect(clock.tick() > t, isTrue, reason: 'later ticks stay monotonic');
+    });
+
+    test('a floor equal up to the device id still loses', () {
+      final clock = HlcClock(deviceId: 'dev-a', nowMillis: () => now);
+      const floor = Hlc(now + 10, 3, 'dev-z');
+      expect(clock.tickAfter(floor) > floor, isTrue);
+    });
+
+    test('a floor behind the clock is a plain tick', () {
+      final a = HlcClock(deviceId: dev, nowMillis: () => now);
+      final b = HlcClock(deviceId: dev, nowMillis: () => now);
+      a.tick();
+      b.tick();
+      expect(a.tickAfter(const Hlc(now - h, 9, 'dev-z')), b.tick());
+      expect(a.skewDetected, isFalse);
+    });
+
+    test('a floor within the skew guard is passed without a skew flag', () {
+      final clock = HlcClock(deviceId: dev, nowMillis: () => now);
+      const floor = Hlc(now + 1000, 0, 'dev-z');
+      expect(clock.tickAfter(floor) > floor, isTrue);
+      expect(clock.skewDetected, isFalse);
+    });
+
+    test('exactly maxAdoptDriftMs ahead is adopted, beyond is not', () {
+      final edge = HlcClock(deviceId: dev, nowMillis: () => now);
+      const at = Hlc(now + HlcClock.maxAdoptDriftMs, 0, 'dev-z');
+      expect(edge.tickAfter(at) > at, isTrue);
+
+      final far = HlcClock(deviceId: dev, nowMillis: () => now);
+      const beyond = Hlc(now + HlcClock.maxAdoptDriftMs + 1, 0, 'dev-z');
+      final t = far.tickAfter(beyond);
+      expect(t, const Hlc(now, 0, dev), reason: 'not adopted');
+    });
+
+    test('counter overflow at the floor rolls millis', () {
+      final clock = HlcClock(deviceId: dev, nowMillis: () => now);
+      const floor = Hlc(now + 5, Hlc.maxCounter, 'dev-z');
+      final t = clock.tickAfter(floor);
+      expect(t, const Hlc(now + 6, 0, dev));
+    });
+  });
 }

@@ -63,7 +63,12 @@ final class Ledger implements LedgerRepository, SyncStore {
       }
     }
     final clock = HlcClock(deviceId: me, last: last, nowMillis: nowMillis);
-    final factory = OpFactory(deviceId: me, clock: clock, ids: ids);
+    final factory = OpFactory(
+      deviceId: me,
+      clock: clock,
+      ids: ids,
+      lastHlcOf: reducer.lastHlcOf,
+    );
     final ledger = Ledger._(store, keys, settings, ids, factory, reducer);
     await ledger._load(ops);
     return ledger;

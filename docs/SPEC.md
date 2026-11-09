@@ -583,6 +583,14 @@ final class HlcClock {
     return _last = _normalize(l, c);
   }
 
+  /// Remote stamps up to this far ahead are adopted by [tickAfter].
+  static const int maxAdoptDriftMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  /// Timestamp for a local write that replaces state stamped [floor]:
+  /// > floor and >= tick(). Adopts [floor] only within [maxAdoptDriftMs]
+  /// of the wall clock (else a plain tick). See 7.1.
+  Hlc tickAfter(Hlc floor) => throw UnimplementedError();
+
   /// Merge a remote timestamp (call once per received batch with its max).
   Hlc receive(Hlc remote) {
     final now = _now();
@@ -1249,6 +1257,10 @@ final class LedgerReducer {
 
   /// Immutable snapshot of the current state (safe to hand to the UI).
   LedgerState get state => throw UnimplementedError();
+
+  /// Max HLC over the ops applied to one entity (null if none); 7.1.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      throw UnimplementedError();
 }
 ```
 
@@ -3033,7 +3045,7 @@ Every expense carries its own currency, and balances are computed and shown **pe
 ### 7.1 Creating ops (Ledger)
 
 - `counter` = 1 + `maxCounter(groupId, myDeviceId)` (cached in memory), strictly contiguous per (device, group).
-- `hlc` = `clock.tick()`. One command may produce several ops (create group = 1 group op + N member ops). Each op gets its own tick and counter, and all are inserted in one `insertAll` call.
+- `hlc` = `clock.tick()` for a create, and `clock.tickAfter(reducer.lastHlcOf(groupId, type, entityId))` for an op on an entity that already has ops: a local edit, delete or restore is stamped after every op the user's view of that entity is built from, so it wins last-writer-wins even when the value came from a phone whose clock is ahead (beyond the skew guard, up to `HlcClock.maxAdoptDriftMs` = 7 days; QA SYNC-R1-01). One command may produce several ops (create group = 1 group op + N member ops). Each op gets its own tick and counter, and all are inserted in one `insertAll` call.
 - `create` payloads carry **every** required field (`*Fields.required`) plus optional ones. `update` payloads carry only changed fields. `delete` = `{deletedAt: hlc.millis}`. `restore` = `{deletedAt: null}`.
 - Merge members = `update` on the `from` member with `{mergedInto: into}`. Claim = `update` with `{personId: me, deviceId: myDeviceId}`.
 - `kv['hlc.last']` is written after every commit.
@@ -3071,7 +3083,7 @@ Because every visible value is "the max-HLC write per field, over the set of ops
 ### 7.3 HLC usage
 
 - `HlcClock.tick()` for each local op. `HlcClock.receive(maxRemoteHlc)` once per applied remote batch.
-- Skew guard: a remote HLC more than 1 hour ahead of the local wall clock is accepted as data but not adopted by the clock (`skewDetected = true`, logged). Convergence is unaffected (the order is still total), but that phone's edits may win LWW ties surprisingly. The Settings "About" line shows "This phone's clock looks wrong" when the flag is set.
+- Skew guard: a remote HLC more than 1 hour ahead of the local wall clock is accepted as data but not adopted by the clock (`skewDetected = true`, logged). Convergence is unaffected (the order is still total), but that phone's edits may win LWW ties surprisingly. A later local write to an entity that phone wrote still wins: 7.1 stamps it after the entity's newest op (`tickAfter`), which moves this clock forward to that stamp when it is at most 7 days ahead. The Settings "About" line shows "This phone's clock looks wrong" when the flag is set.
 
 ### 7.4 Version vectors and gaps
 
