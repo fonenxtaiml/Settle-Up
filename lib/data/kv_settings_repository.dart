@@ -5,7 +5,9 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
+import '../core/hlc.dart';
 import '../core/ids.dart';
+import '../core/ledger_state.dart';
 import '../core/models.dart';
 import '../core/money.dart';
 import 'codecs.dart';
@@ -34,17 +36,37 @@ final class KvSettingsRepository implements SettingsRepository {
     IdGenerator ids = const UuidV7Generator(),
     String? localeName,
   }) async {
-    var device = deviceFromJson(_decode(await store.getKv(KvKeys.device)));
+    final storedDevice = await store.getKv(KvKeys.device);
+    final deviceJson = _decode(storedDevice);
+    var device = deviceFromJson(deviceJson);
     if (device == null) {
       final name = defaultDeviceName.trim();
+      final recovered = storedDevice == null
+          ? null
+          : await _recoverDeviceId(store);
+      if (storedDevice != null) {
+        developer.log(
+          recovered == null
+              ? 'Unreadable device row and no clock to recover it from: '
+                  'this phone gets a new device id'
+              : 'Unreadable device row: kept device id $recovered',
+          name: 'settle_up.data',
+        );
+      }
+      final oldName = deviceJson is Map ? deviceJson['deviceName'] : null;
       device = DeviceIdentity(
-        deviceId: ids.newId(),
-        deviceName: name.isEmpty ? 'Phone' : name,
+        deviceId: recovered ?? ids.newId(),
+        deviceName: oldName is String && oldName.trim().isNotEmpty
+            ? oldName.trim()
+            : (name.isEmpty ? 'Phone' : name),
       );
       await store.setKv(KvKeys.device, jsonEncode(deviceToJson(device)));
     }
-    final profile =
-        profileFromJson(_decode(await store.getKv(KvKeys.profile)));
+    final storedProfile = await store.getKv(KvKeys.profile);
+    final profile = profileFromJson(_decode(storedProfile));
+    if (profile == null && storedProfile != null) {
+      developer.log('Ignored unreadable profile', name: 'settle_up.data');
+    }
     final settings =
         settingsFromJson(_decode(await store.getKv(KvKeys.settings)));
     return KvSettingsRepository._(
@@ -55,6 +77,19 @@ final class KvSettingsRepository implements SettingsRepository {
       settings,
       homeCurrencyForLocale(localeName ?? _platformLocale()),
     );
+  }
+
+  /// The device id this phone wrote ops with, from `hlc.last` (only ever
+  /// stamped with this phone's id). Null when it is missing or unreadable.
+  static Future<DeviceId?> _recoverDeviceId(OpStore store) async {
+    final encoded = await store.getKv(KvKeys.hlcLast);
+    if (encoded == null) return null;
+    try {
+      final id = Hlc.parse(encoded).deviceId.trim();
+      return id.isEmpty ? null : id;
+    } on FormatException {
+      return null;
+    }
   }
 
   static String? _platformLocale() {
@@ -123,12 +158,39 @@ final class KvSettingsRepository implements SettingsRepository {
     required String homeCurrency,
   }) async {
     final profile = Profile(
-      personId: _profile?.personId ?? _ids.newId(),
+      personId:
+          _profile?.personId ?? await _recoverPersonId() ?? _ids.newId(),
       displayName: _name(displayName, 'displayName'),
       homeCurrency: _currency(homeCurrency),
     );
     await _saveProfile(profile);
     return profile;
+  }
+
+  /// With no profile row (lost to corruption), the personId this phone
+  /// already claimed members with, so balances in existing groups stay
+  /// mine. Null on a fresh install. The most used one wins; ties go to the
+  /// lowest id so the choice is stable.
+  Future<PersonId?> _recoverPersonId() async {
+    final ops = await _store.loadAll();
+    if (ops.isEmpty) return null;
+    final state = (LedgerReducer()..applyAll(ops)).state;
+    final counts = <PersonId, int>{};
+    for (final gs in state.groups.values) {
+      for (final m in gs.members.values) {
+        if (m.deviceId == _device.deviceId && !m.isRemoved) {
+          counts[m.personId] = (counts[m.personId] ?? 0) + 1;
+        }
+      }
+    }
+    if (counts.isEmpty) return null;
+    final best = counts.entries.reduce((a, b) =>
+        b.value > a.value || (b.value == a.value && b.key.compareTo(a.key) < 0)
+            ? b
+            : a);
+    developer.log('Recovered the personId of a lost profile',
+        name: 'settle_up.data');
+    return best.key;
   }
 
   @override
