@@ -9,7 +9,6 @@
 import 'dart:async';
 import 'dart:typed_data';
 
-import 'package:flutter/services.dart' show PlatformException;
 import 'package:meta/meta.dart';
 import 'package:nearby_connections/nearby_connections.dart' as nc;
 
@@ -82,8 +81,9 @@ const List<String> _unavailableMarkers = [
 ];
 
 /// ApiException messages start with the status code; 17 is
-/// CommonStatusCodes.API_UNAVAILABLE.
-final RegExp _apiUnavailableCode = RegExp(r'^\s*17\s*:');
+/// CommonStatusCodes.API_UNAVAILABLE. PlatformException.toString() puts
+/// the message after the code: "PlatformException(Failure, 17: ...".
+final RegExp _apiUnavailableCode = RegExp(r'(^|, )17: ');
 
 /// Whether [error], thrown by a [NearbyApi] call, says Nearby Connections
 /// cannot run on this phone at all: no Google Play services (Huawei /
@@ -94,12 +94,14 @@ final RegExp _apiUnavailableCode = RegExp(r'^\s*17\s*:');
 /// Connection failed with: ConnectionResult{statusCode=SERVICE_INVALID}".
 ///
 /// Ordinary failures (already advertising, a busy radio, a missing
-/// permission, an endpoint that went away) are not matched.
+/// permission, an endpoint that went away) and Dart [Error]s are not
+/// matched. The error is read through toString(), because sync code may
+/// not import Flutter's services library (SPEC 3.2).
 bool isNearbyApiUnavailable(Object error) {
-  if (error is! PlatformException) return false;
-  final message = error.message ?? '';
-  return _apiUnavailableCode.hasMatch(message) ||
-      _unavailableMarkers.any(message.contains);
+  if (error is Error) return false;
+  final text = error.toString();
+  return _apiUnavailableCode.hasMatch(text) ||
+      _unavailableMarkers.any(text.contains);
 }
 
 /// What NearbyTransport needs from Nearby Connections. Every call may throw
