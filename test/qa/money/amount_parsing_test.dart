@@ -129,8 +129,6 @@ void main() {
 
     testWidgets(
       'QA MONEY-R1-02: European "1.234,50" is never taken as 1.23',
-      // testWidgets only takes a bool skip; the id is in the name.
-      skip: true, // QA MONEY-R1-02: AmountField reads "1.234,50" as 1.23
       (tester) async {
         for (final paste in [false, true]) {
           final v = await typeInto(tester, 'EUR', '1.234,50', paste: paste);
@@ -202,9 +200,6 @@ void main() {
 
     test(
       'a grouped amount in a split field is never silently dropped',
-      skip:
-          'QA MONEY-R1-04: "1,000" in a split field parses as null and '
-          'counts as 0 (adjustment saves without it)',
       () {
         // INR: "1,000" is how the amount field itself shows a thousand.
         final adj = draft(SplitMethod.adjustment)..adjust['a'] = '1,000';
