@@ -196,7 +196,6 @@ void main() {
 
   testWidgets(
     'QA MONEY-R1-07: expense rows count my merged duplicate member',
-    skip: true, // QA MONEY-R1-07: rows use unresolved member ids
     (tester) async {
       late MemberId oldMe;
       await tester.runAsync(() async {

@@ -261,8 +261,8 @@ class ActivityRow extends ConsumerWidget {
         !expense.isDeleted &&
         (entry.kind == ActivityKind.expenseAdded ||
             entry.kind == ActivityKind.paymentAdded)) {
-      final impact = ExpenseRow.impactOf(expense, myId);
-      final v = myId == null ? 0 : expense.impactFor(myId);
+      final impact = ExpenseRow.impactOf(expense, myId, resolve: g?.resolve);
+      final v = ExpenseRow.impactValue(expense, myId, resolve: g?.resolve);
       if (impact == ExpenseImpact.lent || impact == ExpenseImpact.borrowed) {
         trailing = BalanceTrailing(
           word: expense.isPayment
