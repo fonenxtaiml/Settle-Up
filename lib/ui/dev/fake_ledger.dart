@@ -308,8 +308,9 @@ final class FakeLedgerRepository implements LedgerRepository {
 
   String _cleanName(String name) {
     final t = name.trim();
-    if (t.isEmpty)
+    if (t.isEmpty) {
       throw const LedgerException(LedgerErrorCode.invalidInput, 'name');
+    }
     return t;
   }
 

@@ -76,6 +76,64 @@ Future<DemoGroups> seedDemoData(
   late DemoGroups groups;
 
   await ledger.batch(() async {
+    // ------------------------------- Diwali party (last year, archived)
+    final diwali = await ledger.actAt(
+      daysAgo(370, 19),
+      () => ledger.createGroup(
+        const NewGroup(
+          name: 'Diwali party',
+          type: GroupType.other,
+          currency: 'INR',
+          simplifyDebts: true,
+          existingPeople: [
+            (personId: DemoIds.kabir, displayName: 'Kabir Singh'),
+            (personId: DemoIds.aditi, displayName: 'Aditi Rao'),
+          ],
+        ),
+      ),
+    );
+    MemberId dm(PersonId p) =>
+        ledger.current.state.groups[diwali]!.memberForPerson(p)!.id;
+    await ledger.actAt(
+      daysAgo(369, 21),
+      () => ledger.addExpense(
+        ExpenseDraft(
+          groupId: diwali,
+          description: 'Sweets and diyas',
+          total: 450000,
+          currency: 'INR',
+          paidBy: SplitSpec.single(dm(DemoIds.me), 450000),
+          owedBy: SplitSpec.equal([
+            dm(DemoIds.me),
+            dm(DemoIds.kabir),
+            dm(DemoIds.aditi),
+          ]),
+          category: 'food',
+          date: daysAgo(369, 21),
+        ),
+      ),
+    );
+    for (final (i, p) in [DemoIds.kabir, DemoIds.aditi].indexed) {
+      await ledger.actAt(
+        daysAgo(365, 10 + i),
+        () => ledger.recordPayment(
+          PaymentDraft(
+            groupId: diwali,
+            from: dm(p),
+            to: dm(DemoIds.me),
+            amount: 150000,
+            currency: 'INR',
+            method: PaymentMethod.cash,
+            date: daysAgo(365, 10 + i),
+          ),
+        ),
+      );
+    }
+    await ledger.actAt(
+      daysAgo(360, 9),
+      () => ledger.updateGroup(diwali, const GroupPatch(archived: true)),
+    );
+
     // ------------------------------------------------------- Cabin weekend
     final cabin = await ledger.actAt(
       daysAgo(23, 18),
