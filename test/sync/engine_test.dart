@@ -440,6 +440,53 @@ void main() {
     expect(identical(await priya.engine.startHosting(), both[0]), isTrue);
   });
 
+  test('stopHosting while hosting is starting leaves nothing running',
+      () async {
+    final start = expectLater(
+      priya.engine.startHosting(),
+      throwsA(isA<SyncException>()
+          .having((e) => e.failure, 'failure', SyncFailure.cancelled)),
+    );
+    await priya.engine.stopHosting();
+    await start;
+
+    expect(priya.lan.isAdvertising, isFalse);
+    expect(priya.ble.isAdvertising, isFalse);
+    expect(priya.engine.status.host, isNull);
+    // A new start after the stop works.
+    final again = await priya.engine.startHosting();
+    expect(priya.engine.status.host, same(again));
+    expect(priya.lan.isAdvertising, isTrue);
+  });
+
+  test('stopDiscovery while discovery is starting leaves nothing running',
+      () async {
+    await priya.engine.startHosting();
+    final start = alex.engine.startDiscovery();
+    await alex.engine.stopDiscovery();
+    await start.then((_) {}, onError: (Object _) {});
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+
+    expect(alex.lan.activeDiscoveries + alex.ble.activeDiscoveries, 0);
+    expect(alex.engine.status.discovering, isFalse);
+    expect(await alex.engine.watchNearby().first, isEmpty);
+  });
+
+  test('dispose while hosting and discovery are starting', () async {
+    final carol = await Phone.create(hub, 'c', 'Carol');
+    final host =
+        carol.engine.startHosting().then((_) {}, onError: (Object _) {});
+    final scan =
+        carol.engine.startDiscovery().then((_) {}, onError: (Object _) {});
+    await carol.engine.dispose();
+    await host;
+    await scan;
+
+    expect(carol.lan.isAdvertising, isFalse);
+    expect(carol.lan.activeDiscoveries + carol.ble.activeDiscoveries, 0);
+    await carol.phone.close();
+  });
+
   test('hosting expires on its own', () async {
     await priya.engine.startHosting(
       duration: const Duration(milliseconds: 100),

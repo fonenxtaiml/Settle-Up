@@ -102,6 +102,10 @@ final class MemoryTransport implements SyncTransport, HostingDetails {
 
   bool get isAdvertising => _info != null;
 
+  /// Open [discover] subscriptions (leak checks in tests).
+  int get activeDiscoveries => _activeDiscoveries;
+  int _activeDiscoveries = 0;
+
   @override
   Future<TransportAvailability> availability() async => availabilityState;
 
@@ -143,11 +147,13 @@ final class MemoryTransport implements SyncTransport, HostingDetails {
 
     ctl = StreamController<DiscoveredPeer>(
       onListen: () {
+        _activeDiscoveries++;
         changes = hub._changes.stream.listen((_) => emitAll());
         timer = Timer.periodic(rediscoverInterval, (_) => emitAll());
         scheduleMicrotask(emitAll);
       },
       onCancel: () async {
+        _activeDiscoveries--;
         timer?.cancel();
         await changes?.cancel();
       },

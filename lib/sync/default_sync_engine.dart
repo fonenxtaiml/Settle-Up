@@ -69,11 +69,19 @@ final class DefaultSyncEngine implements SyncEngine {
   Timer? _hostExpiry;
   Timer? _tokenRefresh;
   Future<HostInfo>? _hostStart;
+  int _hostStartGen = -1;
+
+  /// Bumped by stopHosting: a start begun before it must not take effect.
+  int _hostGen = 0;
 
   // discovery
   final List<StreamSubscription<DiscoveredPeer>> _discoverySubs = [];
   Timer? _sweep;
   int _indexWindow = -1;
+
+  /// Bumped by every start/stop of discovery: an older start that is still
+  /// awaiting must not add subscriptions afterwards.
+  int _discoveryGen = 0;
 
   // sessions
   bool _busy = false;
@@ -158,17 +166,27 @@ final class DefaultSyncEngine implements SyncEngine {
     _checkAlive();
     final current = _host;
     if (current != null) return current;
+    var pending = _hostStart;
+    if (pending != null && _hostStartGen != _hostGen) {
+      // A start that stopHosting overtook: let it unwind, then start anew.
+      await pending.then((_) {}, onError: (Object _) {});
+      final host = _host;
+      if (host != null) return host;
+      pending = _hostStartGen == _hostGen ? _hostStart : null;
+    }
     // Concurrent callers (e.g. the host screen and an invite) share one start.
-    final pending = _hostStart ??= _startHosting(duration);
+    if (pending == null) {
+      _hostStartGen = _hostGen;
+      pending = _hostStart = _startHosting(duration, _hostGen);
+    }
     try {
       return await pending;
     } finally {
-      _hostStart = null;
+      if (identical(_hostStart, pending)) _hostStart = null;
     }
   }
 
-  Future<HostInfo> _startHosting(Duration duration) async {
-
+  Future<HostInfo> _startHosting(Duration duration, int gen) async {
     final info = await _advertiseInfo();
     final availabilities = <TransportAvailability>[];
     for (final t in _transports) {
@@ -183,6 +201,11 @@ final class DefaultSyncEngine implements SyncEngine {
         _log('startAdvertising(${t.kind.name}) failed', e, st);
         await _inbound.remove(t)?.cancel();
       }
+    }
+    if (gen != _hostGen) {
+      // stopHosting ran while we were starting: undo what we started.
+      await _teardownHosting();
+      throw const SyncException(SyncFailure.cancelled, 'Hosting stopped');
     }
     if (_advertising.isEmpty) {
       throw SyncException(_failureFor(availabilities), 'Nothing can advertise');
@@ -254,6 +277,15 @@ final class DefaultSyncEngine implements SyncEngine {
 
   @override
   Future<void> stopHosting() async {
+    _hostGen++;
+    final starting = _hostStart;
+    if (starting != null) {
+      await starting.then((_) {}, onError: (Object _) {});
+    }
+    await _teardownHosting();
+  }
+
+  Future<void> _teardownHosting() async {
     _hostExpiry?.cancel();
     _tokenRefresh?.cancel();
     _hostExpiry = null;
@@ -313,11 +345,16 @@ final class DefaultSyncEngine implements SyncEngine {
     },
   }) async {
     _checkAlive();
+    final gen = ++_discoveryGen;
     await _cancelDiscovery();
+    if (gen != _discoveryGen) return;
     await _refreshTokenIndex(force: true);
     for (final t in _transports) {
       if (!kinds.contains(t.kind)) continue;
-      if (await _availabilityOf(t) != TransportAvailability.ready) continue;
+      final ready = await _availabilityOf(t) == TransportAvailability.ready;
+      // Stopped (or restarted) meanwhile: whoever did that owns the state.
+      if (gen != _discoveryGen) return;
+      if (!ready) continue;
       _discoverySubs.add(t.discover().listen(
         (peer) {
           if (_registry.update(peer, _clock.now())) _emitNearby();
@@ -361,6 +398,7 @@ final class DefaultSyncEngine implements SyncEngine {
 
   @override
   Future<void> stopDiscovery() async {
+    _discoveryGen++;
     await _cancelDiscovery();
     _registry.clear();
     _emitNearby();
