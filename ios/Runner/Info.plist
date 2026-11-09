@@ -26,6 +26,31 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>app.settleup.links</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>settleup</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>Settle Up uses Bluetooth to share expenses with friends' phones nearby, without internet.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>Settle Up uses Bluetooth to share expenses with friends' phones nearby, without internet.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_settleup._tcp</string>
+	</array>
+	<key>NSCameraUsageDescription</key>
+	<string>Settle Up uses the camera to scan a friend's QR code.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Settle Up finds your friends' phones on the same Wi-Fi or hotspot to share expenses.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
