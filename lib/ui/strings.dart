@@ -23,6 +23,14 @@ abstract final class S {
   static const remove = 'Remove';
   static const rename = 'Rename';
   static const tryAgain = 'Try again';
+  static const startupFailedTitle = "Settle Up couldn't open your data";
+  static const startupFailedBody =
+      'Nothing was deleted. Make sure the phone has some free storage, '
+      'then try again.';
+  static const startupNewerTitle = 'Update Settle Up';
+  static const startupNewerBody =
+      'Your expenses were saved by a newer version of Settle Up. Update the '
+      'app to open them. Nothing was deleted.';
   static const you = 'You';
   static const optional = 'Optional';
   static const moreOptions = 'More options';
