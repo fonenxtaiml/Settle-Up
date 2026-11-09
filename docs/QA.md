@@ -186,6 +186,7 @@ under `settle_up.sync.nearby` and `settle_up.sync.ble`.
 | N7 | A visible over a 10-minute boundary (e.g. 10:09 to 10:11), B scanning. | A still shows as sharing "Goa trip" after the boundary. In logcat, A restarts its Nearby advertisement once (the name carries the new tokens); an open session is not interrupted. |
 | N8 | A and B both visible and both scanning, both tap each other at the same moment. | One session runs, the other side shows "busy" or the same session; nothing is lost; a retry works. |
 | N9 | A phone without Google Play services (or with it disabled), if available. | Hosting and finding still work over BLE; Nearby failures only show in logcat (`settle_up.sync.nearby`). Record what the Sync tab says for Nearby. |
+| N10 | On the N9 phone: make it visible, stop, make it visible again, then "Find nearby". | In logcat (`settle_up.sync.nearby`) exactly one "Nearby is unavailable on this phone" with the API_UNAVAILABLE cause on the first try. After it Nearby reports unsupported and no further Nearby start calls are logged until the app restarts; BLE still works. |
 
 ### 4.2 BLE between two Android phones
 
