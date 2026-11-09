@@ -1,6 +1,8 @@
 // QA SYNC-R1: repro tests for defects found in round 1. Each one FAILS on
 // the code under test and is skipped with its finding id so the suite
 // stays green. Remove the skip once the fix lands.
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
@@ -301,4 +303,32 @@ void main() {
       );
     }
   });
+
+  test(
+    'SYNC-R1-08: device-to-device transfer cannot clone the device id '
+    '(dataExtractionRules exclude the op log)',
+    () {
+      // targetSdk 36: allowBackup=false stops cloud backup, but not Android
+      // 12+ device-to-device migration. A migrated op log carries the same
+      // device id; if the old phone keeps writing, both phones mint the same
+      // (deviceId, counter) pairs and every other phone silently drops one
+      // of them as a fork (SPEC 7.4), so the group never converges.
+      final manifest = File('android/app/src/main/AndroidManifest.xml')
+          .readAsStringSync();
+      final rules = RegExp(r'android:dataExtractionRules="@xml/(\w+)"')
+          .firstMatch(manifest);
+      expect(
+        rules,
+        isNotNull,
+        reason: 'no android:dataExtractionRules on <application>',
+      );
+      final xml = File('android/app/src/main/res/xml/${rules!.group(1)}.xml')
+          .readAsStringSync();
+      expect(xml, contains('<device-transfer>'));
+      expect(xml, contains('<exclude'));
+    },
+    skip:
+        'QA SYNC-R1-08: no dataExtractionRules, so Android 12+ '
+        'device-to-device transfer copies the op log and device id',
+  );
 }
