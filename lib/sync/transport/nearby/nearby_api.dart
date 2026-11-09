@@ -9,6 +9,7 @@
 import 'dart:async';
 import 'dart:typed_data';
 
+import 'package:flutter/services.dart' show PlatformException;
 import 'package:meta/meta.dart';
 import 'package:nearby_connections/nearby_connections.dart' as nc;
 
@@ -67,6 +68,38 @@ final class NearbyBytesReceived extends NearbyEvent {
 final class NearbyPayloadFailed extends NearbyEvent {
   const NearbyPayloadFailed(super.endpointId, this.payloadId);
   final int payloadId;
+}
+
+/// ConnectionResult names that mean Google Play services is not installed,
+/// is not the real one, or cannot run the Nearby API on this phone.
+const List<String> _unavailableMarkers = [
+  'API_UNAVAILABLE',
+  'is not available on this device',
+  'SERVICE_MISSING',
+  'SERVICE_INVALID',
+  'SERVICE_DISABLED',
+  'SERVICE_VERSION_UPDATE_REQUIRED',
+];
+
+/// ApiException messages start with the status code; 17 is
+/// CommonStatusCodes.API_UNAVAILABLE.
+final RegExp _apiUnavailableCode = RegExp(r'^\s*17\s*:');
+
+/// Whether [error], thrown by a [NearbyApi] call, says Nearby Connections
+/// cannot run on this phone at all: no Google Play services (Huawei /
+/// HarmonyOS, Fire tablets, de-Googled ROMs), a disabled one, or one too
+/// old for the Nearby API. The plugin reports a failed Task as
+/// PlatformException('Failure', ApiException.getMessage()), for example
+/// "17: API: Nearby.CONNECTIONS_API is not available on this device.
+/// Connection failed with: ConnectionResult{statusCode=SERVICE_INVALID}".
+///
+/// Ordinary failures (already advertising, a busy radio, a missing
+/// permission, an endpoint that went away) are not matched.
+bool isNearbyApiUnavailable(Object error) {
+  if (error is! PlatformException) return false;
+  final message = error.message ?? '';
+  return _apiUnavailableCode.hasMatch(message) ||
+      _unavailableMarkers.any(message.contains);
 }
 
 /// What NearbyTransport needs from Nearby Connections. Every call may throw
