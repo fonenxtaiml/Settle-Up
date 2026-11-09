@@ -144,7 +144,109 @@ Also verify (SPEC 9.1):
 ## 4. Bluetooth: Nearby Connections and BLE
 
 Owned by WP-D2. Required runs (SPEC 11.3): Android to Android over Nearby,
-Android to iOS over BLE, three-phone gossip over Bluetooth only.
+Android to iOS over BLE, three-phone gossip over Bluetooth only. Turn
+**Wi-Fi off** on every phone in this section (and keep mobile data off), so
+the engine cannot quietly pick LAN, which it prefers over Bluetooth.
+
+How the Bluetooth transports work (so failures can be placed). Logs are
+under `settle_up.sync.nearby` and `settle_up.sync.ble`.
+
+- **Nearby Connections** (Android only, kind `nearby`): service id
+  `app.settleup.sync`, strategy `P2P_CLUSTER`. The advertised endpoint name
+  is `1|<device id prefix>|<device name, 24 max>|<up to 4 tokens>`, so the
+  scanner lists the phone and its shared groups without connecting. Both
+  sides accept every connection automatically; the session handshake does
+  the authentication. One frame is one BYTES payload (32 KiB max). Nearby
+  may move the link from Bluetooth to Wi-Fi by itself during a sync; that
+  is expected.
+- **BLE GATT** (Android and iOS, kind `ble`): the visible phone is a GATT
+  peripheral with service `82101e6c-f454-4ceb-86a8-5375a3b1a414` and three
+  characteristics: INFO (read, who it is), RX (write) and TX (notify). The
+  scanning phone is the central and always the initiator. For each new
+  phone it connects briefly, reads INFO, disconnects and caches the result
+  for 60 s. Tapping the row connects again, asks for MTU 517 (Android),
+  subscribes to TX and starts the session. Frames travel in chunks of one
+  ATT packet with a sequence number; a lost chunk ends the session (it
+  never corrupts data). Only one BLE session runs at a time.
+- On Android the BLE advertisement carries **no local name**:
+  `bluetooth_low_energy` would rename the phone's Bluetooth adapter to the
+  advertised name. iOS advertises the name `SU`. Scanners filter on the
+  service UUID only, so both are found the same way.
+
+### 4.1 Nearby Connections (Android to Android)
+
+| # | Steps | Expected |
+|---|---|---|
+| N1 | A and B (Wi-Fi off, Bluetooth on). A: Sync tab, "Make visible". B: "Find nearby". | Permission dialogs as in section 3 the first time. Within 15 s B lists A by device name, sharing "Goa trip", with Nearby as a route. |
+| N2 | B taps A. | Synced over Nearby (session screen names the transport). No connection prompt on A: the app accepts by itself. |
+| N3 | Seed 500 expenses on A first, then sync from a fresh B. | Completes; both phones equal. Note the time it took in the log. |
+| N4 | B keeps "Find nearby" open for 2 minutes while A stays visible. | A stays listed the whole time (re-emitted every 5 s; the engine drops a peer after 15 s of silence). |
+| N5 | A stops being visible (leave the host screen). | A disappears from B's list within about 20 s. |
+| N6 | During a 500-expense sync, walk B out of range (or turn its Bluetooth off). | Session fails with the partial "Nothing was lost" message; the next sync completes; no duplicates. |
+| N7 | A visible over a 10-minute boundary (e.g. 10:09 to 10:11), B scanning. | A still shows as sharing "Goa trip" after the boundary. In logcat, A restarts its Nearby advertisement once (the name carries the new tokens); an open session is not interrupted. |
+| N8 | A and B both visible and both scanning, both tap each other at the same moment. | One session runs, the other side shows "busy" or the same session; nothing is lost; a retry works. |
+| N9 | A phone without Google Play services (or with it disabled), if available. | Hosting and finding still work over BLE; Nearby failures only show in logcat (`settle_up.sync.nearby`). Record what the Sync tab says for Nearby. |
+
+### 4.2 BLE between two Android phones
+
+Two Android phones prefer Nearby over BLE, so BLE runs between them only
+when Nearby is not usable on one side (for example Google Play services
+missing or disabled, see N9). Check that the session screen says BLE; if
+no phone pair falls back to BLE, mark 4.2 as not run and rely on 4.3,
+which always uses BLE.
+
+| # | Steps | Expected |
+|---|---|---|
+| B1 | A visible, B scanning. | B lists A within 15 s. In logcat on B: one connect, one INFO read and a disconnect per new phone, then one re-read a minute while it stays visible (never a connect every few seconds). |
+| B2 | B taps A. | Synced over BLE. Logcat on B shows the MTU after negotiation (usually 517 or 247 on Android pairs). |
+| B3 | Seed 500 expenses on A, sync to a fresh B. | Completes; equal on both. Record the time: BLE is the slowest path, a minute or two is acceptable, more is a bug. |
+| B4 | Keep B 5 to 8 m away (another room) during B3. | Either completes or fails with "Nothing was lost"; never a hang longer than the 20 s idle limit. |
+| B5 | After any BLE test, open Android Settings, Bluetooth on A. | A's Bluetooth name is unchanged (not "SU"). |
+| B6 | Turn Bluetooth off on A while B's list shows it. | A drops off B's list within about 20 s; A's Sync tab shows Bluetooth as off. |
+| B7 | While A and B run a BLE session, phone C (also scanning) taps A. | C gets "busy" or "could not reach"; the A to B session is unaffected. |
+
+### 4.3 BLE between Android and iPhone
+
+| # | Steps | Expected |
+|---|---|---|
+| X1 | Fresh install on D (iPhone). D: "Find nearby". | iOS shows the Bluetooth prompt with "Settle Up uses Bluetooth to share expenses with friends' phones nearby, without internet." |
+| X2 | Allow. A (Android) visible, D scanning. | D lists A within 15 s and syncs (D is the central, A the peripheral). |
+| X3 | D visible ("Make visible"), A scanning. | A lists D within 15 s and syncs (A is the central and asks for MTU 517; D's MTU comes from iOS, typically 185). |
+| X4 | X2 and X3 with 500 expenses seeded on the sending side. | Both complete; equal on both. Record both times. |
+| X5 | D visible, then lock D's screen during a sync. | The session fails cleanly (no background modes in the MVP); the next sync with D unlocked completes. |
+| X6 | iOS Settings, Settle Up, Bluetooth off. Open the Sync tab on D. | The Bluetooth row asks to allow Bluetooth in Settings; no crash. |
+| X7 | D visible; A syncs, then A syncs again within 60 s. | The second time A lists D without a new INFO read in the log (cache), and the sync works. |
+
+### 4.4 Three phones over Bluetooth only
+
+| # | Steps | Expected |
+|---|---|---|
+| G1 | Wi-Fi off on A, B and D. Add an expense on A only. B syncs with A (Nearby or BLE), then D syncs with B (BLE). | D has A's expense without ever meeting A (gossip). |
+| G2 | Then add one expense on each phone and sync D with A over BLE. | A and D equal; B gets the rest at its next sync. |
+
+### 4.5 Things to watch and record
+
+These behaviours could not be checked without radios. Write what you see
+in the result log, with the phone models.
+
+- **Nearby ordering:** the transport relies on Nearby delivering BYTES
+  payloads in order. If sessions over Nearby fail with `authFailed` or a
+  decrypt error while BLE and LAN work, report it: that would mean payloads
+  arrived out of order.
+- **Connect while scanning:** BLE probes and the BLE connect run while the
+  scan continues. If Android phones often fail the first connect (status
+  133 in logcat) but a retry works, report it.
+- **iOS peripheral hang-up:** iOS cannot drop a connected central from the
+  peripheral side. After D ends a session as the visible phone, check that
+  A can sync with D again right away.
+- **Notify flow control:** the peripheral waits for every notification and
+  retries a full queue after 20 ms, up to 50 times. Look for
+  `notify ... failed 50 times` in logs during big syncs.
+- **Gradle:** `nearby_connections` 4.3.0 pins AGP 7.4.2 in its own build
+  script. `flutter build apk --debug` succeeded on the Bluetooth branch
+  (2026-11-09) with only a "migrate to Built-in Kotlin" warning for some
+  plugins. If a later build fails on that plugin, record the error; the
+  integrator vendors the plugin (SPEC 9.1).
 
 ---
 
