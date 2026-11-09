@@ -120,7 +120,9 @@ void main() {
         multiLine: true,
       ).firstMatch(_read('pubspec.yaml'))!.group(1)!;
       expect(version, matches(RegExp(r'^1\.0\.0\+[1-9][0-9]*$')));
-    }, skip: 'QA PLATFORM-R1-04: pubspec version is 0.1.0+1, not 1.0.0+N');
+      // 0.1.0 tester builds used versionCode 1.
+      expect(int.parse(version.split('+').last), greaterThanOrEqualTo(2));
+    });
   });
 
   group('launcher icon', () {

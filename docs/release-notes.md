@@ -2,6 +2,12 @@
 
 ## 1.0.0
 
+Version `1.0.0+2`: versionName `1.0.0`, versionCode `2` (`version:` in
+`pubspec.yaml`). The 0.1.0 tester builds used versionCode `1`, so every
+1.0.0 build has a higher code, and Settings > About shows `1.0.0 (2)`.
+Bump the number after the `+` for every APK handed to testers or uploaded
+to Play; Play rejects a versionCode it has already seen.
+
 - **Install note for 0.1.0 testers.** 0.1.0 was signed with the Android
   debug key and used the codename app id `app.settleup.settle_up`. 1.0.0 is
   signed with the Settle Up release key and uses the final app id
