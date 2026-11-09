@@ -104,6 +104,8 @@ class AsyncBody<T> extends StatelessWidget {
 
 /// Maps ledger and sync errors to copy. Raw exception text is never shown.
 String errorMessage(Object error) => switch (error) {
+  LedgerException(issue: LedgerInputIssue.groupFull) => S.errGroupFull,
+  LedgerException(issue: LedgerInputIssue.tooLong) => S.errTooLong,
   LedgerException(:final code) => switch (code) {
     LedgerErrorCode.notOnboarded => S.errNotOnboarded,
     LedgerErrorCode.groupNotFound => S.errGroupNotFound,
@@ -111,6 +113,7 @@ String errorMessage(Object error) => switch (error) {
     LedgerErrorCode.expenseNotFound => S.errExpenseNotFound,
     LedgerErrorCode.invalidInput => S.errInvalidInput,
     LedgerErrorCode.invalidSplit => S.errInvalidSplit,
+    LedgerErrorCode.storageFailed => S.errStorage,
   },
   SyncException(:final failure) => syncFailureMessage(failure),
   _ => S.errGeneric,

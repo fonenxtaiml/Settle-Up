@@ -329,9 +329,6 @@ void main() {
     test(
       'an op forged with this phone own device id and a huge counter cannot '
       'break the phone later ops',
-      skip:
-          'QA SECURITY-R1-01: a forged op with this phone own device id '
-          'poisons its counter; later local ops never sync',
       () async {
         final (evil, result) = await attack();
         // Max int64: the next local counter wraps to a negative number.
@@ -376,9 +373,6 @@ void main() {
     test(
       'an op forged with this phone own device id and a counter gap leaves '
       'every later local change unshared forever',
-      skip:
-          'QA SECURITY-R1-01: a forged op with this phone own device id '
-          'poisons its counter; later local ops never sync',
       () async {
         final (evil, result) = await attack();
         await sendRawOps(evil, {
@@ -416,9 +410,6 @@ void main() {
   group('sizes', () {
     test(
       'a highly compressible 500 KB description is rejected (SPEC 5.16)',
-      skip:
-          'QA SECURITY-R1-02: remote ops bypass SPEC 5.16 text limits; '
-          'gzip-compressible huge strings are stored',
       () async {
         final (evil, result) = await attack();
         await sendRawOps(evil, {
@@ -443,9 +434,6 @@ void main() {
 
     test(
       'many compressible ops cannot grow the op log without bound',
-      skip:
-          'QA SECURITY-R1-02: remote ops bypass SPEC 5.16 text limits; '
-          'gzip-compressible huge strings are stored',
       () async {
         final (evil, result) = await attack();
         // 12 ops x 512 KB of notes: about 6 MB stored from one ~10 KB
@@ -549,9 +537,6 @@ void main() {
   group('time', () {
     test(
       'an op stamped far in the future cannot freeze a field forever',
-      skip:
-          'QA SECURITY-R1-03: ops with an HLC far ahead of every clock '
-          'are accepted and win last-writer-wins permanently',
       () async {
         final target = priya.state.groups[seed.g]!.expenses.values.first;
         final (evil, result) = await attack();

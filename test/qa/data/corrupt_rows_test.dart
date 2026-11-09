@@ -197,9 +197,6 @@ void main() {
     test(
       'a corrupt row holding MY latest op does not make the next command '
       'reuse its counter and silently drop the new expense',
-      skip: 'QA DATA-R1-01: Ledger.open derives the next counter from '
-          'decoded ops only; the next local op collides on '
-          'UNIQUE(group_id, device_id, counter) and is ignored',
       () async {
         final mine = a.mineIn(t.g);
         expect(mine.last.counter, 5); // the expense
@@ -259,9 +256,6 @@ void main() {
     test(
       'profile lost to corruption: re-onboarding keeps my personId so my '
       'balances in existing groups are still mine',
-      skip: 'QA DATA-R1-05: a corrupt kv profile row is dropped and the '
-          'next completeOnboarding mints a new personId; the old one is '
-          'recoverable from the member this device claimed',
       () async {
         final personId = a.settings.profile!.personId;
         await tamper((db) => db.execute(
@@ -292,9 +286,6 @@ void main() {
     test(
       'device: a corrupt device row keeps this phone\'s device id '
       '(recoverable from hlc.last / own ops)',
-      skip: 'QA DATA-R1-06: a corrupt kv device row is overwritten with a '
-          'brand-new device id; own unshared ops stop being shown as '
-          'unshared and peers see a new device',
       () async {
         final id = a.deviceId;
         expect(a.snap.totalUnshared, 4);

@@ -246,7 +246,7 @@ void main() {
     expect(w.group(gid).activeMembers.length, 50);
     expect(snackText(tester), isNot(S.memberAdded));
     await w.shutdown(tester);
-  }, skip: true); // QA UIFLOW-R1-02
+  });
 
   testWidgets('UIFLOW-R1-03: member and person names have no 40 character '
       'limit in the UI (SPEC 5.16: member name 1..40)', (tester) async {

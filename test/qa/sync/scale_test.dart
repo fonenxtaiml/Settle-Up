@@ -70,9 +70,11 @@ void main() {
           description: 'Expense $i',
         );
       }
-      // Priya writes too, so both directions stream at once.
+      // Priya writes too, so both directions stream at once (renames: the
+      // group already holds the 50 people SPEC 5.16 allows).
       for (var i = 0; i < 300; i++) {
-        await priya.ledger.addMember(seed.g, displayName: 'Late $i');
+        await priya.ledger
+            .renameMember(seed.g, members[i % 50], 'Late $i');
       }
       final total = alex.opCount(seed.g) - 51; // already shared: create + 50
       const back = 300;

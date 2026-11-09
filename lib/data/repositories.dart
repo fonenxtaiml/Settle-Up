@@ -92,6 +92,7 @@ final class LedgerSnapshot {
     required this.unsharedOpIds,
     required this.unsharedCounts,
     required this.localDeviceId,
+    this.groupsWithoutKey = const {},
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
@@ -116,6 +117,10 @@ final class LedgerSnapshot {
   final Set<OpId> unsharedOpIds;
   final Map<GroupId, int> unsharedCounts;
   final DeviceId localDeviceId;
+
+  /// Visible groups this phone holds no key for (the keystore lost it):
+  /// they still work here but cannot sync until an invite is scanned again.
+  final Set<GroupId> groupsWithoutKey;
 
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
@@ -228,12 +233,27 @@ enum LedgerErrorCode {
   expenseNotFound,
   invalidInput,
   invalidSplit,
+
+  /// The phone could not save (storage full, I/O error, keystore error).
+  /// Nothing was written; the command can be tried again.
+  storageFailed,
+}
+
+/// Why an [LedgerErrorCode.invalidInput] was refused, when the UI can say
+/// something more useful than "check the fields".
+enum LedgerInputIssue {
+  /// SPEC 5.16: a group holds at most 50 active members.
+  groupFull,
+
+  /// A name, description or note over its SPEC 5.16 length.
+  tooLong,
 }
 
 final class LedgerException implements Exception {
-  const LedgerException(this.code, [this.message = '']);
+  const LedgerException(this.code, [this.message = '', this.issue]);
   final LedgerErrorCode code;
   final String message;
+  final LedgerInputIssue? issue;
   @override
   String toString() => 'LedgerException(${code.name}: $message)';
 }

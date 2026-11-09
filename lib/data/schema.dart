@@ -17,15 +17,22 @@ abstract final class KvKeys {
   static const settings = 'settings'; // JSON AppSettings
   static const hlcLast = 'hlc.last'; // encoded Hlc
   static const pendingPrefix = 'pending.'; // + groupId -> name hint
+  // + groupId -> JSON {deviceId: highest counter} of the ops purgeGroup
+  // removed, so this phone's own ops coming back from peers after a leave
+  // and rejoin are told apart from forged ones.
+  static const purgedPrefix = 'purged.';
 
   static String pending(String groupId) => '$pendingPrefix$groupId';
+  static String purged(String groupId) => '$purgedPrefix$groupId';
 }
 
 /// Version 1 tables, exactly as in SPEC 7.5 (journal mode is set by [migrate]
-/// because it cannot run inside a transaction).
+/// because it cannot run inside a transaction). `IF NOT EXISTS`: a file that
+/// already holds them but lost its `user_version` (reads 0) is adopted with
+/// its data instead of failing to open.
 const List<String> _v1 = [
   '''
-CREATE TABLE ops(
+CREATE TABLE IF NOT EXISTS ops(
   op_id       TEXT PRIMARY KEY,
   group_id    TEXT NOT NULL,
   device_id   TEXT NOT NULL,
@@ -36,25 +43,26 @@ CREATE TABLE ops(
   received_at INTEGER NOT NULL,
   UNIQUE(group_id, device_id, counter)
 ) STRICT''',
-  'CREATE INDEX ops_group_hlc ON ops(group_id, hlc)',
+  'CREATE INDEX IF NOT EXISTS ops_group_hlc ON ops(group_id, hlc)',
   '''
-CREATE TABLE vv(
+CREATE TABLE IF NOT EXISTS vv(
   group_id    TEXT NOT NULL,
   device_id   TEXT NOT NULL,
   max_counter INTEGER NOT NULL,
   PRIMARY KEY(group_id, device_id)
 ) STRICT''',
   '''
-CREATE TABLE peer_vv(
+CREATE TABLE IF NOT EXISTS peer_vv(
   peer_id     TEXT NOT NULL,
   group_id    TEXT NOT NULL,
   device_id   TEXT NOT NULL,
   max_counter INTEGER NOT NULL,
   PRIMARY KEY(peer_id, group_id, device_id)
 ) STRICT''',
-  'CREATE TABLE kv(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT',
+  'CREATE TABLE IF NOT EXISTS kv(key TEXT PRIMARY KEY, value TEXT NOT NULL) '
+      'STRICT',
   '''
-CREATE TABLE sync_records(
+CREATE TABLE IF NOT EXISTS sync_records(
   id         TEXT PRIMARY KEY,
   started_at INTEGER NOT NULL,
   json       TEXT NOT NULL

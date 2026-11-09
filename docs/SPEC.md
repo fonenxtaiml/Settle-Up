@@ -1752,6 +1752,7 @@ final class LedgerSnapshot {
     required this.unsharedOpIds,
     required this.unsharedCounts,
     required this.localDeviceId,
+    this.groupsWithoutKey = const {},
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
@@ -1776,6 +1777,11 @@ final class LedgerSnapshot {
   final Set<OpId> unsharedOpIds;
   final Map<GroupId, int> unsharedCounts;
   final DeviceId localDeviceId;
+
+  /// Visible groups this phone holds no key for (the keystore lost it):
+  /// they still work here but cannot sync until an invite is scanned again.
+  /// The group screen says so and offers "Scan a QR".
+  final Set<GroupId> groupsWithoutKey;
 
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
@@ -1882,12 +1888,17 @@ enum LedgerErrorCode {
   expenseNotFound,
   invalidInput,
   invalidSplit,
+  storageFailed, // the store or keystore refused the write; nothing stored
 }
 
+/// Why an invalidInput was refused, when the UI can say more.
+enum LedgerInputIssue { groupFull, tooLong }
+
 final class LedgerException implements Exception {
-  const LedgerException(this.code, [this.message = '']);
+  const LedgerException(this.code, [this.message = '', this.issue]);
   final LedgerErrorCode code;
   final String message;
+  final LedgerInputIssue? issue;
   @override
   String toString() => 'LedgerException(${code.name}: $message)';
 }
@@ -1949,10 +1960,14 @@ abstract interface class SyncStore {
   Future<List<Operation>> opsMissingFor(GroupId groupId, VersionVector peer);
 
   /// Validates (op.groupId == groupId, key held, parseable, counter >= 1,
-  /// hlc.deviceId == deviceId), persists in one transaction, advances the
-  /// HLC with the batch max, applies to the reducer, emits a snapshot.
-  /// Returns the newly stored ops. Throws FormatException on a bad op
-  /// (the whole batch is rejected).
+  /// hlc.deviceId == deviceId, the 5.16 text limits as code units, no bidi
+  /// or control characters, encoded op <= 32 KiB, and an op carrying this
+  /// phone's device id only if this phone already used that counter),
+  /// persists in one transaction, advances the HLC with the batch max,
+  /// applies to the reducer, emits a snapshot. Ops stamped more than 7 days
+  /// ahead of this phone's clock are held back (not stored, so the peer
+  /// offers them again) and set clockSkewDetected. Returns the newly stored
+  /// ops. Throws FormatException on a bad op (the whole batch is rejected).
   Future<List<Operation>> applyRemote(GroupId groupId, List<Operation> ops);
 
   Future<void> recordPeerKnowledge(
@@ -2941,7 +2956,8 @@ abstract final class MoneyFormat {
 - `LedgerSnapshot.ops` is the full op list sorted ascending by `hlc` (encoded string order equals `Hlc.compareTo`). It is shared, unmodifiable, and rebuilt only when ops change.
 - `watch()`, `watchProfile()`, `watchSettings()`, `watchDevice()`, `watchStatus()`, `watchNearby()`, `watchHistory()` and `watchSyncRecords()` **emit the current value immediately on listen** (use a `StreamController.broadcast` plus an `async*` wrapper that yields the current value first). Providers rely on this.
 - Ledger commands are serialized through a single async queue, so the counter and HLC never race.
-- Limits enforced by `Ledger` (throw `LedgerException(invalidInput)`): group name 1..60 characters, member display name 1..40, description 1..120, notes ≤ 1000, ≤ 50 active members per group, total 1..`Money.maxMinor`. Text is trimmed. These keep one op well under 8 KiB, so any op fits a BLE frame.
+- Limits enforced by `Ledger` (throw `LedgerException(invalidInput)`): group name 1..60 characters, member display name 1..40, description 1..120, notes ≤ 1000, ≤ 50 active members per group, total 1..`Money.maxMinor`. Text is trimmed. These keep one op well under 8 KiB, so any op fits a BLE frame. A failed store or keystore write throws `storageFailed`; once the ops are stored the command succeeds (saving `hlc.last` is best effort). Limits on the member count and lengths carry `LedgerInputIssue.groupFull` / `tooLong` so the UI can say why.
+- Characters are user-perceived characters (grapheme clusters, as the UI's `maxLength` counts them), and a field may hold at most 4 UTF-16 code units per allowed character. Before measuring, text is cleaned (`lib/data/text_rules.dart`): C0/C1 controls, bidi embeddings, overrides, isolates and marks (U+061C, U+200E/F, U+202A-202E, U+2066-2069), zero-width space, word joiner and BOM are removed; ZWJ and ZWNJ stay (emoji, Indic scripts). Names turn tabs and line breaks into spaces; descriptions and notes keep line breaks. A name that shows nothing after cleaning is empty.
 - Category ids, enum `.name` strings and field names are wire format. Renaming any of them is a protocol change (bump `kSchemaVersion`).
 
 ---
@@ -3127,7 +3143,7 @@ CREATE TABLE kv(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 CREATE TABLE sync_records(id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, json TEXT NOT NULL) STRICT;
 ```
 
-`kv` keys: `device` (JSON `{deviceId, deviceName}`), `profile` (JSON), `settings` (JSON), `hlc.last` (encoded HLC), `pending.<groupId>` (name hint for a pending join). Migrations are a `switch (user_version)` ladder in `schema.dart`.
+`kv` keys: `device` (JSON `{deviceId, deviceName}`), `profile` (JSON), `settings` (JSON), `hlc.last` (encoded HLC), `pending.<groupId>` (name hint for a pending join), `purged.<groupId>` (JSON `{deviceId: highest counter}` written by `purgeGroup`, so this phone's own ops coming back after a leave and rejoin are told apart from forged ones). A group key with no ops, no `pending.` and no `purged.` row is a `createGroup` that never committed: `Ledger.open` drops it. All v1 `CREATE` statements use `IF NOT EXISTS`, so a file whose `user_version` reads 0 is adopted with its data. Migrations are a `switch (user_version)` ladder in `schema.dart`.
 
 "Unshared" ops (sync chip "3 changes to share", row dot) = my own ops with `counter > peerKnowledge(group)[myDeviceId]`.
 
@@ -3303,7 +3319,8 @@ This is the same session staying in LIVE. The UI sets `liveMode = true` while th
 | Replay of an old session | Fresh nonces in HELLO; strictly sequential frame counters. |
 | QR photographed by someone | The QR is the membership secret. It auto-hides after 2 min and sharing is explicit with a warning. Rotation is Phase 2. |
 | Member forges another member's op | Accepted risk for MVP (friends). Phase 2 adds Ed25519 signatures. |
-| Malformed or hostile ops | `Operation.fromJson` + `SyncStore.applyRemote` validation; the reducer ignores invisible or inconsistent entities; size limits. |
+| Malformed or hostile ops | `Operation.fromJson` + `SyncStore.applyRemote` validation (text limits, no bidi/control characters, 32 KiB per op, no forged own-device counters, far-future stamps held back); the reducer ignores invisible or inconsistent entities; size limits. |
+| Keystore failure wipes group keys | `flutter_secure_storage` with `resetOnError: false`: a failed read is reported, not answered by erasing every key. Groups without a key are listed in `LedgerSnapshot.groupsWithoutKey` and re-scanning an invite restores the key. |
 
 ### 8.10 Permissions wrapper (`lib/sync/platform/permissions.dart`, WP-D1, used by D2)
 
