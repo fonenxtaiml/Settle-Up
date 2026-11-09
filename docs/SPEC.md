@@ -1388,7 +1388,11 @@ abstract final class BalanceCalculator {
   /// and currency (SPEC 6.3). Sorted by currency, from, to.
   static List<Transfer> pairwiseDebts(GroupState group) => throw UnimplementedError();
 
-  /// simplifyDebts ? DebtSimplifier over groupNets : pairwiseDebts.
+  /// Removes debts that go round in a circle, per currency (SPEC 6.3).
+  static List<Transfer> cancelCycles(List<Transfer> transfers) => throw UnimplementedError();
+
+  /// simplifyDebts ? DebtSimplifier over groupNets
+  ///               : cancelCycles(pairwiseDebts).
   static List<Transfer> suggestedTransfers(GroupState group) => throw UnimplementedError();
 }
 
@@ -2983,6 +2987,8 @@ For each live expense and each ower `o` (resolved) with owed amount `w`: split `
 
 Vector: E1 total 9000, paid a 9000, owed equal a,b,c (3000 each); E2 total 3000, paid b 3000, owed a 1500, b 1500 → `[b→a 1500, c→a 3000]`.
 
+The "original" view shown when simplify is off is `cancelCycles(pairwiseDebts(g))`: while the pairwise debts of a currency contain a directed cycle (a→b, b→c, c→a), subtract the smallest debt on it from every debt on it and drop zeros. Cycles are searched depth first from members in id order, following debts in id order, so every phone gets the same result. This changes nobody's net and never adds, reverses or grows a debt; it only removes money that would go round in a circle. A group whose nets are all zero therefore shows no payments in either view (QA MONEY-R1-03). Vector: a→b 100, b→c 100, c→a 100 → `[]`; a→b 300, b→c 100, c→a 100 → `[a→b 200]`.
+
 ### 6.4 Simplify debts (`DebtSimplifier.simplify`), per currency
 
 Greedy min cash flow with two max-heaps (`HeapPriorityQueue` from `package:collection`):
@@ -2998,7 +3004,7 @@ while creditors and debtors are non-empty:
   if d.amount − x > 0: debtors.add((d.amount − x, d.id))
 ```
 
-Output is in emission order. It produces at most n − 1 transfers and never changes anyone's net. Throw `ArgumentError` if the nets do not sum to 0. `BalanceCalculator.suggestedTransfers(g)` = for each currency in ascending code order: `g.group!.simplifyDebts ? simplify(nets[cur], cur) : pairwise transfers of that currency`. It is a view only and is never stored.
+Output is in emission order. It produces at most n − 1 transfers and never changes anyone's net. Throw `ArgumentError` if the nets do not sum to 0. `BalanceCalculator.suggestedTransfers(g)` = for each currency in ascending code order: `g.group!.simplifyDebts ? simplify(nets[cur], cur) : cancelCycles(pairwise transfers of that currency)`. It is a view only and is never stored.
 
 Vectors: `{a:+50, b:−30, c:−20}` → `[b→a 30, c→a 20]`; chain `{A:−10, B:0, C:+10}` → `[A→C 10]`; ties `{a:+10, b:+10, c:−10, d:−10}` → `[c→a 10, d→b 10]`; `{}` → `[]`.
 

@@ -57,7 +57,16 @@ void main() {
       final overallOff = p.overall();
       final myNetOff = Summaries.myNetInGroup(p.gs(g), p.me);
       expectMoneyInvariants(p, reason: 'off');
-      expect(offTransfers, hasLength(4));
+      // The 1000 that went round the circle is cancelled (MONEY-R1-03);
+      // the chain stays as recorded, each debt only smaller.
+      expect(offTransfers, [
+        Transfer(from: sam, to: me, amount: 3000, currency: 'INR'),
+        Transfer(from: priya, to: sam, amount: 2000, currency: 'INR'),
+        Transfer(from: dev, to: priya, amount: 1000, currency: 'INR'),
+      ]..sort((a, b) {
+          final c = a.from.compareTo(b.from);
+          return c != 0 ? c : a.to.compareTo(b.to);
+        }));
 
       await simplify(true);
       expect(p.nets(g), netsOff);
@@ -90,9 +99,6 @@ void main() {
 
     test(
       'settled group shows nothing after turning simplify off',
-      skip:
-          'QA MONEY-R1-03: settled group still lists pairwise payments '
-          'and per-person debts when simplify is off',
       () async {
         await settleViaSuggestions();
         await simplify(false);

@@ -251,6 +251,116 @@ void main() {
     });
   });
 
+  group('cancelCycles (MONEY-R1-03)', () {
+    Transfer t(String from, String to, int amount, [String c = 'GBP']) =>
+        Transfer(from: from, to: to, amount: amount, currency: c);
+
+    test('SPEC 6.3 vectors', () {
+      expect(
+          BalanceCalculator.cancelCycles(
+              [t('a', 'b', 100), t('b', 'c', 100), t('c', 'a', 100)]),
+          isEmpty);
+      expect(
+          BalanceCalculator.cancelCycles(
+              [t('a', 'b', 300), t('b', 'c', 100), t('c', 'a', 100)]),
+          [t('a', 'b', 200)]);
+    });
+
+    test('no cycle: unchanged, sorted; currencies kept apart', () {
+      expect(
+          BalanceCalculator.cancelCycles([
+            t('b', 'c', 5, 'USD'),
+            t('a', 'b', 1),
+            t('b', 'c', 2),
+            t('c', 'a', 7, 'EUR'),
+          ]),
+          [t('c', 'a', 7, 'EUR'), t('a', 'b', 1), t('b', 'c', 2),
+            t('b', 'c', 5, 'USD')]);
+    });
+
+    test('two overlapping cycles both go', () {
+      // a->b->c->a and a->b->d->a share a->b.
+      expect(
+          BalanceCalculator.cancelCycles([
+            t('a', 'b', 200),
+            t('b', 'c', 100),
+            t('c', 'a', 100),
+            t('b', 'd', 100),
+            t('d', 'a', 100),
+          ]),
+          isEmpty);
+    });
+
+    test('a settled group with a cycle suggests nothing with simplify off',
+        () {
+      final g = groupOf(abc, [
+        expense(rawBlock({'a': 100}, {'b': 100})),
+        expense(rawBlock({'b': 100}, {'c': 100})),
+        expense(rawBlock({'c': 100}, {'a': 100})),
+      ], simplify: false);
+      expect(BalanceCalculator.groupNets(g), isEmpty);
+      expect(BalanceCalculator.suggestedTransfers(g), isEmpty);
+    });
+
+    test('property: settles the nets, leaves no cycle, only shrinks debts',
+        () {
+      final rnd = math.Random(7);
+      const ids = ['a', 'b', 'c', 'd', 'e', 'f', 'g'];
+      for (var i = 0; i < 500; i++) {
+        final members = [for (final id in ids) member(id)];
+        final expenses = <Expense>[];
+        for (var k = 0; k < 1 + rnd.nextInt(12); k++) {
+          final total = 1 + rnd.nextInt(rnd.nextBool() ? 20 : 100000);
+          final payers = (List.of(ids)..shuffle(rnd)).take(1 + rnd.nextInt(3));
+          final owers = (List.of(ids)..shuffle(rnd)).take(1 + rnd.nextInt(7));
+          expenses.add(expense(SplitCalculator.buildMoneyBlock(
+            total: total,
+            currency: rnd.nextBool() ? 'GBP' : 'EUR',
+            paidBy: SplitSpec.equal(payers),
+            owedBy: SplitSpec(SplitMethod.shares,
+                {for (final o in owers) o: 1 + rnd.nextInt(5)}),
+          )));
+        }
+        final g = groupOf(members, expenses);
+        final raw = BalanceCalculator.pairwiseDebts(g);
+        final out = BalanceCalculator.cancelCycles(raw);
+        _expectSettles(BalanceCalculator.groupNets(g), out);
+        final before = {
+          for (final x in raw) '${x.currency}:${x.from}>${x.to}': x.amount,
+        };
+        for (final x in out) {
+          final was = before['${x.currency}:${x.from}>${x.to}'];
+          expect(was, isNotNull, reason: 'no new or reversed debt');
+          expect(x.amount, lessThanOrEqualTo(was!));
+        }
+        // No directed cycle is left: a topological order exists.
+        for (final c in {for (final x in out) x.currency}) {
+          final edges = out.where((x) => x.currency == c).toList();
+          final indegree = <String, int>{};
+          for (final x in edges) {
+            indegree.putIfAbsent(x.from, () => 0);
+            indegree[x.to] = (indegree[x.to] ?? 0) + 1;
+          }
+          final ready = [
+            for (final e in indegree.entries)
+              if (e.value == 0) e.key,
+          ];
+          var seen = 0;
+          while (ready.isNotEmpty) {
+            final m = ready.removeLast();
+            seen++;
+            for (final x in edges.where((x) => x.from == m)) {
+              indegree[x.to] = indegree[x.to]! - 1;
+              if (indegree[x.to] == 0) ready.add(x.to);
+            }
+          }
+          expect(seen, indegree.length, reason: 'cycle left in $c');
+        }
+        if (BalanceCalculator.groupNets(g).isEmpty) expect(out, isEmpty);
+      }
+    });
+  });
+
   group('suggestedTransfers', () {
     final expenses = [
       expense(equalBlock(9000, 'a', ['a', 'b', 'c'])),
