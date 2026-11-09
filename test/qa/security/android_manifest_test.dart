@@ -6,6 +6,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 
 const _manifest = 'android/app/src/main/AndroidManifest.xml';
+const _transportDiscovery =
+    'com.google.android.datatransport.runtime.backends.TransportBackendDiscovery';
 
 String _read(String path) => File(path).readAsStringSync();
 
@@ -25,9 +27,32 @@ void main() {
     expect(activities, hasLength(1));
     expect(activities.single, contains('android:name=".MainActivity"'));
     expect(activities.single, contains('android:exported="true"'));
-    for (final tag in ['service', 'receiver', 'provider']) {
+    for (final tag in ['receiver', 'provider']) {
       expect(_openings(xml, tag), isEmpty, reason: tag);
     }
+    // The one <service> is a merge rule on a library's service that only
+    // removes meta-data (SECURITY-R1-13); it declares no component of ours.
+    final services = _openings(xml, 'service');
+    expect(services, hasLength(1));
+    expect(services.single, contains('tools:node="merge"'));
+    expect(services.single, contains('"$_transportDiscovery"'));
+  });
+
+  test('SECURITY-R1-13: ML Kit usage metrics have no transport backend', () {
+    final service = RegExp(
+      '<service[^>]*"$_transportDiscovery"[^>]*>([\\s\\S]*?)</service>',
+    ).firstMatch(xml)?.group(1);
+    expect(service, isNotNull);
+    final metas = _openings(service!, 'meta-data');
+    expect(metas, hasLength(1));
+    expect(
+      metas.single,
+      contains(
+        'android:name="backend:com.google.android.datatransport.cct.'
+        'CctBackendFactory"',
+      ),
+    );
+    expect(metas.single, contains('tools:node="remove"'));
   });
 
   test(
