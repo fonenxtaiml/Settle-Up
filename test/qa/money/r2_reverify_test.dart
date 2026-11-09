@@ -387,7 +387,6 @@ void main() {
         expect(await typeInto(t, 'INR', '1,00,000'), 10000000);
         expect(await typeInto(t, 'JPY', '1,000,000'), 1000000);
       },
-      skip: true, // QA MONEY-R2-01
     );
   });
 
@@ -400,7 +399,6 @@ void main() {
           expect(v, anyOf(isNull, greaterThanOrEqualTo(30000)), reason: s);
         }
       },
-      skip: true, // QA MONEY-R2-02
     );
   });
 
@@ -418,7 +416,6 @@ void main() {
         expect(parseAmountInput('0,500', eur), isNull);
         expect(parseAmountInput('00,123', eur), isNull);
       },
-      skip: true, // QA MONEY-R2-03
     );
     testWidgets(
       'QA MONEY-R2-03: the amount field reads "0,500" KWD as 0.500',
@@ -429,7 +426,6 @@ void main() {
           anyOf(isNull, 500),
         );
       },
-      skip: true, // QA MONEY-R2-03
     );
   });
 
@@ -446,7 +442,6 @@ void main() {
         // multiplies the amount by a thousand.
         expect(await typeInto(t, 'EUR', '12,500'), anyOf(isNull, 1250));
       },
-      skip: true, // QA MONEY-R2-04
     );
   });
 
@@ -460,7 +455,6 @@ void main() {
         expect(await typeInto(t, 'EUR', '1.234', paste: true), isNot(123));
         expect(await typeInto(t, 'INR', '12.345', paste: true), isNot(1234));
       },
-      skip: true, // QA MONEY-R2-05
     );
   });
 }

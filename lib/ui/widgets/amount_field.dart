@@ -106,13 +106,14 @@ class _AmountFieldState extends State<AmountField> {
   late final TextEditingController _controller;
   late Currency _currency = Currencies.of(widget.currency);
 
-  /// The last keystroke was refused because the amount would pass the
-  /// largest one the app holds; the field says so instead of ignoring it.
-  bool _tooLarge = false;
+  /// Why the text is not an amount the app can save (it passes the largest
+  /// one the app holds, or a paste has more decimals than the currency);
+  /// the field says so instead of ignoring it.
+  AmountRefusal? _refusal;
   late final _formatter = _GroupingFormatter(
     () => _currency,
-    onTooLarge: (v) {
-      if (v != _tooLarge && mounted) setState(() => _tooLarge = v);
+    onRefusal: (v) {
+      if (v != _refusal && mounted) setState(() => _refusal = v);
     },
   );
 
@@ -157,11 +158,15 @@ class _AmountFieldState extends State<AmountField> {
     final symbol = Text(_currency.symbol, style: symbolStyle);
     final error =
         widget.errorText ??
-        (_tooLarge
-            ? KitStrings.amountUpTo(
-                MoneyFormat.format(Money.maxMinor, _currency.code),
-              )
-            : null);
+        switch (_refusal) {
+          AmountRefusal.tooLarge => KitStrings.amountUpTo(
+            MoneyFormat.format(Money.maxMinor, _currency.code),
+          ),
+          AmountRefusal.decimals => KitStrings.amountDecimals(
+            _currency.minorDigits,
+          ),
+          null => null,
+        };
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -256,15 +261,21 @@ extension on TextField {
 }
 
 class _GroupingFormatter extends TextInputFormatter {
-  _GroupingFormatter(this.currency, {required this.onTooLarge});
+  _GroupingFormatter(this.currency, {required this.onRefusal});
 
   final Currency Function() currency;
-  final ValueChanged<bool> onTooLarge;
+
+  /// Why the text is not an amount the app can save (too large, too many
+  /// decimals), or null; the field says so instead of ignoring the key.
+  final ValueChanged<AmountRefusal?> onRefusal;
 
   /// What the user typed at the end of the field, before the display cut
   /// extra decimals: "1.234" shows as "1.23" in EUR, and a comma typed next
   /// must still read "1.234," as one thousand two hundred and thirty-four.
   String? _typed;
+
+  /// The text shown for [_typed].
+  String? _shown;
 
   @override
   TextEditingValue formatEditUpdate(
@@ -288,15 +299,23 @@ class _GroupingFormatter extends TextInputFormatter {
     final removed = o.substring(p, o.length - s);
 
     final String raw;
-    if (o.isEmpty || (p == 0 && s == 0)) {
+    String? canonical;
+    final pasted = o.isEmpty || (p == 0 && s == 0);
+    if (pasted) {
       // Fresh or replaced text (a paste): read it as written.
       raw = n;
-    } else if (s == 0 &&
-        removed.isEmpty &&
-        _typed != null &&
-        AmountField.groupForDisplay(_typed!, c) == o) {
+      canonical = normalizeAmountInput(raw);
+      // More decimals than the currency has: "1.234" in EUR is a thousand
+      // written with a dot, or a typo; never keep a silently cut 1.23.
+      if (canonical != null && _fraction(canonical).length > c.minorDigits) {
+        onRefusal(AmountRefusal.decimals);
+        return oldValue;
+      }
+    } else if (s == 0 && removed.isEmpty && _typed != null && _shown == o) {
       // Typing at the end.
       raw = _typed! + inserted;
+      canonical = _typedAtEnd(_typed!, inserted, c);
+      if (canonical == null) return oldValue;
     } else {
       // An edit of the shown text: its commas are our grouping.
       final before = o.substring(0, p).replaceAll(',', '');
@@ -307,25 +326,87 @@ class _GroupingFormatter extends TextInputFormatter {
         ins = '.';
       }
       raw = before + ins + after;
+      canonical = normalizeAmountInput(raw);
     }
 
-    final canonical = normalizeAmountInput(raw);
     if (canonical == null) return oldValue; // cannot be read: refuse it
-    // Over the largest amount: refuse the keystroke, and say why.
     final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');
-    if (AmountField.tooLarge(big, c)) {
-      onTooLarge(true);
-      return oldValue;
-    }
+    final whole = big.split('.').first;
     final text = AmountField.groupForDisplay(canonical, c);
-    if (AmountField.parse(text, c) == null && text.isNotEmpty) {
-      return oldValue;
+    if (AmountField.tooLarge(big, c)) {
+      // Over the largest amount: keep what was typed on screen (so it is
+      // never mistaken for a smaller amount that could be saved), say why,
+      // and report no amount until it is fixed. Past twelve digits the
+      // keystroke itself is refused.
+      onRefusal(AmountRefusal.tooLarge);
+      if (whole.length > 12) return oldValue;
+    } else {
+      if (AmountField.parse(text, c) == null && text.isNotEmpty) {
+        return oldValue;
+      }
+      onRefusal(null);
     }
-    onTooLarge(false);
     _typed = raw;
+    _shown = text;
     return TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: text.length),
     );
   }
+
+  /// Canonical text after [inserted] is typed at the end of [typed], or null
+  /// to refuse the keystroke.
+  ///
+  /// A comma the field shows as the decimal point ("1,25" as "1.25") stays
+  /// the decimal point while the currency has room for the digit: TND
+  /// "1,250" is 1.250. Past that, a decimal-comma currency (EUR "12,500")
+  /// refuses the digit, and a dot-decimal one (USD "1,234") reads the
+  /// comma as grouping, as the field itself writes a thousand; a second
+  /// comma there groups too ("1,234,567", INR "1,00,000").
+  String? _typedAtEnd(String typed, String inserted, Currency c) {
+    final raw = typed + inserted;
+    final before = normalizeAmountInput(typed, typing: true);
+    final commaShownAsDecimal =
+        c.minorDigits > 0 &&
+        before != null &&
+        before.contains('.') &&
+        !typed.contains('.') &&
+        ','.allMatches(typed).length == 1;
+    // No decimals at all (JPY): every comma typed is grouping on its way,
+    // "1,0" is ten on the way to "1,000".
+    if (c.minorDigits == 0 && raw.contains(',') && !raw.contains('.')) {
+      return typedCommaGroups(raw);
+    }
+    final commaCountry = decimalCommaCurrencies.contains(c.code);
+    if (commaShownAsDecimal) {
+      if (RegExp(r'^[0-9]+$').hasMatch(inserted)) {
+        final frac = _fraction(before) + inserted;
+        if (frac.length <= c.minorDigits) {
+          return '${before.split('.').first}.$frac';
+        }
+        if (commaCountry) return null;
+      } else if (inserted.contains(',') && commaCountry) {
+        return null; // a second decimal comma
+      }
+    }
+    final canonical = normalizeAmountInput(raw, typing: true);
+    if (canonical == null) return null;
+    // A comma read as a decimal comma with more digits than the currency
+    // has would be cut on screen: refuse the key instead.
+    if (raw.contains(',') &&
+        !raw.contains('.') &&
+        canonical.contains('.') &&
+        _fraction(canonical).length > c.minorDigits) {
+      return null;
+    }
+    return canonical;
+  }
+
+  static String _fraction(String canonical) {
+    final dot = canonical.indexOf('.');
+    return dot < 0 ? '' : canonical.substring(dot + 1);
+  }
 }
+
+/// Why the amount field holds no amount the app can save.
+enum AmountRefusal { tooLarge, decimals }
