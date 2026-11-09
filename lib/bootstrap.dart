@@ -3,7 +3,23 @@
 //
 // Run with --dart-define=SETTLEUP_FAKE=true for the in-memory fakes seeded
 // with the demo world (Goa trip, Flat 4B, Cabin weekend).
+import 'dart:developer' as developer;
+import 'dart:io' show Platform;
+
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
+
+import 'data/kv_settings_repository.dart';
+import 'data/ledger.dart';
+import 'data/secure_group_key_store.dart';
+import 'data/sqlite_op_store.dart';
+import 'sync/default_sync_engine.dart';
+import 'sync/platform/permissions.dart';
+import 'sync/transport/ble/ble_transport.dart';
+import 'sync/transport/lan/lan_transport.dart';
+import 'sync/transport/nearby/nearby_transport.dart';
 
 import 'ui/dev/fake_ledger.dart';
 import 'ui/dev/fake_settings.dart';
@@ -17,35 +33,56 @@ const bool kUseFakes = bool.fromEnvironment('SETTLEUP_FAKE');
 Future<List<Override>> bootstrap() async =>
     kUseFakes ? fakeOverrides() : realOverrides();
 
-/// The production wiring. INTEGRATOR: replace this body with the real
-/// classes once lib/data and lib/sync are merged (SPEC 4.2):
-///
-/// ```dart
-/// FlutterCryptography.enable();
-/// final dir = await getApplicationSupportDirectory();
-/// final store = SqliteOpStore(p.join(dir.path, 'settle_up.db'));
-/// await store.open();
-/// final info = await DeviceInfoPlugin().deviceInfo;
-/// final settings = await KvSettingsRepository.open(store,
-///     defaultDeviceName: deviceNameOf(info));
-/// final ledger = await Ledger.open(
-///     store: store, keys: SecureGroupKeyStore(), settings: settings);
-/// final permissions = NearbyPermissions();
-/// final engine = DefaultSyncEngine(store: ledger, transports: [
-///   LanTransport(permissions: permissions),
-///   if (Platform.isAndroid) NearbyTransport(permissions: permissions),
-///   BleTransport(permissions: permissions),
-/// ]);
-/// return [
-///   settingsRepositoryProvider.overrideWithValue(settings),
-///   ledgerRepositoryProvider.overrideWithValue(ledger),
-///   syncEngineProvider.overrideWithValue(engine),
-/// ];
-/// ```
-///
-/// Until then the app runs on empty in-memory fakes (starting at
-/// onboarding), so the screens can be tried on a phone.
-Future<List<Override>> realOverrides() => fakeOverrides(seed: false);
+/// The production wiring (SPEC 4.2): the SQLite op log, the ledger and the
+/// sync engine with every transport this platform supports.
+Future<List<Override>> realOverrides() async {
+  final dir = await getApplicationSupportDirectory();
+  final store = SqliteOpStore(p.join(dir.path, 'settle_up.db'));
+  await store.open();
+  final settings = await KvSettingsRepository.open(
+    store,
+    defaultDeviceName: await _deviceName(),
+  );
+  final ledger = await Ledger.open(
+    store: store,
+    keys: SecureGroupKeyStore(),
+    settings: settings,
+  );
+  final permissions = NearbyPermissions();
+  final engine = DefaultSyncEngine(
+    store: ledger,
+    transports: [
+      LanTransport(permissions: permissions),
+      if (Platform.isAndroid) NearbyTransport(permissions: permissions),
+      BleTransport(permissions: permissions),
+    ],
+  );
+  return [
+    settingsRepositoryProvider.overrideWithValue(settings),
+    ledgerRepositoryProvider.overrideWithValue(ledger),
+    syncEngineProvider.overrideWithValue(engine),
+  ];
+}
+
+/// A friendly default phone name such as "Pixel 8"; the user can rename it
+/// in Settings.
+Future<String> _deviceName() async {
+  try {
+    final info = DeviceInfoPlugin();
+    if (Platform.isAndroid) {
+      final a = await info.androidInfo;
+      final model = a.model.trim();
+      return model.isEmpty ? 'Android phone' : model;
+    }
+    if (Platform.isIOS) {
+      final i = await info.iosInfo;
+      return i.name.trim().isEmpty ? 'iPhone' : i.name.trim();
+    }
+  } on Object catch (e) {
+    developer.log('device name lookup failed: $e', name: 'bootstrap');
+  }
+  return 'This phone';
+}
 
 /// In-memory fakes; with [seed], the demo world as of now.
 Future<List<Override>> fakeOverrides({bool seed = true}) async {
