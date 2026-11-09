@@ -202,6 +202,39 @@ void main() {
     expect(priya.opCount(s.g), 0);
   });
 
+  test('a version-vector gap closes on the next sync', () async {
+    final s = await alex.seedGroup(expenses: 0);
+    await priya.join(alex, s.g);
+    await ravi.join(alex, s.g);
+    await syncPair(alex, priya);
+    await syncPair(alex, ravi);
+    await ravi.addExpenses(s, 5);
+    final fromRavi = [
+      for (final op in ravi.opsOf(s.g))
+        if (op.deviceId == ravi.deviceId) op,
+    ];
+    // Alex got all of Ravi's ops; Priya got them through a relay that
+    // lost counter 3, so her contiguous VV for Ravi stops at 2.
+    await alex.ledger.applyRemote(s.g, fromRavi);
+    await priya.ledger
+        .applyRemote(s.g, [for (final op in fromRavi) if (op.counter != 3) op]);
+    expect((await priya.ledger.versionVector(s.g))[ravi.deviceId], 2);
+    expect(priya.opCount(s.g), 7);
+
+    final (ra, rp) = await syncPair(alex, priya);
+
+    expect(ra.outcome, SyncOutcome.completed);
+    expect(rp.outcome, SyncOutcome.completed);
+    expect((await priya.ledger.versionVector(s.g))[ravi.deviceId], 5);
+    expect(await priya.ledger.versionVector(s.g),
+        await alex.ledger.versionVector(s.g));
+    expect(priya.opCount(s.g), 8);
+    expect(rp.receivedByGroup, {s.g: 1});
+    // Ops past the gap are offered again and ignored (SPEC 7.4).
+    expect(priya.duplicatesIgnored, 2);
+    expect(priya.canonical, alex.canonical);
+  });
+
   test('nothing to send on either side still completes', () async {
     final s = await alex.seedGroup();
     await priya.join(alex, s.g);

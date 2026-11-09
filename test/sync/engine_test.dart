@@ -341,6 +341,8 @@ void main() {
       expect(result.firstSync, isNotNull);
       expect(result.firstSync!.receivedOps, 7);
       expect(ravi.phone.canonical, alex.phone.canonical);
+      // The group's create op arrived, so the join is no longer pending.
+      expect(ravi.phone.snapshot.pendingJoins, isEmpty);
 
       final again = await ravi.engine.acceptInvite(link);
       expect(again.alreadyMember, isTrue);
