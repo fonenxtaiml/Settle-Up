@@ -110,6 +110,11 @@ only sees ciphertext.
 | E4 | A visible, then add a new group on A and invite B while the host screen is open. | B's list shows the new shared group within one refresh (no need to restart hosting). |
 | E5 | Leave A visible over a 10-minute boundary (e.g. 10:09 to 10:11). | B still sees A as sharing "Goa trip" after the boundary (tokens rotate every 10 min and the advert updates in place). |
 | E6 | A visible; B syncs; immediately close the app on A mid-transfer. | B fails cleanly; reopening A and syncing again completes; no duplicates. |
+| E7 | Install the app on two fresh phones within the same minute, create a group on one and invite the other. Then A visible, B "Find nearby". | B lists A, sharing the group, on every transport (the advertised id is random per phone and window, not part of the device id). |
+| E8 | Set B's clock 2 hours ahead (Settings, Date and time, manual). A visible, B "Find nearby"; then the same with B a day behind. | B still lists A as sharing "Goa trip" and syncs by tapping it. |
+| E9 | One phone in 20+ groups (a few trips plus many friends). It is visible; a phone sharing one of those groups scans for an hour. | The shared group is shown the whole time, over LAN, Nearby and BLE. |
+| E10 | During a large LAN sync from B to A, turn B's Wi-Fi off (A keeps a half-open connection). B taps Cancel, then syncs again over Bluetooth at once. | A accepts the retry right away (the stale session is replaced); no "busy". |
+| E11 | Open `settleup://sync?v=1&h=203.0.113.7:52741&d=x&n=X` on a phone (e.g. from a note or a browser). | "That code isn't a Settle Up link."; nothing is dialed (no outgoing connection in a packet capture). |
 
 ---
 
@@ -184,7 +189,7 @@ under `settle_up.sync.nearby` and `settle_up.sync.ble`.
 | N5 | A stops being visible (leave the host screen). | A disappears from B's list within about 20 s. |
 | N6 | During a 500-expense sync, walk B out of range (or turn its Bluetooth off). | Session fails with the partial "Nothing was lost" message; the next sync completes; no duplicates. |
 | N7 | A visible over a 10-minute boundary (e.g. 10:09 to 10:11), B scanning. | A still shows as sharing "Goa trip" after the boundary. In logcat, A restarts its Nearby advertisement once (the name carries the new tokens); an open session is not interrupted. |
-| N8 | A and B both visible and both scanning, both tap each other at the same moment. | One session runs, the other side shows "busy" or the same session; nothing is lost; a retry works. |
+| N8 | A and B both visible and both scanning, both tap each other at the same moment. | One session runs and both phones show it as their sync (the phone with the lower device id serves the other one's connection). Neither says "Syncing with another phone"; both phones end equal. |
 | N9 | A phone without Google Play services (or with it disabled), if available. | Hosting and finding still work over BLE; Nearby failures only show in logcat (`settle_up.sync.nearby`). Record what the Sync tab says for Nearby. |
 
 ### 4.2 BLE between two Android phones
