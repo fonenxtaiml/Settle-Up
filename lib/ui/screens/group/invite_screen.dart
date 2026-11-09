@@ -90,6 +90,24 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
     super.dispose();
   }
 
+  /// SPEC 8.6: the link carries the group key, so sharing is explicit and
+  /// says who can see the group before anything leaves the app.
+  Future<void> _shareLink(String name, String link) async {
+    final ok = await confirmAction(
+      context,
+      title: S.shareLinkTitle,
+      body: S.shareLinkWarning(name),
+      confirmLabel: S.shareLink,
+    );
+    if (!ok || !mounted) return;
+    await runGuarded(
+      context,
+      () => SharePlus.instance.share(
+        ShareParams(text: S.inviteShareText(name, link)),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -149,9 +167,7 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
             Center(
               child: TextLink(
                 S.shareLink,
-                onPressed: () => SharePlus.instance.share(
-                  ShareParams(text: S.inviteShareText(name, link)),
-                ),
+                onPressed: () => _shareLink(name, link),
               ),
             ),
           ] else if (!_loading) ...[
