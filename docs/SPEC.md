@@ -583,6 +583,14 @@ final class HlcClock {
     return _last = _normalize(l, c);
   }
 
+  /// Remote stamps up to this far ahead are adopted by [tickAfter].
+  static const int maxAdoptDriftMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  /// Timestamp for a local write that replaces state stamped [floor]:
+  /// > floor and >= tick(). Adopts [floor] only within [maxAdoptDriftMs]
+  /// of the wall clock (else a plain tick). See 7.1.
+  Hlc tickAfter(Hlc floor) => throw UnimplementedError();
+
   /// Merge a remote timestamp (call once per received batch with its max).
   Hlc receive(Hlc remote) {
     final now = _now();
@@ -1249,6 +1257,10 @@ final class LedgerReducer {
 
   /// Immutable snapshot of the current state (safe to hand to the UI).
   LedgerState get state => throw UnimplementedError();
+
+  /// Max HLC over the ops applied to one entity (null if none); 7.1.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      throw UnimplementedError();
 }
 ```
 
@@ -1388,7 +1400,11 @@ abstract final class BalanceCalculator {
   /// and currency (SPEC 6.3). Sorted by currency, from, to.
   static List<Transfer> pairwiseDebts(GroupState group) => throw UnimplementedError();
 
-  /// simplifyDebts ? DebtSimplifier over groupNets : pairwiseDebts.
+  /// Removes debts that go round in a circle, per currency (SPEC 6.3).
+  static List<Transfer> cancelCycles(List<Transfer> transfers) => throw UnimplementedError();
+
+  /// simplifyDebts ? DebtSimplifier over groupNets
+  ///               : cancelCycles(pairwiseDebts).
   static List<Transfer> suggestedTransfers(GroupState group) => throw UnimplementedError();
 }
 
@@ -1627,7 +1643,8 @@ import 'ledger_state.dart';
 
 abstract final class CsvExport {
   /// RFC 4180 CSV, CRLF line ends, UTF-8 (caller adds BOM if wanted).
-  /// Columns: Date (yyyy-MM-dd, UTC), Description, Category, Cost (decimal
+  /// Columns: Date (yyyy-MM-dd, the phone's local calendar day, the same
+  /// day the app shows), Description, Category, Cost (decimal
   /// with the currency's minor digits, '.' separator), Currency, then one
   /// column per active member (display name) holding paid - owed for that
   /// row. Payments included with Category "Payment". Deleted rows excluded.
@@ -2982,6 +2999,8 @@ For each live expense and each ower `o` (resolved) with owed amount `w`: split `
 
 Vector: E1 total 9000, paid a 9000, owed equal a,b,c (3000 each); E2 total 3000, paid b 3000, owed a 1500, b 1500 → `[b→a 1500, c→a 3000]`.
 
+The "original" view shown when simplify is off is `cancelCycles(pairwiseDebts(g))`: while the pairwise debts of a currency contain a directed cycle (a→b, b→c, c→a), subtract the smallest debt on it from every debt on it and drop zeros. Cycles are searched depth first from members in id order, following debts in id order, so every phone gets the same result. This changes nobody's net and never adds, reverses or grows a debt; it only removes money that would go round in a circle. A group whose nets are all zero therefore shows no payments in either view (QA MONEY-R1-03). Vector: a→b 100, b→c 100, c→a 100 → `[]`; a→b 300, b→c 100, c→a 100 → `[a→b 200]`.
+
 ### 6.4 Simplify debts (`DebtSimplifier.simplify`), per currency
 
 Greedy min cash flow with two max-heaps (`HeapPriorityQueue` from `package:collection`):
@@ -2997,7 +3016,7 @@ while creditors and debtors are non-empty:
   if d.amount − x > 0: debtors.add((d.amount − x, d.id))
 ```
 
-Output is in emission order. It produces at most n − 1 transfers and never changes anyone's net. Throw `ArgumentError` if the nets do not sum to 0. `BalanceCalculator.suggestedTransfers(g)` = for each currency in ascending code order: `g.group!.simplifyDebts ? simplify(nets[cur], cur) : pairwise transfers of that currency`. It is a view only and is never stored.
+Output is in emission order. It produces at most n − 1 transfers and never changes anyone's net. Throw `ArgumentError` if the nets do not sum to 0. `BalanceCalculator.suggestedTransfers(g)` = for each currency in ascending code order: `g.group!.simplifyDebts ? simplify(nets[cur], cur) : cancelCycles(pairwise transfers of that currency)`. It is a view only and is never stored.
 
 Vectors: `{a:+50, b:−30, c:−20}` → `[b→a 30, c→a 20]`; chain `{A:−10, B:0, C:+10}` → `[A→C 10]`; ties `{a:+10, b:+10, c:−10, d:−10}` → `[c→a 10, d→b 10]`; `{}` → `[]`.
 
@@ -3026,7 +3045,7 @@ Every expense carries its own currency, and balances are computed and shown **pe
 ### 7.1 Creating ops (Ledger)
 
 - `counter` = 1 + `maxCounter(groupId, myDeviceId)` (cached in memory), strictly contiguous per (device, group).
-- `hlc` = `clock.tick()`. One command may produce several ops (create group = 1 group op + N member ops). Each op gets its own tick and counter, and all are inserted in one `insertAll` call.
+- `hlc` = `clock.tick()` for a create, and `clock.tickAfter(reducer.lastHlcOf(groupId, type, entityId))` for an op on an entity that already has ops: a local edit, delete or restore is stamped after every op the user's view of that entity is built from, so it wins last-writer-wins even when the value came from a phone whose clock is ahead (beyond the skew guard, up to `HlcClock.maxAdoptDriftMs` = 7 days; QA SYNC-R1-01). One command may produce several ops (create group = 1 group op + N member ops). Each op gets its own tick and counter, and all are inserted in one `insertAll` call.
 - `create` payloads carry **every** required field (`*Fields.required`) plus optional ones. `update` payloads carry only changed fields. `delete` = `{deletedAt: hlc.millis}`. `restore` = `{deletedAt: null}`.
 - Merge members = `update` on the `from` member with `{mergedInto: into}`. Claim = `update` with `{personId: me, deviceId: myDeviceId}`.
 - `kv['hlc.last']` is written after every commit.
@@ -3037,7 +3056,7 @@ State per entity key `(entityType, entityId)`: `created: bool`, and `fields: Map
 
 1. If the op id was already applied, return false. Record it.
 2. If `op.isFromNewerSchema`, return false. The op is stored and relayed, but not applied.
-3. For `EntityType.group`, if `entityId != groupId`, ignore the op. Member and expense entities belong to `op.groupId`. An op whose entity id already exists in another group is ignored (ids are UUIDs, so this only happens with malicious input).
+3. For `EntityType.group`, if `entityId != groupId`, ignore the op. Member and expense entities belong to `op.groupId`. When the same member or expense id has ops in several groups (ids are UUIDs, so this only happens with malicious input), it is visible in one owner group only: a group holding a `create` op for the id beats groups holding only updates, deletes or restores for it, whatever their HLC; among groups with a create, the earliest create HLC wins; with no create anywhere, the earliest op; ties by group id. The owner depends only on the op set, so all replicas agree (QA SECURITY-R1-04). A forged `create` with an earlier HLC in another group still wins; that needs the attacker to know the id.
 4. For each `(field, value)` in the payload: if there is no current value, or `op.hlc > current.hlc`, set `(op.hlc, value)`. Equal HLCs from different ops cannot happen (the device id is inside the HLC). If they do, keep the current value.
 5. If `op.kind == create`, set `created = true`.
 6. Rebuild the materialized entity. It is **visible** only if `created`, every required field is present with the right JSON type, and (expenses) `MoneyBlock.fromJson` succeeds with `isConsistent == true` and currency == `money.currency`. Fields with a wrong JSON type are treated as absent. Unknown fields are kept in `fields` (forward compatibility) but ignored by the builders.
@@ -3064,7 +3083,7 @@ Because every visible value is "the max-HLC write per field, over the set of ops
 ### 7.3 HLC usage
 
 - `HlcClock.tick()` for each local op. `HlcClock.receive(maxRemoteHlc)` once per applied remote batch.
-- Skew guard: a remote HLC more than 1 hour ahead of the local wall clock is accepted as data but not adopted by the clock (`skewDetected = true`, logged). Convergence is unaffected (the order is still total), but that phone's edits may win LWW ties surprisingly. The Settings "About" line shows "This phone's clock looks wrong" when the flag is set.
+- Skew guard: a remote HLC more than 1 hour ahead of the local wall clock is accepted as data but not adopted by the clock (`skewDetected = true`, logged). Convergence is unaffected (the order is still total), but that phone's edits may win LWW ties surprisingly. A later local write to an entity that phone wrote still wins: 7.1 stamps it after the entity's newest op (`tickAfter`), which moves this clock forward to that stamp when it is at most 7 days ahead. The Settings "About" line shows "This phone's clock looks wrong" when the flag is set.
 
 ### 7.4 Version vectors and gaps
 

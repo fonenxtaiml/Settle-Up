@@ -4,15 +4,19 @@
 // Run with --dart-define=SETTLEUP_FAKE=true for the in-memory fakes seeded
 // with the demo world (Goa trip, Flat 4B, Cabin weekend).
 import 'dart:developer' as developer;
-import 'dart:io' show Platform;
+import 'dart:io' show FileSystemException, Platform;
 
 import 'package:device_info_plus/device_info_plus.dart';
+import 'package:flutter/services.dart'
+    show MissingPluginException, PlatformException;
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:sqlite3/sqlite3.dart' show SqliteException;
 
 import 'data/kv_settings_repository.dart';
 import 'data/ledger.dart';
+import 'data/schema.dart' show SchemaTooNewError;
 import 'data/secure_group_key_store.dart';
 import 'data/sqlite_op_store.dart';
 import 'sync/default_sync_engine.dart';
@@ -26,6 +30,7 @@ import 'ui/dev/fake_settings.dart';
 import 'ui/dev/fake_sync_engine.dart';
 import 'ui/dev/seed_data.dart';
 import 'ui/providers.dart';
+import 'ui/screens/startup/startup_error_screen.dart' show StartupFailure;
 import 'ui/startup.dart';
 
 /// True when the app was built with --dart-define=SETTLEUP_FAKE=true.
@@ -39,8 +44,9 @@ Future<List<Override>> bootstrap() async =>
 ///
 /// Never throws: if the data cannot be opened (a database from a newer app
 /// version, an unreadable file, a full disk on first launch) it returns a
-/// [StartupFailure] override instead, which the app shows with Try again.
-/// The database file is never deleted or rewritten here.
+/// [StartupFailure] override instead (see [classifyStartupError]), which the
+/// app shows with Try again. The database file is never deleted or
+/// rewritten here, and it is closed again so a retry opens it afresh.
 Future<List<Override>> realOverrides() async {
   SqliteOpStore? store;
   try {
@@ -57,7 +63,7 @@ Future<List<Override>> realOverrides() async {
     } on Object catch (_) {
       // Already closed or never opened.
     }
-    return [startupFailureProvider.overrideWithValue(StartupFailure.from(e))];
+    return [startupFailureProvider.overrideWithValue(classifyStartupError(e))];
   }
 }
 
@@ -92,6 +98,17 @@ Future<List<Override>> _realOverrides(
     syncEngineProvider.overrideWithValue(engine),
   ];
 }
+
+/// Maps an exception from opening the data to what the startup error screen
+/// tells the user.
+StartupFailure classifyStartupError(Object error) => switch (error) {
+  SchemaTooNewError() => StartupFailure.tooNew,
+  SqliteException() => StartupFailure.database,
+  PlatformException() ||
+  MissingPluginException() ||
+  FileSystemException() => StartupFailure.storage,
+  _ => StartupFailure.other,
+};
 
 /// A friendly default phone name such as "Pixel 8"; the user can rename it
 /// in Settings.

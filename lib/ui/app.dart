@@ -7,6 +7,7 @@ import '../core/models.dart';
 import '../theme/app_theme.dart';
 import 'providers.dart';
 import 'router.dart';
+import 'screens/startup/startup_error_screen.dart';
 import 'startup.dart';
 import 'strings.dart';
 import 'widgets/widgets.dart';
@@ -24,9 +25,10 @@ class SettleUpApp extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final failure = ref.watch(startupFailureProvider);
     if (failure != null) {
+      final retry = ref.watch(startupRetryProvider);
       return StartupErrorApp(
         failure: failure,
-        onRetry: ref.watch(startupRetryProvider),
+        onRetry: retry == null ? null : () async => retry(),
       );
     }
     final settings =

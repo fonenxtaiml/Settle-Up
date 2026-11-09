@@ -1,31 +1,11 @@
-// What the app shows when it cannot start: a database from a newer app
-// version, an unreadable file, a full disk on first launch. The data is
-// never touched; the screen explains and offers Try again.
-import 'package:flutter/material.dart';
+// Startup that cannot open the data (a database from a newer app version,
+// an unreadable file, a full disk on first launch) ends on the startup error
+// screen with Try again. The data is never touched.
+import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 
-import '../theme/app_theme.dart';
-import '../theme/tokens.dart';
-import 'strings.dart';
-import 'widgets/widgets.dart';
-
-/// Why startup failed.
-@immutable
-final class StartupFailure {
-  const StartupFailure(this.error, {this.newerVersion = false});
-
-  /// Classifies [error] from opening the store, settings or ledger.
-  factory StartupFailure.from(Object error) => StartupFailure(
-    error,
-    newerVersion: '$error'.contains('newer than this app'),
-  );
-
-  final Object error;
-
-  /// The database was written by a newer Settle Up: update the app.
-  final bool newerVersion;
-}
+import 'screens/startup/startup_error_screen.dart';
 
 /// Set by bootstrap when the real wiring could not be built; null when the
 /// app started normally.
@@ -69,9 +49,9 @@ class _AppRootState extends State<AppRoot> {
     List<Override> overrides;
     try {
       overrides = await widget.load();
-    } on Object catch (e) {
+    } on Object catch (_) {
       overrides = [
-        startupFailureProvider.overrideWithValue(StartupFailure.from(e)),
+        startupFailureProvider.overrideWithValue(StartupFailure.other),
       ];
     }
     if (!mounted) return;
@@ -97,44 +77,4 @@ class _AppRootState extends State<AppRoot> {
       child: widget.app,
     );
   }
-}
-
-/// The failure screen, in the app's own themes.
-class StartupErrorApp extends StatelessWidget {
-  const StartupErrorApp({super.key, required this.failure, this.onRetry});
-
-  final StartupFailure failure;
-  final VoidCallback? onRetry;
-
-  @override
-  Widget build(BuildContext context) => MaterialApp(
-    title: S.appName,
-    debugShowCheckedModeBanner: false,
-    theme: AppTheme.light(),
-    darkTheme: AppTheme.dark(),
-    home: Scaffold(
-      body: SafeArea(
-        child: LayoutBuilder(
-          builder: (context, constraints) => SingleChildScrollView(
-            child: ConstrainedBox(
-              constraints: BoxConstraints(minHeight: constraints.maxHeight),
-              child: Padding(
-                padding: const EdgeInsets.all(Space.xl),
-                child: EmptyState(
-                  headline: failure.newerVersion
-                      ? S.startupNewerTitle
-                      : S.startupFailedTitle,
-                  body: failure.newerVersion
-                      ? S.startupNewerBody
-                      : S.startupFailedBody,
-                  actionLabel: onRetry == null ? null : S.tryAgain,
-                  onAction: onRetry,
-                ),
-              ),
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }

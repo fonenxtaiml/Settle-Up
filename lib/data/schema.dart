@@ -61,16 +61,28 @@ CREATE TABLE sync_records(
 ) STRICT''',
 ];
 
-/// Brings [db] to [kStoreSchemaVersion]. Throws [StateError] when the file
-/// was written by a newer app (its schema cannot be downgraded safely).
+/// Thrown by [migrate] when the file was written by a newer app. It is a
+/// [StateError] so callers that only know that type keep working; startup
+/// tells it apart to ask the user to update instead of reporting damage.
+class SchemaTooNewError extends StateError {
+  SchemaTooNewError(this.fileVersion)
+    : super(
+        'Database schema $fileVersion is newer than this app '
+        '($kStoreSchemaVersion)',
+      );
+
+  /// The `user_version` found in the file.
+  final int fileVersion;
+}
+
+/// Brings [db] to [kStoreSchemaVersion]. Throws [SchemaTooNewError] when the
+/// file was written by a newer app (its schema cannot be downgraded safely).
 void migrate(Database db) {
   db.execute('PRAGMA journal_mode = WAL');
   final from = db.userVersion;
   if (from == kStoreSchemaVersion) return;
   if (from > kStoreSchemaVersion) {
-    throw StateError(
-      'Database schema $from is newer than this app ($kStoreSchemaVersion)',
-    );
+    throw SchemaTooNewError(from);
   }
   db.execute('BEGIN IMMEDIATE');
   try {

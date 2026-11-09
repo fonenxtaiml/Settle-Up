@@ -134,7 +134,13 @@ void main() {
 
     final dinner = rows.firstWhere((r) => r[1].startsWith('Dinner'));
     expect(dinner[1], 'Dinner, "the good one"\nwith wine');
-    expect(dinner[0], '2026-11-10');
+    // The local calendar day of kBaseMs + 1 day (MONEY-R1-05).
+    final l = DateTime.fromMillisecondsSinceEpoch(kBaseMs + 86400000);
+    expect(
+      dinner[0],
+      '${l.year}-${l.month.toString().padLeft(2, '0')}-'
+      '${l.day.toString().padLeft(2, '0')}',
+    );
     expect(dinner.sublist(3), ['90.00', 'INR', '60.00', '-30.00', '-30.00']);
 
     final sushi = rows.firstWhere((r) => r[1] == 'Sushi');
@@ -254,13 +260,10 @@ void main() {
     ]);
   });
 
-  // Run with a non-UTC zone to see it fail, e.g.
-  //   TZ=America/Los_Angeles flutter test --run-skipped test/qa/money/csv_ledger_test.dart
+  // MONEY-R1-05. Meaningful in a non-UTC zone, e.g.
+  //   TZ=America/Los_Angeles flutter test test/qa/money/csv_ledger_test.dart
   test(
     'CSV Date is the same calendar day the app shows for the expense',
-    skip:
-        'QA MONEY-R1-05: CSV exports the UTC date, the app shows the '
-        'local date (off by one day outside UTC)',
     () async {
       // 9 Nov 2026 19:30 local in Los Angeles (03:30 UTC on 10 Nov), or
       // 02:00 local in Kolkata on 10 Nov (20:30 UTC on 9 Nov).
