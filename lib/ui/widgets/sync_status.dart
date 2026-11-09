@@ -38,14 +38,8 @@ class _Spinner extends StatelessWidget {
   final double size;
 
   @override
-  Widget build(BuildContext context) => SizedBox.square(
-    dimension: size,
-    child: CircularProgressIndicator(
-      strokeWidth: 2,
-      // A still ring under reduce motion; the words carry the state.
-      value: MediaQuery.disableAnimationsOf(context) ? 0.75 : null,
-    ),
-  );
+  Widget build(BuildContext context) =>
+      SizedBox.square(dimension: size, child: const KitSpinner());
 }
 
 /// Compact sync state pill for app bars (stone fill, 36 dp). Never says
@@ -206,9 +200,12 @@ class SyncBanner extends StatelessWidget {
         borderRadius: BorderRadius.all(Radius.circular(Radii.lg)),
       ),
       clipBehavior: Clip.antiAlias,
+      // One labelled button for the card ("5 changes to share, Not synced
+      // with another phone yet") that opens Sync; the Sync action inside is
+      // its own button.
       child: Semantics(
         container: true,
-        explicitChildNodes: true,
+        button: onTap != null,
         child: InkWell(
           onTap: onTap,
           child: Padding(
@@ -227,12 +224,7 @@ class SyncBanner extends StatelessWidget {
                         children: [
                           ExcludeSemantics(child: icon),
                           const SizedBox(width: Space.md),
-                          Expanded(
-                            child: Semantics(
-                              button: onTap != null,
-                              child: text,
-                            ),
-                          ),
+                          Expanded(child: text),
                         ],
                       ),
                       if (action != null)
@@ -246,9 +238,7 @@ class SyncBanner extends StatelessWidget {
                     children: [
                       ExcludeSemantics(child: icon),
                       const SizedBox(width: Space.md),
-                      Expanded(
-                        child: Semantics(button: onTap != null, child: text),
-                      ),
+                      Expanded(child: text),
                       if (action != null) ...[
                         const SizedBox(width: Space.md),
                         action,

@@ -104,7 +104,8 @@ class SectionHeading extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (action is TextLink) {
-      // Centre the 32 dp link on the 22 dp title without growing the gap.
+      // Centre the 48 dp link target on the 22 dp title, growing the gap
+      // as little as the padding allows.
       const grow = (kTextLinkHeight - 22) / 2;
       final p = padding.resolve(Directionality.of(context));
       return Padding(
@@ -168,12 +169,12 @@ class DateSubhead extends StatelessWidget {
   }
 }
 
-/// Height of a [TextLink]'s tap target.
-const double kTextLinkHeight = 32;
+/// Height of a [TextLink]'s tap target: the Android 48 dp minimum.
+const double kTextLinkHeight = 48;
 
 /// Underlined text link ("See all", "Pay part of it"): ink, 14 dp
-/// semibold, underline in the outline colour. The target is 32 dp tall
-/// (above the WCAG 2.5.8 minimum) so a heading keeps its rhythm.
+/// semibold, underline in the outline colour. The text is set as before;
+/// the tap target around it is 48 dp tall (Android tap target guideline).
 class TextLink extends StatelessWidget {
   const TextLink(this.label, {super.key, required this.onPressed});
 
