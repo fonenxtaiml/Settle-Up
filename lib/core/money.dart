@@ -32,9 +32,7 @@ abstract final class Currencies {
   /// sorted by code. These four are the minimum the tests rely on.
   static const List<Currency> all = isoCurrencies;
 
-  static final Map<String, Currency> _byCode = {
-    for (final c in all) c.code: c,
-  };
+  static final Map<String, Currency> _byCode = {for (final c in all) c.code: c};
 
   static Currency? tryOf(String code) => _byCode[code.toUpperCase()];
 
@@ -113,7 +111,8 @@ final class Money implements Comparable<Money> {
     final frac = m.group(2) ?? '';
     if (frac.length > currency.minorDigits) return null;
     if (whole.length > 12) return null;
-    final value = int.parse(whole) * currency.minorPerMajor +
+    final value =
+        int.parse(whole) * currency.minorPerMajor +
         (frac.isEmpty
             ? 0
             : int.parse(frac.padRight(currency.minorDigits, '0')));

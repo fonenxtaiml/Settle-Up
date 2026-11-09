@@ -116,12 +116,12 @@ final class SplitSpec {
   Map<String, Object?> toJson() => {'method': method.name, 'values': values};
 
   factory SplitSpec.fromJson(Map<String, Object?> json) => SplitSpec(
-        enumByName(SplitMethod.values, json['method'], SplitMethod.exact),
-        {
-          for (final e in (json['values']! as Map).entries)
-            e.key as String: e.value as int,
-        },
-      );
+    enumByName(SplitMethod.values, json['method'], SplitMethod.exact),
+    {
+      for (final e in (json['values']! as Map).entries)
+        e.key as String: e.value as int,
+    },
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -132,11 +132,11 @@ final class SplitSpec {
 
   @override
   int get hashCode => Object.hash(
-        method,
-        Object.hashAllUnordered(
-          values.entries.map((e) => Object.hash(e.key, e.value)),
-        ),
-      );
+    method,
+    Object.hashAllUnordered(
+      values.entries.map((e) => Object.hash(e.key, e.value)),
+    ),
+  );
 }
 
 /// The atomic LWW "money" field of an expense. Invariant:
@@ -169,23 +169,27 @@ final class MoneyBlock {
   }
 
   Map<String, Object?> toJson() => {
-        'total': total,
-        'currency': currency,
-        'paidBy': paidBy.toJson(),
-        'owedBy': owedBy.toJson(),
-        'paid': paid,
-        'owed': owed,
-      };
+    'total': total,
+    'currency': currency,
+    'paidBy': paidBy.toJson(),
+    'owedBy': owedBy.toJson(),
+    'paid': paid,
+    'owed': owed,
+  };
 
   factory MoneyBlock.fromJson(Map<String, Object?> json) {
     Map<MemberId, int> ints(Object? m) => {
-          for (final e in (m! as Map).entries) e.key as String: e.value as int,
-        };
+      for (final e in (m! as Map).entries) e.key as String: e.value as int,
+    };
     return MoneyBlock(
       total: json['total']! as int,
       currency: json['currency']! as String,
-      paidBy: SplitSpec.fromJson(Map<String, Object?>.from(json['paidBy']! as Map)),
-      owedBy: SplitSpec.fromJson(Map<String, Object?>.from(json['owedBy']! as Map)),
+      paidBy: SplitSpec.fromJson(
+        Map<String, Object?>.from(json['paidBy']! as Map),
+      ),
+      owedBy: SplitSpec.fromJson(
+        Map<String, Object?>.from(json['owedBy']! as Map),
+      ),
       paid: ints(json['paid']),
       owed: ints(json['owed']),
     );
@@ -250,10 +254,10 @@ final class Profile {
   final String homeCurrency;
 
   Profile copyWith({String? displayName, String? homeCurrency}) => Profile(
-        personId: personId,
-        displayName: displayName ?? this.displayName,
-        homeCurrency: homeCurrency ?? this.homeCurrency,
-      );
+    personId: personId,
+    displayName: displayName ?? this.displayName,
+    homeCurrency: homeCurrency ?? this.homeCurrency,
+  );
 }
 
 @immutable
@@ -282,13 +286,12 @@ final class AppSettings {
     bool? vibration,
     SplitMethod? defaultSplit,
     bool? simplifyByDefault,
-  }) =>
-      AppSettings(
-        themeMode: themeMode ?? this.themeMode,
-        vibration: vibration ?? this.vibration,
-        defaultSplit: defaultSplit ?? this.defaultSplit,
-        simplifyByDefault: simplifyByDefault ?? this.simplifyByDefault,
-      );
+  }) => AppSettings(
+    themeMode: themeMode ?? this.themeMode,
+    vibration: vibration ?? this.vibration,
+    defaultSplit: defaultSplit ?? this.defaultSplit,
+    simplifyByDefault: simplifyByDefault ?? this.simplifyByDefault,
+  );
 }
 
 enum SyncOutcome { completed, partial, failed, cancelled }

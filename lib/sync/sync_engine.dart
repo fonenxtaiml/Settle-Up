@@ -193,15 +193,22 @@ abstract interface class SyncEngine {
 
   Future<Map<TransportKind, TransportAvailability>> availability();
   Future<Map<TransportKind, TransportAvailability>> requestPermissions(
-      Set<TransportKind> kinds);
+    Set<TransportKind> kinds,
+  );
 
   /// Starts the LAN server (+ mDNS) and Bluetooth advertising; accepts and
   /// runs inbound sessions automatically until stopped or expired.
-  Future<HostInfo> startHosting({Duration duration = const Duration(minutes: 5)});
+  Future<HostInfo> startHosting({
+    Duration duration = const Duration(minutes: 5),
+  });
   Future<void> stopHosting();
 
   Future<void> startDiscovery({
-    Set<TransportKind> kinds = const {TransportKind.lan, TransportKind.nearby, TransportKind.ble},
+    Set<TransportKind> kinds = const {
+      TransportKind.lan,
+      TransportKind.nearby,
+      TransportKind.ble,
+    },
   });
   Future<void> stopDiscovery();
 

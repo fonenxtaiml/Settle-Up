@@ -35,19 +35,19 @@ final class InviteLink {
   final DeviceId? deviceId;
 
   String encode() => Uri(
-        scheme: 'settleup',
-        host: 'join',
-        queryParameters: {
-          'v': '1',
-          'g': groupId,
-          'k': _b64(groupKey),
-          'n': groupName,
-          'c': currency,
-          'f': fromName,
-          'h': ?host,
-          'd': ?deviceId,
-        },
-      ).toString();
+    scheme: 'settleup',
+    host: 'join',
+    queryParameters: {
+      'v': '1',
+      'g': groupId,
+      'k': _b64(groupKey),
+      'n': groupName,
+      'c': currency,
+      'f': fromName,
+      'h': ?host,
+      'd': ?deviceId,
+    },
+  ).toString();
 
   /// Returns null if [link] is not a valid v1 invite.
   static InviteLink? tryParse(String link) {

@@ -65,7 +65,8 @@ final class ActivityEntry {
 
   GroupId get groupId => op.groupId;
   String get entityId => op.entityId;
-  DateTime get at => DateTime.fromMillisecondsSinceEpoch(op.hlc.millis, isUtc: true);
+  DateTime get at =>
+      DateTime.fromMillisecondsSinceEpoch(op.hlc.millis, isUtc: true);
 }
 
 abstract final class ActivityBuilder {
@@ -99,14 +100,13 @@ abstract final class ActivityBuilder {
     required DeviceId localDeviceId,
     required Set<OpId> unsharedOpIds,
     required String entityId,
-  }) =>
-      _entries(
-        ops: ops,
-        state: state,
-        localDeviceId: localDeviceId,
-        unsharedOpIds: unsharedOpIds,
-        include: (op) => op.entityId == entityId,
-      );
+  }) => _entries(
+    ops: ops,
+    state: state,
+    localDeviceId: localDeviceId,
+    unsharedOpIds: unsharedOpIds,
+    include: (op) => op.entityId == entityId,
+  );
 
   /// Entries for the ops accepted by [include], oldest first (HLC order).
   static List<ActivityEntry> _entries({
@@ -164,16 +164,18 @@ abstract final class ActivityBuilder {
           current[field] = after;
         });
         if (!include(op)) continue;
-        out.add(ActivityEntry(
-          op: op,
-          kind: _kindOf(op, current, state),
-          actor: _actor(state.groups[op.groupId], op.deviceId),
-          changes: Map.unmodifiable(changes),
-          isLocal: op.deviceId == localDeviceId,
-          isShared:
-              op.deviceId == localDeviceId && !unsharedOpIds.contains(op.id),
-          supersededBy: superseded[op.id],
-        ));
+        out.add(
+          ActivityEntry(
+            op: op,
+            kind: _kindOf(op, current, state),
+            actor: _actor(state.groups[op.groupId], op.deviceId),
+            changes: Map.unmodifiable(changes),
+            isLocal: op.deviceId == localDeviceId,
+            isShared:
+                op.deviceId == localDeviceId && !unsharedOpIds.contains(op.id),
+            supersededBy: superseded[op.id],
+          ),
+        );
       }
     }
     out.sort((a, b) => _byHlc(a.op, b.op));
@@ -206,14 +208,19 @@ abstract final class ActivityBuilder {
     return {
       for (final op in lastByDevice.values)
         if (op.deviceId != winner.deviceId &&
-            !jsonEquals(op.payload[ExpenseFields.money],
-                winner.payload[ExpenseFields.money]))
+            !jsonEquals(
+              op.payload[ExpenseFields.money],
+              winner.payload[ExpenseFields.money],
+            ))
           op.id: winner.id,
     };
   }
 
   static ActivityKind _kindOf(
-      Operation op, Map<String, Object?> fields, LedgerState state) {
+    Operation op,
+    Map<String, Object?> fields,
+    LedgerState state,
+  ) {
     switch (op.entityType) {
       case EntityType.group:
         return switch (op.kind) {
@@ -239,7 +246,8 @@ abstract final class ActivityBuilder {
             return ActivityKind.memberEdited;
         }
       case EntityType.expense:
-        final kindName = fields[ExpenseFields.kind] ??
+        final kindName =
+            fields[ExpenseFields.kind] ??
             state.groups[op.groupId]?.expenses[op.entityId]?.kind.name;
         final payment = kindName == ExpenseKind.payment.name;
         return switch (op.kind) {
@@ -249,9 +257,10 @@ abstract final class ActivityBuilder {
             payment ? ActivityKind.paymentEdited : ActivityKind.expenseEdited,
           OpKind.delete =>
             payment ? ActivityKind.paymentDeleted : ActivityKind.expenseDeleted,
-          OpKind.restore => payment
-              ? ActivityKind.paymentRestored
-              : ActivityKind.expenseRestored,
+          OpKind.restore =>
+            payment
+                ? ActivityKind.paymentRestored
+                : ActivityKind.expenseRestored,
         };
     }
   }

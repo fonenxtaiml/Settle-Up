@@ -55,6 +55,18 @@ final class FakeLedgerRepository implements LedgerRepository {
   final List<PaymentDraft> recordedPayments = [];
   final List<(GroupId, MemberId)> claimedMembers = [];
 
+  /// Forgets the recorded calls (after seeding).
+  void clearRecords() {
+    createdGroups.clear();
+    groupUpdates.clear();
+    addedExpenses.clear();
+    updatedExpenses.clear();
+    deletedExpenses.clear();
+    restoredExpenses.clear();
+    recordedPayments.clear();
+    claimedMembers.clear();
+  }
+
   DeviceId get localDeviceId => _settings.device.deviceId;
 
   // -------------------------------------------------------------- reading --

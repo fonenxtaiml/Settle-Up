@@ -30,8 +30,9 @@ final class Hlc implements Comparable<Hlc> {
     );
   }
 
-  static final RegExp _encoded =
-      RegExp(r'^([0-9]{15})-([0-9a-f]{4})-([\s\S]+)$');
+  static final RegExp _encoded = RegExp(
+    r'^([0-9]{15})-([0-9a-f]{4})-([\s\S]+)$',
+  );
 
   static const int maxCounter = 0xFFFF;
 
@@ -39,7 +40,8 @@ final class Hlc implements Comparable<Hlc> {
   final int counter; // logical component, 0..0xFFFF
   final DeviceId deviceId; // tiebreak
 
-  String encode() => '${millis.toString().padLeft(15, '0')}-'
+  String encode() =>
+      '${millis.toString().padLeft(15, '0')}-'
       '${counter.toRadixString(16).padLeft(4, '0')}-$deviceId';
 
   @override
@@ -71,8 +73,8 @@ final class Hlc implements Comparable<Hlc> {
 /// One per device. Not thread-safe; owned by the data layer's Ledger.
 final class HlcClock {
   HlcClock({required this.deviceId, Hlc? last, int Function()? nowMillis})
-      : _last = last ?? Hlc.zero(deviceId),
-        _now = nowMillis ?? _wallClock;
+    : _last = last ?? Hlc.zero(deviceId),
+      _now = nowMillis ?? _wallClock;
 
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
 

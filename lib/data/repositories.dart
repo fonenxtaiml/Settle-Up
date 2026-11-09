@@ -40,7 +40,10 @@ abstract interface class OpStore {
   /// What peers are known to hold (pointwise max over all peers).
   Future<VersionVector> peerKnowledge(GroupId groupId);
   Future<void> recordPeerKnowledge(
-      DeviceId peer, GroupId groupId, VersionVector vv);
+    DeviceId peer,
+    GroupId groupId,
+    VersionVector vv,
+  );
 
   Future<String?> getKv(String key);
   Future<void> setKv(String key, String? value); // null deletes
@@ -95,13 +98,13 @@ final class LedgerSnapshot {
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
-        state: LedgerState.empty,
-        ops: const [],
-        pendingJoins: const {},
-        unsharedOpIds: const {},
-        unsharedCounts: const {},
-        localDeviceId: localDeviceId,
-      );
+    state: LedgerState.empty,
+    ops: const [],
+    pendingJoins: const {},
+    unsharedOpIds: const {},
+    unsharedCounts: const {},
+    localDeviceId: localDeviceId,
+  );
 
   final LedgerState state;
 
@@ -121,9 +124,9 @@ final class LedgerSnapshot {
 
   /// Entity ids touched by an unshared op (for the "not yet shared" dot).
   Set<String> get unsharedEntityIds => {
-        for (final op in ops)
-          if (unsharedOpIds.contains(op.id)) op.entityId,
-      };
+    for (final op in ops)
+      if (unsharedOpIds.contains(op.id)) op.entityId,
+  };
 }
 
 @immutable
@@ -248,12 +251,18 @@ abstract interface class LedgerRepository {
   Future<void> updateGroup(GroupId groupId, GroupPatch patch);
   Future<void> deleteGroup(GroupId groupId); // tombstone, syncs to everyone
 
-  Future<MemberId> addMember(GroupId groupId,
-      {required String displayName, PersonId? personId});
+  Future<MemberId> addMember(
+    GroupId groupId, {
+    required String displayName,
+    PersonId? personId,
+  });
   Future<void> renameMember(GroupId groupId, MemberId memberId, String name);
   Future<void> removeMember(GroupId groupId, MemberId memberId);
-  Future<void> mergeMembers(GroupId groupId,
-      {required MemberId from, required MemberId into});
+  Future<void> mergeMembers(
+    GroupId groupId, {
+    required MemberId from,
+    required MemberId into,
+  });
 
   /// "This is me": sets the member's personId to my Profile.personId and
   /// deviceId to this device.
@@ -296,7 +305,10 @@ abstract interface class SyncStore {
   Future<List<Operation>> applyRemote(GroupId groupId, List<Operation> ops);
 
   Future<void> recordPeerKnowledge(
-      DeviceId peer, GroupId groupId, VersionVector vv);
+    DeviceId peer,
+    GroupId groupId,
+    VersionVector vv,
+  );
 
   /// Every op created locally, as it is committed (for live push).
   Stream<Operation> get localOps;
@@ -304,7 +316,10 @@ abstract interface class SyncStore {
   /// Stores the key and a pending-join name hint. Idempotent. Returns
   /// false if the group was already known.
   Future<bool> registerJoinedGroup(
-      GroupId groupId, Uint8List key, String nameHint);
+    GroupId groupId,
+    Uint8List key,
+    String nameHint,
+  );
 
   Future<void> addSyncRecord(SyncRecord record);
   Stream<List<SyncRecord>> watchSyncRecords(); // newest first, emits first

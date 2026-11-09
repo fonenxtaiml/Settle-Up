@@ -471,7 +471,7 @@ abstract final class S {
   static String alreadyIn(String group) => "You're already in $group";
 
   // join deep link
-  static const joinTitle = 'Join group';
+  static const joinTitle = 'Invitation';
   static String joinBody(String from, String group) =>
       '$from invited you to $group.';
   static const joinAction = 'Join group';

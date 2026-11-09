@@ -63,14 +63,18 @@ abstract final class SplitCalculator {
       case SplitMethod.exact:
         if (values.values.any((v) => v < 0)) {
           throw const SplitException(
-              SplitError.negativeShare, 'negative exact amount');
+            SplitError.negativeShare,
+            'negative exact amount',
+          );
         }
         // Summed as BigInt: values that only reach total through 64-bit
         // wrap-around must not pass.
         final sum = _bigSum(values.values);
         if (sum != BigInt.from(total)) {
           throw SplitException(
-              SplitError.sumMismatch, 'assigned $sum of $total');
+            SplitError.sumMismatch,
+            'assigned $sum of $total',
+          );
         }
         shares = {
           for (final m in _sortedKeys(values))
@@ -79,18 +83,24 @@ abstract final class SplitCalculator {
       case SplitMethod.percent:
         if (values.values.any((v) => v < 0)) {
           throw const SplitException(
-              SplitError.negativeShare, 'negative percentage');
+            SplitError.negativeShare,
+            'negative percentage',
+          );
         }
         final sum = _bigSum(values.values);
         if (sum != BigInt.from(10000)) {
           throw SplitException(
-              SplitError.percentNot100, 'basis points sum to $sum');
+            SplitError.percentNot100,
+            'basis points sum to $sum',
+          );
         }
         shares = allocate(total, values);
       case SplitMethod.shares:
         if (values.values.any((v) => v < 1)) {
           throw const SplitException(
-              SplitError.zeroWeight, 'every weight must be >= 1');
+            SplitError.zeroWeight,
+            'every weight must be >= 1',
+          );
         }
         shares = allocate(total, values);
       case SplitMethod.adjustment:
@@ -101,7 +111,9 @@ abstract final class SplitCalculator {
         final rest = BigInt.from(total) - _bigSum(values.values);
         if (rest < BigInt.zero) {
           throw SplitException(
-              SplitError.negativeShare, 'adjustments exceed total by ${-rest}');
+            SplitError.negativeShare,
+            'adjustments exceed total by ${-rest}',
+          );
         }
         final n = BigInt.from(ids.length);
         final q = rest ~/ n;
@@ -113,7 +125,9 @@ abstract final class SplitCalculator {
               q + (i < r ? BigInt.one : BigInt.zero) + BigInt.from(values[m]!);
           if (share < BigInt.zero) {
             throw SplitException(
-                SplitError.negativeShare, 'share of $m would be $share');
+              SplitError.negativeShare,
+              'share of $m would be $share',
+            );
           }
           // Every share is >= 0 and they sum to total, so each fits an int.
           if (share != BigInt.zero) out[m] = share.toInt();
@@ -215,7 +229,10 @@ abstract final class SplitCalculator {
   }
 
   static Map<MemberId, int> _allocateBig(
-      int total, Map<MemberId, int> weights, List<MemberId> ids) {
+    int total,
+    Map<MemberId, int> weights,
+    List<MemberId> ids,
+  ) {
     final w = _bigSum(weights.values);
     if (w == BigInt.zero) {
       throw const SplitException(SplitError.zeroWeight, 'weights sum to 0');
@@ -276,13 +293,12 @@ abstract final class SplitCalculator {
     required MemberId to,
     required int amount,
     required String currency,
-  }) =>
-      buildMoneyBlock(
-        total: amount,
-        currency: currency,
-        paidBy: SplitSpec.single(from, amount),
-        owedBy: SplitSpec.single(to, amount),
-      );
+  }) => buildMoneyBlock(
+    total: amount,
+    currency: currency,
+    paidBy: SplitSpec.single(from, amount),
+    owedBy: SplitSpec.single(to, amount),
+  );
 
   static void _checkTotal(int total) {
     if (total <= 0 || total > Money.maxMinor) {

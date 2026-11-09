@@ -128,9 +128,9 @@ final class ReducerEngine {
   }
 
   Set<String> applyAll(Iterable<Operation> ops) => {
-        for (final op in ops)
-          if (apply(op)) op.entityId,
-      };
+    for (final op in ops)
+      if (apply(op)) op.entityId,
+  };
 
   LedgerState get state {
     final cached = _snapshot;
@@ -169,8 +169,7 @@ final class ReducerEngine {
           m.members[id] = next;
         }
       case EntityType.expense:
-        final next =
-            s == null || !owned ? null : buildExpense(groupId, id, s);
+        final next = s == null || !owned ? null : buildExpense(groupId, id, s);
         changed = !_same(m.expenses[id], next, sameExpense);
         if (next == null) {
           m.expenses.remove(id);

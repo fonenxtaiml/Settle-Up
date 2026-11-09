@@ -413,6 +413,7 @@ Future<DemoGroups> seedDemoData(
     );
     groups = DemoGroups(goa: goa, flat: flat, cabin: cabin);
   });
+  ledger.clearRecords();
 
   if (engine != null) {
     final last = DateTime(n.year, n.month, n.day - 1, 21, 12);
