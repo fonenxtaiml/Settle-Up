@@ -17,8 +17,13 @@ abstract final class KvKeys {
   static const settings = 'settings'; // JSON AppSettings
   static const hlcLast = 'hlc.last'; // encoded Hlc
   static const pendingPrefix = 'pending.'; // + groupId -> name hint
+  // + groupId -> JSON {deviceId: highest counter} of the ops purgeGroup
+  // removed, so this phone's own ops coming back from peers after a leave
+  // and rejoin are told apart from forged ones.
+  static const purgedPrefix = 'purged.';
 
   static String pending(String groupId) => '$pendingPrefix$groupId';
+  static String purged(String groupId) => '$purgedPrefix$groupId';
 }
 
 /// Version 1 tables, exactly as in SPEC 7.5 (journal mode is set by [migrate]
