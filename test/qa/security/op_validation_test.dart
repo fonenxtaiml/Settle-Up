@@ -577,4 +577,251 @@ void main() {
     );
     expect(VersionVector.empty.entries, isEmpty);
   });
+
+  // ------------------------------------------------- QA SECURITY round 2 --
+
+  group('round 2: cross-group ownership', () {
+    test('a create op in another group with an older HLC cannot take an '
+        'expense away from its own group', () async {
+      // SECURITY-R1-04 (reopened). The R1 fix prefers a group holding a create
+      // op; Mallory simply sends a create (not an update) for the
+      // Private expense id, stamped earlier than the real create.
+      final other = await priya.seedGroup(expenses: 1, name: 'Private');
+      final target = priya.state.groups[other.g]!.expenses.values.single;
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [
+          {
+            ...expenseJson(id: 'steal-create', millis: 1),
+            'kind': 'create',
+            'entityId': target.id,
+          },
+        ],
+        'more': false,
+      });
+      await errorFrom(evil);
+      await evil.close();
+      await result;
+      expect(
+        priya.state.groups[other.g]!.expenses[target.id],
+        isNotNull,
+        reason: 'a Goa trip create op took the Private expense away',
+      );
+    }, skip: 'SECURITY-R1-04');
+
+    test('a member create op in another group with an older HLC cannot take '
+        'a member away from its own group', () async {
+      final other = await priya.seedGroup(expenses: 0, name: 'Private');
+      final target = priya.state.groups[other.g]!.members.values.firstWhere(
+        (m) => m.displayName == 'Priya',
+      );
+      final memberOp = alex
+          .opsOf(seed.g)
+          .firstWhere((o) => o.entityType == EntityType.member);
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [
+          {
+            ...memberOp.toJson(),
+            'id': 'steal-member',
+            'deviceId': mallory,
+            'counter': 1,
+            'hlc': Hlc(1, 0, mallory).encode(),
+            'entityId': target.id,
+          },
+        ],
+        'more': false,
+      });
+      await errorFrom(evil);
+      await evil.close();
+      await result;
+      expect(
+        priya.state.groups[other.g]!.members[target.id],
+        isNotNull,
+        reason: 'a Goa trip create op took the Private member away',
+      );
+    }, skip: 'SECURITY-R1-04');
+  });
+
+  group('round 2: own counter and peer knowledge', () {
+    test(
+      'an op with this phone own device id at the next counter is refused',
+      () async {
+        final mine = priya
+            .opsOf(seed.g)
+            .where((o) => o.deviceId == priya.deviceId);
+        final next = mine.isEmpty
+            ? 1
+            : mine.map((o) => o.counter).reduce((a, b) => a > b ? a : b) + 1;
+        final (evil, result) = await attack();
+        await sendRawOps(evil, {
+          'g': seed.g,
+          'batch': 1,
+          'total': 1,
+          'ops': [
+            expenseJson(id: 'own-next', device: priya.deviceId, counter: next),
+          ],
+          'more': false,
+        });
+        expect((await errorFrom(evil))?.code, ErrorCodes.badOp);
+        await evil.close();
+        await result;
+        await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+        final (ri, rr) = await syncPair(priya, alex);
+        expect(ri.isSuccess && rr.isSuccess, isTrue);
+        expect(alex.canonical, priya.canonical);
+        expect(priya.snapshot.unsharedCounts, isEmpty);
+      },
+    );
+
+    test('a forged version vector claiming this phone ops cannot mark later '
+        'local changes as shared', () async {
+      // SECURITY-R2-01. Mallory's VV says she holds Priya's ops up to
+      // 2^53-1. recordPeerKnowledge keeps it, so every op Priya writes
+      // afterwards is shown as shared although no phone has it.
+      final (evil, result) = await attack();
+      await evil.sendSealed(
+        VvMessage(
+          groupId: seed.g,
+          vv: VersionVector({priya.deviceId: (1 << 53) - 1}),
+        ),
+      );
+      await evil.until((m) => m is OpsMessage || m is ErrorMessage);
+      await evil.close();
+      await result;
+      await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+      expect(
+        priya.snapshot.unsharedCounts[seed.g],
+        1,
+        reason: 'the new expense reached no phone, yet it shows as shared',
+      );
+    }, skip: 'SECURITY-R2-01');
+  });
+
+  group('round 2: sizes', () {
+    test('compressible padding in a field the schema does not know cannot '
+        'store megabytes from one small frame', () async {
+      // SECURITY-R1-02 (reopened). The per-field limits only cover
+      // known text fields; any other payload key is bounded only by the
+      // 32 Ki-unit op cap. 240 ops of ~32 KB each gzip to ~12 KB (fits
+      // even a BLE frame) and store ~7.6 MB per batch, repeatable.
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 240,
+        'ops': [
+          for (var i = 1; i <= 240; i++)
+            expenseJson(
+              id: 'pad-$i',
+              counter: i,
+              payloadOverride: {'pad': 'z' * 30000},
+            ),
+        ],
+        'more': false,
+      });
+      await errorFrom(evil);
+      await evil.close();
+      await result;
+      final stored = priya.opsOf(seed.g).where((o) => o.deviceId == mallory);
+      final bytes = stored.fold<int>(
+        0,
+        (n, o) => n + utf8.encode(jsonEncode(o.toJson())).length,
+      );
+      expect(
+        bytes,
+        lessThan(1 << 20),
+        reason: '${stored.length} ops, $bytes bytes from one ~12 KB frame',
+      );
+    }, skip: 'SECURITY-R1-02');
+  });
+
+  group('round 2: remote text', () {
+    Future<String?> remoteMemberName(String name) async {
+      final memberOp = alex
+          .opsOf(seed.g)
+          .firstWhere((o) => o.entityType == EntityType.member);
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [
+          {
+            ...memberOp.toJson(),
+            'id': 'name-op',
+            'deviceId': mallory,
+            'counter': 1,
+            'hlc': Hlc(kBaseMs + 9000, 0, mallory).encode(),
+            'entityId': 'member-evil-1',
+            'payload': {
+              ...memberOp.payload,
+              MemberFields.displayName: name,
+              MemberFields.personId: 'person-evil-1',
+            },
+          },
+        ],
+        'more': false,
+      });
+      await errorFrom(evil);
+      await evil.close();
+      await result;
+      return priya.state.groups[seed.g]!.members['member-evil-1']?.displayName;
+    }
+
+    const invisible = <String, String>{
+      'zero width spaces': '\u200B\u200B',
+      'BOM': '\uFEFF',
+      'word joiner': '\u2060',
+      'empty': '',
+      'spaces only': '   ',
+    };
+    for (final MapEntry(key: what, value: name) in invisible.entries) {
+      test('a remote member name of $what is refused', () async {
+        // SECURITY-R1-06 (remote side): names that show nothing.
+        final stored = await remoteMemberName(name);
+        expect(
+          stored,
+          isNull,
+          reason: 'stored invisible name ${stored?.runes.toList()}',
+        );
+      }, skip: 'SECURITY-R1-06');
+    }
+
+    test('a peer device name with bidi overrides is not shown or recorded '
+        'verbatim', () async {
+      // SECURITY-R2-04. HELLO deviceName (and the name in adverts and
+      // connect links) is peer-controlled and only length-checked. It is
+      // shown in the nearby list, the session screen and Sync history.
+      final spoof = await TestPhone.create('c', deviceName: 'Alex\u202E5000 diap');
+      addTearDown(spoof.close);
+      await spoof.ledger.registerJoinedGroup(
+        seed.g,
+        await alex.keyOf(seed.g),
+        'Goa trip',
+      );
+      final (ri, rr) = await syncPair(spoof, priya);
+      expect(ri.isSuccess && rr.isSuccess, isTrue);
+      bool bidi(String v) => v.runes.any(
+        (r) => (r >= 0x202A && r <= 0x202E) || (r >= 0x2066 && r <= 0x2069),
+      );
+      expect(
+        bidi(rr.peerName),
+        isFalse,
+        reason: rr.peerName.runes.toList().toString(),
+      );
+      final records = await priya.records();
+      expect(records.any((r) => bidi(r.peerName)), isFalse);
+    }, skip: 'SECURITY-R2-04');
+
+    test('a remote member name with an RLO is refused', () async {
+      expect(await remoteMemberName('Bob\u202E5000 diap'), isNull);
+    });
+  });
 }
