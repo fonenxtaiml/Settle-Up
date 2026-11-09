@@ -8,10 +8,9 @@ import 'ids.dart';
 @immutable
 final class VersionVector {
   VersionVector([Map<DeviceId, int> entries = const {}])
-    : entries = Map.unmodifiable({
-        for (final e in entries.entries)
-          if (e.value > 0) e.key: e.value,
-      });
+      : entries = Map.unmodifiable(
+          {for (final e in entries.entries) if (e.value > 0) e.key: e.value},
+        );
 
   static final VersionVector empty = VersionVector();
 
@@ -48,8 +47,8 @@ final class VersionVector {
 
   @override
   int get hashCode => Object.hashAllUnordered(
-    entries.entries.map((e) => Object.hash(e.key, e.value)),
-  );
+        entries.entries.map((e) => Object.hash(e.key, e.value)),
+      );
 
   @override
   String toString() => 'VV($entries)';

@@ -102,10 +102,9 @@ abstract final class CsvExport {
     final abs = minor.abs();
     if (currency.minorDigits == 0) return '$sign$abs';
     final major = abs ~/ currency.minorPerMajor;
-    final frac = (abs % currency.minorPerMajor).toString().padLeft(
-      currency.minorDigits,
-      '0',
-    );
+    final frac = (abs % currency.minorPerMajor)
+        .toString()
+        .padLeft(currency.minorDigits, '0');
     return '$sign$major.$frac';
   }
 

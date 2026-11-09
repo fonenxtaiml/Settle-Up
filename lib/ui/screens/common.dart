@@ -7,7 +7,6 @@ import '../../core/balances.dart';
 import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
-import '../../core/models.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';

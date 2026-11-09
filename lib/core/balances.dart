@@ -104,21 +104,10 @@ abstract final class BalanceCalculator {
     pairs.forEach((currency, byPair) {
       byPair.forEach((key, v) {
         if (v == 0) return;
-        out.add(
-          v > 0
-              ? Transfer(
-                  from: key.$1,
-                  to: key.$2,
-                  amount: v,
-                  currency: currency,
-                )
-              : Transfer(
-                  from: key.$2,
-                  to: key.$1,
-                  amount: -v,
-                  currency: currency,
-                ),
-        );
+        out.add(v > 0
+            ? Transfer(from: key.$1, to: key.$2, amount: v, currency: currency)
+            : Transfer(
+                from: key.$2, to: key.$1, amount: -v, currency: currency));
       });
     });
     out.sort(_byCurrencyFromTo);
@@ -140,9 +129,7 @@ abstract final class BalanceCalculator {
   }
 
   static Map<MemberId, int> _resolvedSums(
-    GroupState group,
-    Map<MemberId, int> amounts,
-  ) {
+      GroupState group, Map<MemberId, int> amounts) {
     final out = <MemberId, int>{};
     amounts.forEach((m, v) {
       final r = group.resolve(m);
@@ -205,8 +192,7 @@ final class GroupBalanceSummary {
   final MemberId? myMemberId;
   final Map<String, int> myNet; // currency -> minor, + = I get back
   final int memberCount; // active members
-  final DateTime?
-  lastActivityAt; // max expense createdAt/date, else group createdAt
+  final DateTime? lastActivityAt; // max expense createdAt/date, else group createdAt
 
   bool get isSettled => myNet.values.every((v) => v == 0);
 }
@@ -240,11 +226,8 @@ final class OverallBalance {
   final Map<String, int> owedToMe; // sum of positive person balances
   final Map<String, int> iOwe; // sum of |negative| person balances
 
-  static const OverallBalance zero = OverallBalance(
-    net: {},
-    owedToMe: {},
-    iOwe: {},
-  );
+  static const OverallBalance zero =
+      OverallBalance(net: {}, owedToMe: {}, iOwe: {});
 }
 
 abstract final class Summaries {
@@ -261,15 +244,13 @@ abstract final class Summaries {
           if (last == null || d.isAfter(last)) last = d;
         }
       }
-      out.add(
-        GroupBalanceSummary(
-          group: g,
-          myMemberId: mine == null ? null : g.resolve(mine.id),
-          myNet: myNetInGroup(g, me),
-          memberCount: g.activeMembers.length,
-          lastActivityAt: last ?? g.group!.createdAt,
-        ),
-      );
+      out.add(GroupBalanceSummary(
+        group: g,
+        myMemberId: mine == null ? null : g.resolve(mine.id),
+        myNet: myNetInGroup(g, me),
+        memberCount: g.activeMembers.length,
+        lastActivityAt: last ?? g.group!.createdAt,
+      ));
     }
     out.sort((a, b) {
       if (a.isSettled != b.isSettled) return a.isSettled ? 1 : -1;
@@ -354,9 +335,7 @@ abstract final class Summaries {
     ];
     out.sort((a, b) {
       if (a.isSettled != b.isSettled) return a.isSettled ? 1 : -1;
-      var c = a.displayName.toLowerCase().compareTo(
-        b.displayName.toLowerCase(),
-      );
+      var c = a.displayName.toLowerCase().compareTo(b.displayName.toLowerCase());
       if (c != 0) return c;
       c = a.displayName.compareTo(b.displayName);
       return c != 0 ? c : a.personId.compareTo(b.personId);
@@ -399,7 +378,7 @@ abstract final class Summaries {
   }
 
   static Map<String, int> _sortedNonZero(Map<String, int> m) => {
-    for (final k in m.keys.toList()..sort())
-      if (m[k] != 0) k: m[k]!,
-  };
+        for (final k in m.keys.toList()..sort())
+          if (m[k] != 0) k: m[k]!,
+      };
 }

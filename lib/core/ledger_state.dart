@@ -97,6 +97,7 @@ final class GroupState {
     }
     return best;
   }
+
 }
 
 @immutable
@@ -108,8 +109,8 @@ final class LedgerState {
   final Map<GroupId, GroupState> groups;
 
   /// Groups with a create op and not deleted (direct groups included).
-  Iterable<GroupState> get visibleGroups =>
-      groups.values.where((g) => g.group != null && !g.group!.isDeleted);
+  Iterable<GroupState> get visibleGroups => groups.values
+      .where((g) => g.group != null && !g.group!.isDeleted);
 
   Expense? expense(ExpenseId id) {
     for (final g in groups.values) {

@@ -49,9 +49,7 @@ final class Operation {
 
   bool get isFromNewerSchema => schemaVersion > kSchemaVersion;
 
-  Map<String, Object?> toJson() =>
-      raw ??
-      {
+  Map<String, Object?> toJson() => raw ?? {
         'id': id,
         'groupId': groupId,
         'deviceId': deviceId,
@@ -152,13 +150,5 @@ abstract final class ExpenseFields {
   static const createdBy = 'createdBy'; // MemberId, create only
   static const createdAt = 'createdAt'; // int ms, create only
   static const deletedAt = 'deletedAt'; // int? ms
-  static const required = [
-    kind,
-    description,
-    category,
-    date,
-    money,
-    createdBy,
-    createdAt,
-  ];
+  static const required = [kind, description, category, date, money, createdBy, createdAt];
 }

@@ -22,57 +22,57 @@ Map<String, int> _sortedInts(Map<String, int> m) {
 }
 
 Map<String, Object?> _spec(SplitSpec s) => {
-  'method': s.method.name,
-  'values': _sortedInts(s.values),
-};
+      'method': s.method.name,
+      'values': _sortedInts(s.values),
+    };
 
 Map<String, Object?> moneyToJson(MoneyBlock m) => {
-  'currency': m.currency,
-  'owed': _sortedInts(m.owed),
-  'owedBy': _spec(m.owedBy),
-  'paid': _sortedInts(m.paid),
-  'paidBy': _spec(m.paidBy),
-  'total': m.total,
-};
+      'currency': m.currency,
+      'owed': _sortedInts(m.owed),
+      'owedBy': _spec(m.owedBy),
+      'paid': _sortedInts(m.paid),
+      'paidBy': _spec(m.paidBy),
+      'total': m.total,
+    };
 
 Map<String, Object?> groupToJson(Group g) => {
-  'archived': g.archived,
-  'createdAt': _ms(g.createdAt),
-  'currency': g.currency,
-  'deletedAt': _ms(g.deletedAt),
-  'emoji': g.emoji,
-  'id': g.id,
-  'name': g.name,
-  'simplifyDebts': g.simplifyDebts,
-  'type': g.type.name,
-};
+      'archived': g.archived,
+      'createdAt': _ms(g.createdAt),
+      'currency': g.currency,
+      'deletedAt': _ms(g.deletedAt),
+      'emoji': g.emoji,
+      'id': g.id,
+      'name': g.name,
+      'simplifyDebts': g.simplifyDebts,
+      'type': g.type.name,
+    };
 
 Map<String, Object?> memberToJson(Member m) => {
-  'createdAt': _ms(m.createdAt),
-  'deletedAt': _ms(m.deletedAt),
-  'deviceId': m.deviceId,
-  'displayName': m.displayName,
-  'groupId': m.groupId,
-  'id': m.id,
-  'mergedInto': m.mergedInto,
-  'personId': m.personId,
-};
+      'createdAt': _ms(m.createdAt),
+      'deletedAt': _ms(m.deletedAt),
+      'deviceId': m.deviceId,
+      'displayName': m.displayName,
+      'groupId': m.groupId,
+      'id': m.id,
+      'mergedInto': m.mergedInto,
+      'personId': m.personId,
+    };
 
 Map<String, Object?> expenseToJson(Expense e) => {
-  'category': e.category,
-  'createdAt': _ms(e.createdAt),
-  'createdBy': e.createdBy,
-  'date': _ms(e.date),
-  'deletedAt': _ms(e.deletedAt),
-  'description': e.description,
-  'groupId': e.groupId,
-  'id': e.id,
-  'kind': e.kind.name,
-  'money': moneyToJson(e.money),
-  'notes': e.notes,
-  'paymentMethod': e.paymentMethod?.name,
-  'updatedHlc': e.updatedHlc.encode(),
-};
+      'category': e.category,
+      'createdAt': _ms(e.createdAt),
+      'createdBy': e.createdBy,
+      'date': _ms(e.date),
+      'deletedAt': _ms(e.deletedAt),
+      'description': e.description,
+      'groupId': e.groupId,
+      'id': e.id,
+      'kind': e.kind.name,
+      'money': moneyToJson(e.money),
+      'notes': e.notes,
+      'paymentMethod': e.paymentMethod?.name,
+      'updatedHlc': e.updatedHlc.encode(),
+    };
 
 /// Canonical JSON of one group's materialized state.
 Map<String, Object?> groupStateToJson(GroupState g) {
@@ -84,7 +84,9 @@ Map<String, Object?> groupStateToJson(GroupState g) {
     },
     'group': g.group == null ? null : groupToJson(g.group!),
     'groupId': g.groupId,
-    'members': {for (final id in memberIds) id: memberToJson(g.members[id]!)},
+    'members': {
+      for (final id in memberIds) id: memberToJson(g.members[id]!),
+    },
   };
 }
 
