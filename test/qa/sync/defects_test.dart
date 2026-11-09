@@ -1,8 +1,6 @@
 // QA SYNC-R1: repro tests for defects found in round 1. Each one FAILS on
 // the code under test and is skipped with its finding id so the suite
 // stays green. Remove the skip once the fix lands.
-import 'dart:async';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/sync/sync_engine.dart';
