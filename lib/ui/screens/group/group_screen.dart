@@ -22,7 +22,7 @@ import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
 
-enum _Menu { edit, members, export }
+enum _Menu { edit, members, activity, export }
 
 class GroupScreen extends ConsumerWidget {
   const GroupScreen({super.key, required this.groupId});
@@ -103,6 +103,7 @@ class GroupScreen extends ConsumerWidget {
             onSelected: (m) => switch (m) {
               _Menu.edit => context.push(Routes.editGroup(groupId)),
               _Menu.members => context.push(Routes.members(groupId)),
+              _Menu.activity => context.push(Routes.groupActivity(groupId)),
               _Menu.export => _exportCsv(g, title),
             },
             itemBuilder: (context) => [
@@ -112,6 +113,10 @@ class GroupScreen extends ConsumerWidget {
                   child: Text(S.editGroup),
                 ),
               const PopupMenuItem(value: _Menu.members, child: Text(S.members)),
+              const PopupMenuItem(
+                value: _Menu.activity,
+                child: Text(S.activityTitle),
+              ),
               const PopupMenuItem(
                 value: _Menu.export,
                 child: Text(S.exportCsv),
