@@ -367,6 +367,110 @@ void main() {
       },
     );
   });
+
+  // ------------------------------------------------- QA SECURITY round 2 --
+
+  group('round 2: limits on the edit paths too', () {
+    test('updateGroup with a 61-character name', () async {
+      await expectLater(
+        phone.ledger.updateGroup(s.g, GroupPatch(name: 'g' * 61)),
+        invalidInput,
+      );
+      expect(phone.state.groups[s.g]!.group!.name, isNot('g' * 61));
+    });
+
+    test('renameMember with a 41-character name', () async {
+      await expectLater(
+        phone.ledger.renameMember(s.g, s.b, 'm' * 41),
+        invalidInput,
+      );
+    });
+
+    test('updateExpense with a 121-character description', () async {
+      final id = await phone.ledger.addExpense(draft());
+      await expectLater(
+        phone.ledger.updateExpense(id, draft(description: 'd' * 121)),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.updateExpense(id, draft(notes: 'n' * 1001)),
+        invalidInput,
+      );
+    });
+
+    test('recordPayment with 1001 characters of notes', () async {
+      await expectLater(
+        phone.ledger.recordPayment(
+          PaymentDraft(
+            groupId: s.g,
+            from: s.a,
+            to: s.b,
+            amount: 100,
+            currency: 'INR',
+            method: PaymentMethod.cash,
+            date: utcFromMillis(kBaseMs),
+            notes: 'n' * 1001,
+          ),
+        ),
+        invalidInput,
+      );
+    });
+
+    test('renameMember to an invisible name', () async {
+      await expectLater(
+        phone.ledger.renameMember(s.g, s.b, '\u200B\u2060\uFEFF'),
+        invalidInput,
+      );
+    });
+  });
+
+  group('round 2: invisible names the R1-06 cleaning misses', () {
+    // Characters that render as nothing (or as blank space) but are not in
+    // TextRules.isHidden and are not removed by String.trim().
+    const invisible = <String, String>{
+      'Hangul filler U+3164': '\u3164',
+      'Hangul choseong filler U+115F': '\u115F',
+      'halfwidth Hangul filler U+FFA0': '\uFFA0',
+      'braille blank U+2800': '\u2800\u2800',
+      'soft hyphen U+00AD': '\u00AD',
+      'combining grapheme joiner U+034F': '\u034F',
+      'invisible times U+2062': '\u2062',
+      'Mongolian vowel separator U+180E': '\u180E',
+      'tag characters U+E0041': '\u{E0041}\u{E0042}',
+    };
+    for (final MapEntry(key: what, value: name) in invisible.entries) {
+      test('a member name of only $what is refused', () async {
+        try {
+          final id = await phone.ledger.addMember(s.g, displayName: name);
+          final stored = phone.state.groups[s.g]!.members[id]!.displayName;
+          fail('stored an invisible name ${stored.runes.toList()}');
+        } on LedgerException catch (e) {
+          expect(e.code, LedgerErrorCode.invalidInput);
+        }
+      }, skip: 'SECURITY-R1-06');
+    }
+
+    test('U+2028 / U+2029 inside a one-line name become spaces', () async {
+      final id = await phone.ledger.addMember(s.g, displayName: 'Al\u2028ex\u2029Z');
+      expect(phone.state.groups[s.g]!.members[id]!.displayName, 'Al ex Z');
+    });
+
+    test('an Arabic letter mark U+061C and LRM/RLM are dropped', () async {
+      final id = await phone.ledger.addMember(s.g, displayName: '\u061CBob\u200E\u200F');
+      expect(phone.state.groups[s.g]!.members[id]!.displayName, 'Bob');
+    });
+
+    test('emoji ZWJ sequences survive cleaning and count as one', () async {
+      const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
+      final id = await phone.ledger.addMember(s.g, displayName: family * 5);
+      expect(phone.state.groups[s.g]!.members[id]!.displayName, family * 5);
+      // 8 code units per family: 40 of them exceed the 4-units-per-char cap.
+      await expectLater(
+        phone.ledger.addMember(s.g, displayName: family * 41),
+        invalidInput,
+      );
+    });
+  });
 }
 
 bool _isControlOrBidi(int r) =>
