@@ -1,0 +1,643 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lena Dena screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Anek+Latin:wdth,wght@75..125,300..800&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@20..48,400..600,0..1,0&display=block" rel="stylesheet">
+<style>
+/* ---------- tokens ---------- */
+:root, .light {
+  --rani: #C0105E;          /* primary field, FAB */
+  --rani-deep: #8E0B45;     /* primary text on light, icons */
+  --on-rani: #FFFFFF;
+  --on-rani-2: #FFE3EE;     /* secondary text on the rani field */
+  --rani-line: rgba(255,255,255,.28);
+  --ground: #FDF7F9;
+  --surface: #FFFFFF;
+  --container: #F8EAF0;
+  --container-hi: #F2DCE5;
+  --ink: #2A1420;
+  --ink-2: #6B5361;
+  --line: #ECDDE3;
+  --owed: #13703A;          /* text: owed to you */
+  --owed-fill: #198049;
+  --on-owed-fill: #FFFFFF;
+  --owe: #974A00;           /* text: you owe */
+  --owe-fill: #F5A800;
+  --on-owe-fill: #3A2100;
+  --settled: #6B5361;
+  --settled-fill: #EBDDE3;
+  --share-a: #FFD3E4; --share-b: #FBB9D3; --share-c: #FFE3EE; --share-d: #F7C6DA;
+  --on-share: #4A0A28;
+  --fab: #C0105E; --on-fab: #FFFFFF;
+  --nav: #F8EAF0; --nav-ind: #F7C6DA;
+  --shadow: 0 6px 16px -6px rgba(110, 10, 55, .35), 0 2px 4px rgba(110, 10, 55, .12);
+  --bar-icons: #FFFFFF;
+}
+.dark {
+  --rani: #8F0C49;
+  --rani-deep: #FF9CC4;
+  --on-rani: #FFFFFF;
+  --on-rani-2: #FFD6E7;
+  --ground: #160C11;
+  --surface: #21141B;
+  --container: #2A1A22;
+  --container-hi: #3A2530;
+  --ink: #F9EDF2;
+  --ink-2: #CFB8C4;
+  --line: #3A2832;
+  --owed: #74D79A;
+  --owed-fill: #1D7A45;
+  --on-owed-fill: #FFFFFF;
+  --owe: #FFB54A;
+  --owe-fill: #ECA318;
+  --on-owe-fill: #2E1A00;
+  --settled: #CFB8C4;
+  --settled-fill: #3A2530;
+  --fab: #FFB0CE; --on-fab: #5A0430;
+  --nav: #21141B; --nav-ind: #5E1E3C;
+  --shadow: 0 8px 18px -6px rgba(0,0,0,.6), 0 2px 4px rgba(0,0,0,.4);
+}
+
+/* ---------- page ---------- */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: #E9E1E5; }
+body {
+  font-family: "Anek Latin", sans-serif;
+  font-stretch: 100%;
+  font-variant-numeric: tabular-nums lining-nums;
+  color: var(--ink);
+  background: #E9E1E5;
+  display: flex; flex-wrap: wrap; gap: 40px; padding: 40px;
+  -webkit-font-smoothing: antialiased;
+}
+body.solo { padding: 0; gap: 0; display: block; background: var(--ground); }
+body.solo .phone { display: none; }
+body.solo .phone.on { display: flex; }
+:focus-visible { outline: 3px solid var(--rani-deep); outline-offset: 2px; }
+::selection { background: #F7C6DA; color: #4A0A28; }
+
+.ms { font-family: "Material Symbols Rounded"; font-weight: 400; font-style: normal; font-size: 24px; line-height: 1;
+  letter-spacing: normal; text-transform: none; display: inline-block; white-space: nowrap; direction: ltr;
+  -webkit-font-feature-settings: 'liga'; font-feature-settings: 'liga'; font-variation-settings: 'FILL' 0, 'wght' 400, 'opsz' 24; }
+.ms.fill { font-variation-settings: 'FILL' 1, 'wght' 400, 'opsz' 24; }
+.ms.s20 { font-size: 20px; font-variation-settings: 'FILL' 0, 'wght' 500, 'opsz' 20; }
+.ms.s18 { font-size: 18px; font-variation-settings: 'FILL' 0, 'wght' 500, 'opsz' 20; }
+
+.phone {
+  width: 412px; height: 915px; position: relative; overflow: hidden;
+  background: var(--ground); color: var(--ink);
+  display: flex; flex-direction: column;
+}
+
+/* ---------- system bars ---------- */
+.status { height: 36px; flex: none; display: flex; align-items: center; justify-content: space-between;
+  padding: 0 20px 0 24px; color: var(--bar-icons); font-size: 14px; font-weight: 500; letter-spacing: .01em; }
+.status .sys { display: flex; gap: 4px; align-items: center; }
+.status .sys .ms { font-size: 17px; font-variation-settings: 'FILL' 1, 'wght' 500, 'opsz' 20; }
+.status.on-ground { color: var(--ink); }
+.gesture { position: absolute; left: 0; right: 0; bottom: 0; height: 24px; display: flex; align-items: center; justify-content: center; pointer-events: none; }
+.gesture i { width: 108px; height: 4px; border-radius: 2px; background: var(--ink); opacity: .75; }
+.gesture.on-rani i { background: #fff; }
+
+/* ---------- rani field (the shell colour) ---------- */
+.field { background: var(--rani); color: var(--on-rani); flex: none; }
+.appbar { height: 56px; display: flex; align-items: center; padding: 0 8px 0 16px; gap: 4px; }
+.appbar .title { flex: 1; font-size: 22px; font-weight: 600; letter-spacing: -.005em; }
+.wordmark { flex: 1; font-stretch: 75%; font-weight: 750; font-size: 24px; letter-spacing: -.01em; }
+.iconbtn { width: 48px; height: 48px; border-radius: 24px; display: grid; place-items: center; color: inherit; }
+.avatar-me { width: 32px; height: 32px; border-radius: 16px; background: #fff; color: var(--rani); display: grid; place-items: center;
+  font-weight: 700; font-size: 14px; }
+.dark .avatar-me { background: #FFD6E7; color: #6A0634; }
+.appbar .lead { margin-left: -8px; }
+
+.hero { padding: 4px 24px 16px; }
+.hero .dir { font-size: 19px; font-weight: 500; color: var(--on-rani-2); }
+.amount-xl { font-stretch: 75%; font-weight: 700; font-size: 68px; line-height: .92; letter-spacing: -.02em; }
+.amount-xl .cur { font-weight: 600; font-size: .78em; margin-right: 2px; }
+.amount-xl .sign { font-weight: 600; margin-right: 1px; }
+
+/* ---------- the hem: proportion bands ---------- */
+.legend { display: flex; justify-content: space-between; padding: 0 24px 8px; font-size: 14px; font-weight: 500; color: var(--on-rani-2); }
+.hem { display: flex; height: 48px; gap: 3px; background: var(--rani); }
+.hem > span { display: flex; align-items: center; padding: 0 14px; font-stretch: 87.5%; font-weight: 650; font-size: 18px; white-space: nowrap; }
+.hem .owed { background: var(--owed-fill); color: var(--on-owed-fill); }
+.hem .owe { background: var(--owe-fill); color: var(--on-owe-fill); justify-content: flex-end; min-width: 80px; }
+.hem .share { background: var(--share-a); color: var(--on-share); flex: 1; flex-direction: column; align-items: flex-start; justify-content: center; padding: 0 12px; font-size: 16px; line-height: 1.05; }
+.hem .share small { font-stretch: 100%; font-weight: 500; font-size: 13px; }
+.hem .share:nth-child(2) { background: var(--share-b); }
+.hem .share:nth-child(3) { background: var(--share-c); }
+.hem .share:nth-child(4) { background: var(--share-d); }
+
+/* ---------- content ---------- */
+.content { flex: 1; overflow: hidden; position: relative; }
+.section-h { display: flex; align-items: baseline; justify-content: space-between; padding: 18px 24px 4px; }
+.section-h h2 { font-size: 18px; font-weight: 650; letter-spacing: -.005em; }
+.section-h .act { font-size: 15px; font-weight: 600; color: var(--rani-deep); }
+
+.row { display: flex; align-items: center; gap: 16px; min-height: 60px; padding: 7px 24px; }
+.row + .row { box-shadow: inset 76px 1px 0 -0px var(--ground), inset 0 1px 0 var(--line); }
+.tile { width: 44px; height: 44px; border-radius: 14px; background: var(--container-hi); color: var(--rani-deep); display: grid; place-items: center; flex: none; }
+.face { width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center; flex: none; font-weight: 650; font-size: 16px; }
+.face.p { background: #FFD9B8; color: #6A3300; }
+.face.r { background: #CDE7D6; color: #0F4D29; }
+.face.y { background: var(--rani); color: #fff; }
+.face.n { background: #E1DAF7; color: #3A2A7A; }
+.face.k { background: #D6E6F5; color: #133E66; }
+.face.m { background: #F6E1C8; color: #5B3A12; }
+.dark .face.p { background: #5A3214; color: #FFDCBE; }
+.dark .face.r { background: #1E4A30; color: #CDEFD9; }
+.dark .face.y { background: #FFB0CE; color: #5A0430; }
+.face.sm { width: 32px; height: 32px; font-size: 13px; }
+.face.xs { width: 28px; height: 28px; font-size: 12px; }
+.main { flex: 1; min-width: 0; }
+.main .t { font-size: 17px; font-weight: 600; line-height: 22px; letter-spacing: -.003em; }
+.main .s { font-size: 14px; line-height: 20px; color: var(--ink-2); }
+.money { text-align: right; flex: none; }
+.money .w { font-size: 13px; line-height: 16px; font-weight: 500; }
+.money .v { font-stretch: 87.5%; font-size: 19px; line-height: 22px; font-weight: 650; }
+.owed { color: var(--owed); }
+.owe { color: var(--owe); }
+.settled { color: var(--settled); }
+
+/* sync strip on home */
+.syncrow { margin: 12px 16px 0; border-radius: 16px; background: var(--container); display: flex; align-items: center; gap: 14px; padding: 10px 8px 10px 16px; }
+.syncrow .ms { color: var(--rani-deep); }
+.syncrow .t { font-size: 16px; font-weight: 600; }
+.syncrow .s { font-size: 14px; color: var(--ink-2); }
+.textbtn { height: 40px; padding: 0 12px; border-radius: 20px; display: inline-flex; align-items: center; font-weight: 650; font-size: 15px; color: var(--rani-deep); }
+
+/* buttons */
+.btn { height: 48px; padding: 0 24px; border-radius: 24px; display: inline-flex; align-items: center; justify-content: center; gap: 8px; font-size: 16px; font-weight: 650; letter-spacing: .005em; white-space: nowrap; }
+.btn.filled { background: var(--rani); color: #fff; }
+.dark .btn.filled { background: var(--fab); color: var(--on-fab); }
+.btn.white { background: #fff; color: var(--rani); }
+.dark .btn.white { color: #8F0C49; }
+.btn.tonal { background: var(--container-hi); color: var(--rani-deep); height: 40px; padding: 0 18px; font-size: 15px; }
+.btn.outline { border: 1px solid #9C7D8C; color: var(--rani-deep); height: 40px; padding: 0 18px; font-size: 15px; }
+.btn.block { width: 100%; height: 56px; border-radius: 28px; font-size: 17px; }
+
+.fab { position: absolute; right: 16px; bottom: 16px; z-index: 2; height: 56px; padding: 0 20px 0 16px; border-radius: 18px;
+  background: var(--fab); color: var(--on-fab); display: flex; align-items: center; gap: 10px; font-size: 16px; font-weight: 650; box-shadow: var(--shadow); }
+
+/* navigation bar */
+.nav { height: 104px; flex: none; background: var(--nav); display: flex; padding: 12px 8px 24px; }
+.nav a { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; color: var(--ink-2); font-size: 13px; font-weight: 600; text-decoration: none; }
+.nav .ind { width: 64px; height: 32px; border-radius: 16px; display: grid; place-items: center; position: relative; }
+.nav a.on { color: var(--ink); }
+.nav a.on .ind { background: var(--nav-ind); }
+.nav a.on .ms { font-variation-settings: 'FILL' 1, 'wght' 500, 'opsz' 24; color: var(--rani-deep); }
+.dark .nav a.on .ms { color: #FFD6E7; }
+.badge { position: absolute; top: -2px; left: 36px; min-width: 18px; height: 18px; border-radius: 9px; background: var(--rani); color: #fff; font-size: 12px; font-weight: 700; display: grid; place-items: center; padding: 0 5px; }
+.dark .badge { background: var(--fab); color: var(--on-fab); }
+
+/* chips */
+.chips { display: flex; gap: 8px; padding: 0 16px 0 24px; overflow: hidden; }
+.chips.tight .chip { padding: 0 12px; }
+.chip { height: 36px; padding: 0 14px; border-radius: 10px; border: 1px solid #9C7D8C; display: inline-flex; align-items: center; gap: 6px; font-size: 15px; font-weight: 550; white-space: nowrap; color: var(--ink); flex: none; }
+.chip.sel { background: var(--container-hi); border-color: transparent; color: var(--rani-deep); }
+.chip .ms { font-size: 18px; }
+
+/* tabs on field */
+.tabs { display: flex; height: 48px; border-top: 1px solid var(--rani-line); }
+.tabs a { flex: 1; display: grid; place-items: center; font-size: 15px; font-weight: 650; color: var(--on-rani-2); position: relative; text-decoration: none; }
+.tabs a.on { color: #fff; }
+.tabs a.on::after { content: ""; position: absolute; bottom: 0; left: 50%; width: 72px; margin-left: -36px; height: 3px; border-radius: 3px 3px 0 0; background: #fff; }
+
+/* switch */
+.switch { width: 52px; height: 32px; border-radius: 16px; background: var(--rani); position: relative; flex: none; }
+.switch::after { content: ""; position: absolute; right: 4px; top: 4px; width: 24px; height: 24px; border-radius: 12px; background: #fff; }
+.dark .switch { background: var(--fab); }
+.dark .switch::after { background: #5A0430; }
+
+/* add-expense specifics */
+.amount-entry { padding: 4px 24px 18px; display: flex; align-items: flex-end; gap: 12px; }
+.curbtn { height: 36px; padding: 0 10px 0 12px; border-radius: 18px; border: 1px solid rgba(255,255,255,.55); display: inline-flex; align-items: center; gap: 2px; font-size: 15px; font-weight: 600; margin-bottom: 12px; }
+.caret { display: inline-block; width: 3px; height: 58px; background: #fff; margin-left: 4px; vertical-align: -6px; border-radius: 2px; }
+.tf { margin: 16px 16px 0; border-radius: 12px 12px 0 0; background: var(--container); padding: 8px 16px 8px; border-bottom: 2px solid var(--rani-deep); display: flex; align-items: center; gap: 12px; }
+.tf .lbl { font-size: 13px; color: var(--rani-deep); font-weight: 550; }
+.tf .val { font-size: 18px; font-weight: 500; }
+.member { display: flex; align-items: center; gap: 14px; height: 48px; padding: 0 24px 0 14px; }
+.cb { width: 48px; height: 48px; display: grid; place-items: center; flex: none; margin-right: -8px; }
+.cb i { width: 20px; height: 20px; border-radius: 4px; border: 2px solid #8C7280; display: grid; place-items: center; }
+.cb i.on { background: var(--rani); border-color: var(--rani); color: #fff; }
+.member .nm { flex: 1; font-size: 16px; font-weight: 550; }
+.member .nm.off { color: var(--ink-2); font-weight: 450; }
+.member .v { font-stretch: 87.5%; font-weight: 650; font-size: 17px; }
+.member .v.off { font-stretch: 100%; font-weight: 450; font-size: 14px; color: var(--ink-2); }
+.bottombar { position: absolute; left: 0; right: 0; bottom: 0; padding: 12px 16px 32px; background: var(--ground); box-shadow: 0 -1px 0 var(--line); }
+
+/* settle-up */
+.pair { display: flex; align-items: center; gap: 10px; padding: 8px 24px 0; }
+.pair .ms { color: var(--on-rani-2); }
+.seg { display: flex; margin: 0 16px; border: 1px solid #9C7D8C; border-radius: 20px; overflow: hidden; height: 44px; }
+.seg > span { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 15px; font-weight: 600; border-left: 1px solid #9C7D8C; }
+.seg > span:first-child { border-left: 0; }
+.seg > span.on { background: var(--container-hi); color: var(--rani-deep); }
+.ba { margin: 0 16px; }
+.ba .lab { display: flex; justify-content: space-between; font-size: 14px; font-weight: 550; color: var(--ink-2); padding: 12px 8px 6px; }
+.ba .lab b { color: var(--ink); font-weight: 650; }
+.band { display: flex; height: 40px; gap: 3px; border-radius: 12px; overflow: hidden; }
+.band > span { display: flex; align-items: center; padding: 0 12px; font-stretch: 87.5%; font-weight: 650; font-size: 16px; white-space: nowrap; }
+.band .g { background: var(--owed-fill); color: var(--on-owed-fill); }
+.band .o { background: var(--owe-fill); color: var(--on-owe-fill); justify-content: flex-end; min-width: 76px; }
+.band .o.ghost { background: transparent; border: 2px dashed var(--owe); color: var(--owe); min-width: 76px; }
+.note { font-size: 14px; line-height: 20px; color: var(--ink-2); }
+.kv { display: flex; align-items: center; gap: 14px; padding: 0 24px; min-height: 56px; }
+.kv + .kv { box-shadow: inset 0 1px 0 var(--line); }
+.kv .ms { color: var(--ink-2); }
+.kv .k { flex: 1; font-size: 16px; font-weight: 500; }
+.kv .vv { font-size: 15px; color: var(--ink-2); }
+
+/* sync */
+.panel { margin: 16px 16px 0; border-radius: 20px; background: var(--surface); border: 1px solid var(--line); padding: 16px; }
+.dark .panel { background: var(--container); border-color: transparent; }
+.qr { width: 132px; height: 132px; padding: 10px; background: #fff; border-radius: 12px; flex: none; box-shadow: 0 0 0 1px var(--line); }
+.qr svg { width: 100%; height: 100%; display: block; fill: #2A1420; }
+.mono { font-variant-numeric: tabular-nums; font-stretch: 87.5%; font-weight: 600; }
+.fab.low { bottom: 40px; }
+.stack { width: 72px; height: 28px; position: relative; flex: none; }
+.stack .face { position: absolute; top: 0; width: 28px; height: 28px; font-size: 13px; box-shadow: 0 0 0 2px var(--ground); }
+.stack .face:nth-child(1) { z-index: 3; }
+.stack .face:nth-child(2) { left: 20px; z-index: 2; }
+.stack .face:nth-child(3) { left: 44px; z-index: 1; }
+.stack .more { background: var(--container-hi); color: var(--ink-2); }
+.slot { width: 72px; flex: none; display: flex; }
+.peer .tile { border-radius: 22px; }
+</style>
+</head>
+<body>
+
+<!-- =============== 1. HOME LIGHT =============== -->
+<section class="phone light" id="screen-1" aria-label="Home, light">
+  <div class="field">
+    <div class="status"><span>9:41</span><span class="sys"><span class="ms">signal_cellular_4_bar</span><span class="ms">wifi</span><span class="ms">battery_full</span></span></div>
+    <div class="appbar">
+      <span class="wordmark">Settle Up</span>
+      <span class="iconbtn"><span class="ms">search</span></span>
+      <span class="iconbtn"><span class="avatar-me">A</span></span>
+    </div>
+    <div class="hero">
+      <div class="dir">Overall, you're owed</div>
+      <div class="amount-xl"><span class="sign">+</span><span class="cur">₹</span>4,250</div>
+    </div>
+    <div class="legend"><span>Owed to you</span><span>You owe</span></div>
+    <div class="hem" role="img" aria-label="Owed to you plus 5,090 rupees. You owe minus 840 rupees.">
+      <span class="owed" style="flex:5090">+₹5,090</span>
+      <span class="owe" style="flex:840">−₹840</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="syncrow">
+      <span class="ms">sync</span>
+      <div class="main"><div class="t">3 changes to share</div><div class="s">Last synced with Priya, 2 hours ago</div></div>
+      <span class="textbtn">Sync</span>
+    </div>
+
+    <div class="section-h"><h2>Groups</h2><span class="act">New group</span></div>
+    <div class="row">
+      <span class="stack" aria-hidden="true"><span class="face p">P</span><span class="face r">R</span><span class="face more">+3</span></span>
+      <div class="main"><div class="t">Goa trip</div><div class="s">You, Priya, Ravi and 3 more</div></div>
+      <div class="money owe"><div class="w">you owe</div><div class="v">−₹840</div></div>
+    </div>
+    <div class="row">
+      <span class="stack" aria-hidden="true"><span class="face p">P</span><span class="face k">K</span></span>
+      <div class="main"><div class="t">Flat 4B</div><div class="s">You, Priya and Kabir</div></div>
+      <div class="money owed"><div class="w">you're owed</div><div class="v">+₹5,090</div></div>
+    </div>
+    <div class="row">
+      <span class="stack" aria-hidden="true"><span class="face m">M</span><span class="face n">N</span><span class="face more">+1</span></span>
+      <div class="main"><div class="t">Cabin weekend</div><div class="s">4 people</div></div>
+      <div class="money settled"><div class="w">all square</div><div class="v">Settled up</div></div>
+    </div>
+
+    <div class="section-h"><h2>People</h2></div>
+    <div class="row">
+      <span class="slot"><span class="face p">PS</span></span>
+      <div class="main"><div class="t">Priya Sharma</div><div class="s">Goa trip, Flat 4B</div></div>
+      <div class="money owed"><div class="w">owes you</div><div class="v">+₹1,200</div></div>
+    </div>
+    <div class="row">
+      <span class="slot"><span class="face r">RK</span></span>
+      <div class="main"><div class="t">Ravi Kumar</div><div class="s">Goa trip</div></div>
+      <div class="money owe"><div class="w">you owe</div><div class="v">−₹960</div></div>
+    </div>
+
+    <div class="fab"><span class="ms">add</span>Add expense</div>
+  </div>
+
+  <nav class="nav">
+    <a class="on"><span class="ind"><span class="ms">home</span></span>Home</a>
+    <a><span class="ind"><span class="ms">receipt_long</span></span>Activity</a>
+    <a><span class="ind"><span class="ms">sync</span><span class="badge">3</span></span>Sync</a>
+  </nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- =============== 2. GROUP DETAIL =============== -->
+<section class="phone light" id="screen-2" aria-label="Group detail, Goa trip">
+  <div class="field">
+    <div class="status"><span>9:41</span><span class="sys"><span class="ms">signal_cellular_4_bar</span><span class="ms">wifi</span><span class="ms">battery_full</span></span></div>
+    <div class="appbar">
+      <span class="iconbtn lead"><span class="ms">arrow_back</span></span>
+      <span class="title"></span>
+      <span class="iconbtn"><span class="ms">person_add</span></span>
+      <span class="iconbtn"><span class="ms">more_vert</span></span>
+    </div>
+    <div class="hero" style="padding-bottom:20px">
+      <div style="font-size:30px;font-weight:650;letter-spacing:-.01em;line-height:1.05">Goa trip</div>
+      <div style="font-size:15px;color:var(--on-rani-2);margin-top:4px">6 people, ₹38,400 spent so far</div>
+      <div style="display:flex;align-items:flex-end;justify-content:space-between;margin-top:18px">
+        <div>
+          <div class="dir" style="font-size:17px">You owe</div>
+          <div class="amount-xl" style="font-size:60px"><span class="sign">−</span><span class="cur">₹</span>840</div>
+        </div>
+        <span class="btn white" style="margin-bottom:4px">Settle up</span>
+      </div>
+    </div>
+    <div class="tabs"><a class="on">Expenses</a><a>Balances</a></div>
+  </div>
+
+  <div class="content">
+    <div class="section-h" style="padding-top:16px"><h2>Suggested payments</h2><span style="display:flex;align-items:center;gap:10px;font-size:14px;color:var(--ink-2);font-weight:550">Simplify<span class="switch" style="transform:scale(.85);transform-origin:right center"></span></span></div>
+    <div class="row" style="min-height:56px">
+      <span class="face y sm">A</span><span class="ms s20" style="color:var(--ink-2);margin:0 -8px">arrow_forward</span><span class="face p sm">PS</span>
+      <div class="main"><div class="t" style="font-size:16px">You pay Priya</div></div>
+      <div class="money owe"><div class="v">−₹840</div></div>
+    </div>
+    <div class="row" style="min-height:56px">
+      <span class="face n sm">NK</span><span class="ms s20" style="color:var(--ink-2);margin:0 -8px">arrow_forward</span><span class="face r sm">RK</span>
+      <div class="main"><div class="t" style="font-size:16px;font-weight:500">Neha pays Ravi</div></div>
+      <div class="money"><div class="v" style="font-weight:600">₹9,300</div></div>
+    </div>
+    <div style="padding:2px 24px 0 12px"><span class="textbtn">See all 4 payments and balances</span></div>
+
+    <div class="section-h" style="padding-top:14px"><h2>This week</h2></div>
+    <div class="row">
+      <span class="tile"><span class="ms">restaurant</span></span>
+      <div class="main"><div class="t">Dinner at Britto's</div><div class="s">You paid ₹6,000</div></div>
+      <div class="money owed"><div class="w">you lent</div><div class="v">+₹5,000</div></div>
+    </div>
+    <div class="row">
+      <span class="tile"><span class="ms">two_wheeler</span></span>
+      <div class="main"><div class="t">Scooter rental</div><div class="s">Priya paid ₹2,400</div></div>
+      <div class="money owe"><div class="w">you borrowed</div><div class="v">−₹600</div></div>
+    </div>
+    <div class="row">
+      <span class="tile" style="background:var(--settled-fill);color:var(--settled)"><span class="ms">payments</span></span>
+      <div class="main"><div class="t">Ravi paid you ₹2,000</div><div class="s">Cash, 7 Nov</div></div>
+      <div class="money settled"><div class="w">payment</div><div class="v">₹2,000</div></div>
+    </div>
+    <div class="row">
+      <span class="tile"><span class="ms">hotel</span></span>
+      <div class="main"><div class="t">Hotel deposit</div><div class="s">Ravi paid ₹30,000</div></div>
+      <div class="money owe"><div class="w">you borrowed</div><div class="v">−₹5,000</div></div>
+    </div>
+
+    <div class="fab low"><span class="ms">add</span>Add expense</div>
+  </div>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- =============== 3. ADD EXPENSE =============== -->
+<section class="phone light" id="screen-3" aria-label="Add expense">
+  <div class="field">
+    <div class="status"><span>9:41</span><span class="sys"><span class="ms">signal_cellular_4_bar</span><span class="ms">wifi</span><span class="ms">battery_full</span></span></div>
+    <div class="appbar">
+      <span class="iconbtn lead"><span class="ms">close</span></span>
+      <span class="title">Add expense</span>
+      <span class="curbtn" style="margin:0 8px 0 0;height:36px"><span class="ms s18">beach_access</span>&nbsp;Goa trip<span class="ms s20">arrow_drop_down</span></span>
+    </div>
+    <div class="amount-entry">
+      <span class="curbtn">₹ INR<span class="ms s20">arrow_drop_down</span></span>
+      <div class="amount-xl" style="font-size:84px">2,400<span class="caret"></span></div>
+    </div>
+    <div class="hem" role="img" aria-label="Split into 4 equal shares of 600 rupees">
+      <span class="share">You<small>₹600</small></span>
+      <span class="share">Priya<small>₹600</small></span>
+      <span class="share">Ravi<small>₹600</small></span>
+      <span class="share">Neha<small>₹600</small></span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="tf">
+      <div style="flex:1"><div class="lbl">Description</div><div class="val">Scooter rental</div></div>
+      <span class="ms" style="color:var(--ink-2)">two_wheeler</span>
+    </div>
+    <div class="chips tight" style="padding-top:14px">
+      <span class="chip sel"><span class="face p xs" style="width:22px;height:22px;font-size:10px;margin-left:-6px">PS</span>Paid by Priya<span class="ms">arrow_drop_down</span></span>
+      <span class="chip"><span class="ms">category</span>Transport</span>
+      <span class="chip"><span class="ms">event</span>Today</span>
+    </div>
+
+    <div class="section-h" style="padding-top:18px"><h2>Split equally among 4 of 6</h2><span class="act">₹600 each</span></div>
+    <div class="chips" style="padding-top:6px;padding-bottom:6px">
+      <span class="chip sel"><span class="ms">check</span>Equally</span>
+      <span class="chip">Exact amounts</span>
+      <span class="chip">Percent</span>
+      <span class="chip">Shares</span>
+      <span class="chip">Adjust</span>
+    </div>
+    <div style="padding-top:4px">
+      <div class="member"><span class="cb"><i class="on"><span class="ms s18">check</span></i></span><span class="face y sm">A</span><span class="nm">You</span><span class="v">₹600</span></div>
+      <div class="member"><span class="cb"><i class="on"><span class="ms s18">check</span></i></span><span class="face p sm">PS</span><span class="nm">Priya Sharma</span><span class="v">₹600</span></div>
+      <div class="member"><span class="cb"><i class="on"><span class="ms s18">check</span></i></span><span class="face r sm">RK</span><span class="nm">Ravi Kumar</span><span class="v">₹600</span></div>
+      <div class="member"><span class="cb"><i class="on"><span class="ms s18">check</span></i></span><span class="face n sm">NK</span><span class="nm">Neha Kapoor</span><span class="v">₹600</span></div>
+      <div class="member"><span class="cb"><i></i></span><span class="face k sm">KS</span><span class="nm off">Kabir Singh</span><span class="v off">Not in this</span></div>
+      <div class="member"><span class="cb"><i></i></span><span class="face m sm">MI</span><span class="nm off">Meera Iyer</span><span class="v off">Not in this</span></div>
+    </div>
+    <div class="bottombar"><span class="btn filled block">Save expense</span></div>
+  </div>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- =============== 4. SETTLE UP =============== -->
+<section class="phone light" id="screen-4" aria-label="Settle up">
+  <div class="field">
+    <div class="status"><span>9:41</span><span class="sys"><span class="ms">signal_cellular_4_bar</span><span class="ms">wifi</span><span class="ms">battery_full</span></span></div>
+    <div class="appbar">
+      <span class="iconbtn lead"><span class="ms">close</span></span>
+      <span class="title">Settle up<span style="display:block;font-size:14px;font-weight:500;color:var(--on-rani-2);margin-top:-2px">Goa trip</span></span>
+    </div>
+    <div class="pair">
+      <span class="face y" style="background:#fff;color:var(--rani)">A</span>
+      <span class="ms">arrow_forward</span>
+      <span class="face p">PS</span>
+      <span style="font-size:20px;font-weight:550;margin-left:6px">You pay Priya</span>
+    </div>
+    <div class="hero" style="padding-top:10px;padding-bottom:22px;display:flex;align-items:flex-end;justify-content:space-between">
+      <div class="amount-xl" style="font-size:96px"><span class="cur">₹</span>840</div>
+      <span class="iconbtn" style="margin-bottom:6px;border:1px solid rgba(255,255,255,.55)"><span class="ms">edit</span></span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="section-h" style="padding-top:18px"><h2>Paid with</h2></div>
+    <div class="seg" style="margin-top:6px"><span class="on"><span class="ms s18">check</span>UPI</span><span>Cash</span><span>Bank</span><span>Other</span></div>
+    <p class="note" style="padding:10px 24px 0">Pay Priya in your UPI app first. This records it for the group.</p>
+
+    <div class="section-h" style="padding-top:22px"><h2>Your balance overall</h2></div>
+    <div class="ba">
+      <div class="lab"><span>Now</span><span><b class="owe">You owe −₹840</b></span></div>
+      <div class="band" role="img" aria-label="Now: owed to you 5,090 rupees, you owe 840 rupees">
+        <span class="g" style="flex:5090">+₹5,090 owed to you</span>
+        <span class="o" style="flex:840">−₹840</span>
+      </div>
+      <div class="lab" style="padding-top:16px"><span>After this payment</span><span><b class="settled">You owe ₹0</b></span></div>
+      <div class="band" role="img" aria-label="After: owed to you 5,090 rupees, you owe nothing">
+        <span class="g" style="flex:1">+₹5,090 owed to you</span>
+      </div>
+    </div>
+    <div style="margin-top:14px">
+      <div class="kv"><span class="ms">beach_access</span><span class="k">Goa trip</span><span class="vv" style="display:flex;align-items:center;gap:6px"><span class="owe" style="font-weight:600">you owe −₹840</span><span class="ms s18" aria-label="becomes">arrow_forward</span><span style="color:var(--ink);font-weight:600">settled up</span></span></div>
+      <div class="kv"><span class="ms">event</span><span class="k">Today, 9 Nov</span><span class="vv" style="color:var(--rani-deep);font-weight:600">Change</span></div>
+      <div class="kv"><span class="ms">notes</span><span class="k" style="color:var(--ink-2);font-weight:450">Add a note</span></div>
+    </div>
+
+    <div class="bottombar" style="padding-top:12px">
+      <span class="btn filled block">Record ₹840 to Priya</span>
+      <p class="note" style="text-align:center;padding-top:10px">Priya sees this the next time your phones sync.</p>
+    </div>
+  </div>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- =============== 5. SYNC =============== -->
+<section class="phone light" id="screen-5" aria-label="Sync">
+  <div class="field">
+    <div class="status"><span>9:41</span><span class="sys"><span class="ms">signal_cellular_4_bar</span><span class="ms">wifi_tethering</span><span class="ms">battery_full</span></span></div>
+    <div class="appbar">
+      <span class="title" style="font-size:24px">Sync</span>
+      <span class="iconbtn"><span class="ms">history</span></span>
+      <span class="iconbtn"><span class="ms">help</span></span>
+    </div>
+    <div class="hero" style="padding-bottom:16px">
+      <div style="font-size:30px;font-weight:650;letter-spacing:-.01em;line-height:1.1">3 changes to share</div>
+      <div style="font-size:15px;color:var(--on-rani-2);margin-top:4px">Last synced with Priya's Pixel 8, 2 hours ago</div>
+    </div>
+    <div class="hem" role="img" aria-label="2 changes in Goa trip, 1 change in Flat 4B">
+      <span class="share" style="flex:2;flex-direction:row;justify-content:space-between;align-items:center;font-size:16px">Goa trip<small style="font-size:15px">2 changes</small></span>
+      <span class="share" style="flex:1;flex-direction:row;justify-content:space-between;align-items:center;font-size:16px">Flat 4B<small style="font-size:15px">1</small></span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="panel">
+      <div style="display:flex;align-items:center;gap:12px">
+        <div class="main"><div class="t" style="font-size:17px;font-weight:650">Make this phone visible</div><div class="s">Friends nearby can find it for 2 minutes</div></div>
+        <span class="switch"></span>
+      </div>
+      <div style="display:flex;gap:16px;margin-top:14px;align-items:center">
+        <div class="qr"><svg viewBox="0 0 33 33" shape-rendering="crispEdges" aria-hidden="true"><path d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM13 0h1v1h-1zM16 0h1v1h-1zM17 0h1v1h-1zM20 0h1v1h-1zM22 0h1v1h-1zM26 0h1v1h-1zM27 0h1v1h-1zM28 0h1v1h-1zM29 0h1v1h-1zM30 0h1v1h-1zM31 0h1v1h-1zM32 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM10 1h1v1h-1zM13 1h1v1h-1zM14 1h1v1h-1zM18 1h1v1h-1zM19 1h1v1h-1zM21 1h1v1h-1zM26 1h1v1h-1zM32 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM8 2h1v1h-1zM10 2h1v1h-1zM12 2h1v1h-1zM13 2h1v1h-1zM14 2h1v1h-1zM19 2h1v1h-1zM20 2h1v1h-1zM21 2h1v1h-1zM23 2h1v1h-1zM26 2h1v1h-1zM28 2h1v1h-1zM29 2h1v1h-1zM30 2h1v1h-1zM32 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM10 3h1v1h-1zM12 3h1v1h-1zM14 3h1v1h-1zM15 3h1v1h-1zM16 3h1v1h-1zM18 3h1v1h-1zM19 3h1v1h-1zM20 3h1v1h-1zM21 3h1v1h-1zM22 3h1v1h-1zM23 3h1v1h-1zM24 3h1v1h-1zM26 3h1v1h-1zM28 3h1v1h-1zM29 3h1v1h-1zM30 3h1v1h-1zM32 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM10 4h1v1h-1zM11 4h1v1h-1zM15 4h1v1h-1zM16 4h1v1h-1zM17 4h1v1h-1zM22 4h1v1h-1zM26 4h1v1h-1zM28 4h1v1h-1zM29 4h1v1h-1zM30 4h1v1h-1zM32 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM12 5h1v1h-1zM14 5h1v1h-1zM15 5h1v1h-1zM16 5h1v1h-1zM17 5h1v1h-1zM18 5h1v1h-1zM19 5h1v1h-1zM21 5h1v1h-1zM23 5h1v1h-1zM24 5h1v1h-1zM26 5h1v1h-1zM32 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM24 6h1v1h-1zM26 6h1v1h-1zM27 6h1v1h-1zM28 6h1v1h-1zM29 6h1v1h-1zM30 6h1v1h-1zM31 6h1v1h-1zM32 6h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM15 7h1v1h-1zM16 7h1v1h-1zM24 7h1v1h-1zM0 8h1v1h-1zM3 8h1v1h-1zM4 8h1v1h-1zM5 8h1v1h-1zM6 8h1v1h-1zM7 8h1v1h-1zM8 8h1v1h-1zM9 8h1v1h-1zM12 8h1v1h-1zM16 8h1v1h-1zM17 8h1v1h-1zM18 8h1v1h-1zM20 8h1v1h-1zM23 8h1v1h-1zM24 8h1v1h-1zM25 8h1v1h-1zM28 8h1v1h-1zM30 8h1v1h-1zM31 8h1v1h-1zM32 8h1v1h-1zM3 9h1v1h-1zM5 9h1v1h-1zM7 9h1v1h-1zM10 9h1v1h-1zM11 9h1v1h-1zM12 9h1v1h-1zM13 9h1v1h-1zM15 9h1v1h-1zM16 9h1v1h-1zM17 9h1v1h-1zM19 9h1v1h-1zM20 9h1v1h-1zM22 9h1v1h-1zM23 9h1v1h-1zM25 9h1v1h-1zM27 9h1v1h-1zM28 9h1v1h-1zM29 9h1v1h-1zM30 9h1v1h-1zM0 10h1v1h-1zM2 10h1v1h-1zM3 10h1v1h-1zM5 10h1v1h-1zM6 10h1v1h-1zM12 10h1v1h-1zM13 10h1v1h-1zM15 10h1v1h-1zM20 10h1v1h-1zM23 10h1v1h-1zM25 10h1v1h-1zM26 10h1v1h-1zM30 10h1v1h-1zM32 10h1v1h-1zM1 11h1v1h-1zM3 11h1v1h-1zM5 11h1v1h-1zM7 11h1v1h-1zM8 11h1v1h-1zM10 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM13 11h1v1h-1zM16 11h1v1h-1zM18 11h1v1h-1zM24 11h1v1h-1zM27 11h1v1h-1zM28 11h1v1h-1zM30 11h1v1h-1zM31 11h1v1h-1zM3 12h1v1h-1zM4 12h1v1h-1zM5 12h1v1h-1zM6 12h1v1h-1zM7 12h1v1h-1zM8 12h1v1h-1zM9 12h1v1h-1zM10 12h1v1h-1zM11 12h1v1h-1zM12 12h1v1h-1zM13 12h1v1h-1zM17 12h1v1h-1zM20 12h1v1h-1zM23 12h1v1h-1zM25 12h1v1h-1zM26 12h1v1h-1zM31 12h1v1h-1zM32 12h1v1h-1zM0 13h1v1h-1zM1 13h1v1h-1zM3 13h1v1h-1zM8 13h1v1h-1zM14 13h1v1h-1zM17 13h1v1h-1zM18 13h1v1h-1zM19 13h1v1h-1zM20 13h1v1h-1zM21 13h1v1h-1zM22 13h1v1h-1zM29 13h1v1h-1zM30 13h1v1h-1zM31 13h1v1h-1zM0 14h1v1h-1zM1 14h1v1h-1zM2 14h1v1h-1zM3 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM8 14h1v1h-1zM9 14h1v1h-1zM11 14h1v1h-1zM13 14h1v1h-1zM15 14h1v1h-1zM18 14h1v1h-1zM19 14h1v1h-1zM20 14h1v1h-1zM25 14h1v1h-1zM0 15h1v1h-1zM2 15h1v1h-1zM3 15h1v1h-1zM4 15h1v1h-1zM8 15h1v1h-1zM9 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM14 15h1v1h-1zM16 15h1v1h-1zM20 15h1v1h-1zM22 15h1v1h-1zM26 15h1v1h-1zM27 15h1v1h-1zM28 15h1v1h-1zM29 15h1v1h-1zM30 15h1v1h-1zM31 15h1v1h-1zM0 16h1v1h-1zM6 16h1v1h-1zM7 16h1v1h-1zM9 16h1v1h-1zM14 16h1v1h-1zM15 16h1v1h-1zM16 16h1v1h-1zM18 16h1v1h-1zM20 16h1v1h-1zM22 16h1v1h-1zM24 16h1v1h-1zM26 16h1v1h-1zM28 16h1v1h-1zM32 16h1v1h-1zM2 17h1v1h-1zM4 17h1v1h-1zM5 17h1v1h-1zM8 17h1v1h-1zM11 17h1v1h-1zM12 17h1v1h-1zM14 17h1v1h-1zM15 17h1v1h-1zM16 17h1v1h-1zM17 17h1v1h-1zM19 17h1v1h-1zM20 17h1v1h-1zM22 17h1v1h-1zM25 17h1v1h-1zM26 17h1v1h-1zM27 17h1v1h-1zM28 17h1v1h-1zM30 17h1v1h-1zM31 17h1v1h-1zM32 17h1v1h-1zM2 18h1v1h-1zM3 18h1v1h-1zM4 18h1v1h-1zM6 18h1v1h-1zM8 18h1v1h-1zM10 18h1v1h-1zM12 18h1v1h-1zM13 18h1v1h-1zM15 18h1v1h-1zM16 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM19 18h1v1h-1zM21 18h1v1h-1zM22 18h1v1h-1zM23 18h1v1h-1zM26 18h1v1h-1zM28 18h1v1h-1zM29 18h1v1h-1zM30 18h1v1h-1zM31 18h1v1h-1zM32 18h1v1h-1zM0 19h1v1h-1zM2 19h1v1h-1zM3 19h1v1h-1zM4 19h1v1h-1zM7 19h1v1h-1zM9 19h1v1h-1zM10 19h1v1h-1zM15 19h1v1h-1zM16 19h1v1h-1zM23 19h1v1h-1zM27 19h1v1h-1zM29 19h1v1h-1zM30 19h1v1h-1zM31 19h1v1h-1zM1 20h1v1h-1zM3 20h1v1h-1zM6 20h1v1h-1zM9 20h1v1h-1zM10 20h1v1h-1zM12 20h1v1h-1zM13 20h1v1h-1zM15 20h1v1h-1zM16 20h1v1h-1zM18 20h1v1h-1zM22 20h1v1h-1zM23 20h1v1h-1zM25 20h1v1h-1zM29 20h1v1h-1zM32 20h1v1h-1zM0 21h1v1h-1zM3 21h1v1h-1zM4 21h1v1h-1zM5 21h1v1h-1zM8 21h1v1h-1zM9 21h1v1h-1zM13 21h1v1h-1zM14 21h1v1h-1zM23 21h1v1h-1zM24 21h1v1h-1zM28 21h1v1h-1zM30 21h1v1h-1zM31 21h1v1h-1zM0 22h1v1h-1zM2 22h1v1h-1zM3 22h1v1h-1zM4 22h1v1h-1zM6 22h1v1h-1zM7 22h1v1h-1zM12 22h1v1h-1zM18 22h1v1h-1zM20 22h1v1h-1zM21 22h1v1h-1zM22 22h1v1h-1zM23 22h1v1h-1zM24 22h1v1h-1zM27 22h1v1h-1zM29 22h1v1h-1zM30 22h1v1h-1zM31 22h1v1h-1zM32 22h1v1h-1zM0 23h1v1h-1zM2 23h1v1h-1zM3 23h1v1h-1zM4 23h1v1h-1zM7 23h1v1h-1zM9 23h1v1h-1zM10 23h1v1h-1zM12 23h1v1h-1zM13 23h1v1h-1zM15 23h1v1h-1zM17 23h1v1h-1zM18 23h1v1h-1zM19 23h1v1h-1zM20 23h1v1h-1zM23 23h1v1h-1zM26 23h1v1h-1zM27 23h1v1h-1zM28 23h1v1h-1zM29 23h1v1h-1zM30 23h1v1h-1zM31 23h1v1h-1zM32 23h1v1h-1zM0 24h1v1h-1zM1 24h1v1h-1zM3 24h1v1h-1zM5 24h1v1h-1zM6 24h1v1h-1zM8 24h1v1h-1zM9 24h1v1h-1zM10 24h1v1h-1zM11 24h1v1h-1zM12 24h1v1h-1zM13 24h1v1h-1zM18 24h1v1h-1zM19 24h1v1h-1zM23 24h1v1h-1zM24 24h1v1h-1zM25 24h1v1h-1zM26 24h1v1h-1zM27 24h1v1h-1zM28 24h1v1h-1zM31 24h1v1h-1zM32 24h1v1h-1zM8 25h1v1h-1zM10 25h1v1h-1zM11 25h1v1h-1zM12 25h1v1h-1zM13 25h1v1h-1zM14 25h1v1h-1zM15 25h1v1h-1zM17 25h1v1h-1zM18 25h1v1h-1zM20 25h1v1h-1zM21 25h1v1h-1zM24 25h1v1h-1zM28 25h1v1h-1zM29 25h1v1h-1zM30 25h1v1h-1zM31 25h1v1h-1zM0 26h1v1h-1zM1 26h1v1h-1zM2 26h1v1h-1zM3 26h1v1h-1zM4 26h1v1h-1zM5 26h1v1h-1zM6 26h1v1h-1zM8 26h1v1h-1zM10 26h1v1h-1zM13 26h1v1h-1zM15 26h1v1h-1zM17 26h1v1h-1zM19 26h1v1h-1zM21 26h1v1h-1zM22 26h1v1h-1zM23 26h1v1h-1zM24 26h1v1h-1zM26 26h1v1h-1zM28 26h1v1h-1zM30 26h1v1h-1zM31 26h1v1h-1zM0 27h1v1h-1zM6 27h1v1h-1zM8 27h1v1h-1zM9 27h1v1h-1zM10 27h1v1h-1zM11 27h1v1h-1zM13 27h1v1h-1zM16 27h1v1h-1zM17 27h1v1h-1zM18 27h1v1h-1zM24 27h1v1h-1zM28 27h1v1h-1zM29 27h1v1h-1zM30 27h1v1h-1zM31 27h1v1h-1zM0 28h1v1h-1zM2 28h1v1h-1zM3 28h1v1h-1zM4 28h1v1h-1zM6 28h1v1h-1zM8 28h1v1h-1zM9 28h1v1h-1zM12 28h1v1h-1zM15 28h1v1h-1zM16 28h1v1h-1zM17 28h1v1h-1zM21 28h1v1h-1zM22 28h1v1h-1zM23 28h1v1h-1zM24 28h1v1h-1zM25 28h1v1h-1zM26 28h1v1h-1zM27 28h1v1h-1zM28 28h1v1h-1zM29 28h1v1h-1zM32 28h1v1h-1zM0 29h1v1h-1zM2 29h1v1h-1zM3 29h1v1h-1zM4 29h1v1h-1zM6 29h1v1h-1zM8 29h1v1h-1zM9 29h1v1h-1zM10 29h1v1h-1zM16 29h1v1h-1zM18 29h1v1h-1zM19 29h1v1h-1zM20 29h1v1h-1zM31 29h1v1h-1zM32 29h1v1h-1zM0 30h1v1h-1zM2 30h1v1h-1zM3 30h1v1h-1zM4 30h1v1h-1zM6 30h1v1h-1zM10 30h1v1h-1zM11 30h1v1h-1zM12 30h1v1h-1zM13 30h1v1h-1zM15 30h1v1h-1zM19 30h1v1h-1zM22 30h1v1h-1zM25 30h1v1h-1zM28 30h1v1h-1zM30 30h1v1h-1zM31 30h1v1h-1zM32 30h1v1h-1zM0 31h1v1h-1zM6 31h1v1h-1zM13 31h1v1h-1zM14 31h1v1h-1zM18 31h1v1h-1zM19 31h1v1h-1zM20 31h1v1h-1zM22 31h1v1h-1zM26 31h1v1h-1zM30 31h1v1h-1zM31 31h1v1h-1zM32 31h1v1h-1zM0 32h1v1h-1zM1 32h1v1h-1zM2 32h1v1h-1zM3 32h1v1h-1zM4 32h1v1h-1zM5 32h1v1h-1zM6 32h1v1h-1zM8 32h1v1h-1zM9 32h1v1h-1zM11 32h1v1h-1zM13 32h1v1h-1zM15 32h1v1h-1zM17 32h1v1h-1zM18 32h1v1h-1zM19 32h1v1h-1zM20 32h1v1h-1zM23 32h1v1h-1zM24 32h1v1h-1zM25 32h1v1h-1zM26 32h1v1h-1zM29 32h1v1h-1z"/></svg></div>
+        <div style="font-size:14px;line-height:20px;color:var(--ink-2)">
+          <div>On hotspot</div>
+          <div style="color:var(--ink);font-weight:600;font-size:16px;margin-bottom:8px">Arjun's Galaxy</div>
+          <div>Address</div>
+          <div class="mono" style="color:var(--ink);font-size:17px;margin-bottom:8px">192.168.43.1:4747</div>
+          <div style="color:var(--rani-deep);font-weight:600">Visible for 1:52</div>
+        </div>
+      </div>
+    </div>
+    <div style="padding:12px 16px 0"><span class="btn outline" style="width:100%;height:48px;border-radius:24px;font-size:16px"><span class="ms s20">qr_code_scanner</span>Scan a QR</span></div>
+
+    <div class="section-h" style="padding-top:18px"><h2>Nearby phones</h2><span style="font-size:14px;color:var(--ink-2);font-weight:500">Looking…</span></div>
+    <div class="row peer">
+      <span class="tile"><span class="ms">wifi</span></span>
+      <div class="main"><div class="t">Priya's Pixel 8</div><div class="s">Wi-Fi. Shares Goa trip</div></div>
+      <span class="btn tonal">Sync</span>
+    </div>
+    <div class="row peer">
+      <span class="tile"><span class="ms">bluetooth</span></span>
+      <div class="main"><div class="t">Ravi's iPhone</div><div class="s">Bluetooth. Shares Goa trip</div></div>
+      <span class="btn tonal">Sync</span>
+    </div>
+    <div class="row peer">
+      <span class="tile" style="background:var(--settled-fill);color:var(--settled)"><span class="ms">smartphone</span></span>
+      <div class="main"><div class="t">Unknown phone</div><div class="s">Bluetooth. No shared groups</div></div>
+      <span class="btn outline">Pair</span>
+    </div>
+  </div>
+
+  <nav class="nav">
+    <a><span class="ind"><span class="ms">home</span></span>Home</a>
+    <a><span class="ind"><span class="ms">receipt_long</span></span>Activity</a>
+    <a class="on"><span class="ind"><span class="ms">sync</span><span class="badge">3</span></span>Sync</a>
+  </nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- =============== 6. HOME DARK =============== -->
+<section class="phone dark" id="screen-6" aria-label="Home, dark">
+  <div class="field">
+    <div class="status"><span>9:41</span><span class="sys"><span class="ms">signal_cellular_4_bar</span><span class="ms">wifi</span><span class="ms">battery_full</span></span></div>
+    <div class="appbar">
+      <span class="wordmark">Settle Up</span>
+      <span class="iconbtn"><span class="ms">search</span></span>
+      <span class="iconbtn"><span class="avatar-me">A</span></span>
+    </div>
+    <div class="hero">
+      <div class="dir">Overall, you're owed</div>
+      <div class="amount-xl"><span class="sign">+</span><span class="cur">₹</span>4,250</div>
+    </div>
+    <div class="legend"><span>Owed to you</span><span>You owe</span></div>
+    <div class="hem" role="img" aria-label="Owed to you plus 5,090 rupees. You owe minus 840 rupees.">
+      <span class="owed" style="flex:5090">+₹5,090</span>
+      <span class="owe" style="flex:840">−₹840</span>
+    </div>
+  </div>
+
+  <div class="content">
+    <div class="syncrow">
+      <span class="ms">sync</span>
+      <div class="main"><div class="t">3 changes to share</div><div class="s">Last synced with Priya, 2 hours ago</div></div>
+      <span class="textbtn">Sync</span>
+    </div>
+
+    <div class="section-h"><h2>Groups</h2><span class="act">New group</span></div>
+    <div class="row">
+      <span class="stack" aria-hidden="true"><span class="face p">P</span><span class="face r">R</span><span class="face more">+3</span></span>
+      <div class="main"><div class="t">Goa trip</div><div class="s">You, Priya, Ravi and 3 more</div></div>
+      <div class="money owe"><div class="w">you owe</div><div class="v">−₹840</div></div>
+    </div>
+    <div class="row">
+      <span class="stack" aria-hidden="true"><span class="face p">P</span><span class="face k">K</span></span>
+      <div class="main"><div class="t">Flat 4B</div><div class="s">You, Priya and Kabir</div></div>
+      <div class="money owed"><div class="w">you're owed</div><div class="v">+₹5,090</div></div>
+    </div>
+    <div class="row">
+      <span class="stack" aria-hidden="true"><span class="face m">M</span><span class="face n">N</span><span class="face more">+1</span></span>
+      <div class="main"><div class="t">Cabin weekend</div><div class="s">4 people</div></div>
+      <div class="money settled"><div class="w">all square</div><div class="v">Settled up</div></div>
+    </div>
+
+    <div class="section-h"><h2>People</h2></div>
+    <div class="row">
+      <span class="slot"><span class="face p">PS</span></span>
+      <div class="main"><div class="t">Priya Sharma</div><div class="s">Goa trip, Flat 4B</div></div>
+      <div class="money owed"><div class="w">owes you</div><div class="v">+₹1,200</div></div>
+    </div>
+    <div class="row">
+      <span class="slot"><span class="face r">RK</span></span>
+      <div class="main"><div class="t">Ravi Kumar</div><div class="s">Goa trip</div></div>
+      <div class="money owe"><div class="w">you owe</div><div class="v">−₹960</div></div>
+    </div>
+
+    <div class="fab"><span class="ms">add</span>Add expense</div>
+  </div>
+
+  <nav class="nav">
+    <a class="on"><span class="ind"><span class="ms">home</span></span>Home</a>
+    <a><span class="ind"><span class="ms">receipt_long</span></span>Activity</a>
+    <a><span class="ind"><span class="ms">sync</span><span class="badge">3</span></span>Sync</a>
+  </nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+</body>
+</html>

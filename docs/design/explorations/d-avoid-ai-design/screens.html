@@ -1,0 +1,393 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scoreboard screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Teko:wght@400;500;600&family=Hind:wght@400;500;600;700&display=block" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,300..600,0..1,0&display=block" rel="stylesheet">
+<style>
+/* Direction: Scoreboard. Tokens mirror direction.md. */
+:root{
+  --font-plate:"Teko",sans-serif;   /* numerals, screen titles */
+  --font-text:"Hind",sans-serif;    /* everything people read */
+  --r-plate:3px; --r-action:4px; --r-field:10px;
+  --ease-hang:cubic-bezier(.2,.7,.2,1);
+}
+.light{
+  --ground:#FFFFFF;      /* sightscreen white */
+  --surface2:#EFF2EE;    /* outfield haze: inputs, sync strip, nav */
+  --board:#13261E;       /* scoreboard paint: plates, primary actions */
+  --on-board:#FFFFFF;
+  /* avoid-ai-design-ignore: C9 (muted is 7.1:1 on the light ground and 8.6:1 on the dark ground; the scanner reads the grey presentation canvas) */
+  --ink:#15211B; --muted:#4D5B54; --line:#D5DBD6;
+  --owed:#1546A0;        /* team blue: money coming to you */
+  --owe:#B3202E;         /* ball red: money you owe */
+  --settled:#5A6660;
+  --plate-shadow:0 1px 0 #000;
+}
+.dark{
+  --ground:#0E1A15;      /* the board itself */
+  --surface2:#1A2B23;
+  --board:#EEF1EC;       /* plates are lit white at night */
+  --on-board:#0E1A15;
+  /* avoid-ai-design-ignore: C9 (scanner compares with the grey presentation canvas; on the dark ground this is 8.6:1) */
+  --ink:#EEF1EC; --muted:#A9B8B0; --line:#2A3C33;
+  --owed:#8FB3FF; --owe:#FF8E8E; --settled:#A9B8B0;
+  --plate-shadow:0 1px 0 #9AA79F;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+body{background:#C9CFCA;font-family:var(--font-text);display:flex;flex-wrap:wrap;gap:40px;padding:40px;-webkit-font-smoothing:antialiased}
+.phone{width:412px;height:915px;position:relative;overflow:hidden;background:var(--ground);color:var(--ink);display:flex;flex-direction:column;font-size:15px;line-height:1.4}
+.ms{font-family:"Material Symbols Sharp";font-weight:400;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;font-variation-settings:"FILL" 0,"wght" 400,"GRAD" 0,"opsz" 24;-webkit-font-feature-settings:"liga";user-select:none}
+.ms.fill{font-variation-settings:"FILL" 1,"wght" 400,"GRAD" 0,"opsz" 24}
+.ms.sm{font-size:20px}
+
+/* System chrome */
+.status{height:36px;flex:none;display:flex;align-items:center;justify-content:space-between;padding:0 24px 0 26px;font-size:14px;font-weight:500;color:var(--ink)}
+.status .ic{display:flex;gap:6px;align-items:center}
+.status .ms{font-size:17px}
+.gesture{height:24px;flex:none;display:flex;align-items:center;justify-content:center;background:var(--surface2)}
+.gesture i{width:108px;height:4px;border-radius:2px;background:var(--ink);opacity:.55}
+.scroll{flex:1;overflow:hidden;position:relative}
+
+/* App bar */
+.bar{height:60px;display:flex;align-items:center;padding:0 8px 0 20px;gap:4px}
+.bar.back{padding-left:4px}
+.bar h1{font-family:var(--font-plate);font-weight:500;font-size:30px;line-height:1;padding-top:6px;flex:1;letter-spacing:.2px}
+.bar .title{flex:1}
+.bar .title h1{padding-top:8px}
+.bar .sub{font-size:13px;color:var(--muted);line-height:1.2;margin-top:-2px}
+.ibtn{width:48px;height:48px;display:grid;place-items:center;border-radius:50%;color:var(--ink);background:none;border:0;cursor:pointer}
+.ibtn:focus-visible,.btn:focus-visible,.chip:focus-visible,.row:focus-visible{outline:3px solid var(--owed);outline-offset:2px}
+
+/* The plates: the one loud thing */
+.plates{display:flex;align-items:center;gap:5px}
+.plates b{font-family:var(--font-plate);font-weight:500;background:var(--board);color:var(--on-board);border-radius:var(--r-plate);display:grid;place-items:center;font-variant-numeric:tabular-nums;box-shadow:var(--plate-shadow);line-height:1;overflow:hidden}
+.plates .cur{font-family:var(--font-plate);font-weight:500;color:var(--ink);line-height:1}
+.plates .sep{font-family:var(--font-plate);font-weight:500;color:var(--ink);line-height:1;margin:0 -2px}
+.plates .sgn{font-family:var(--font-plate);font-weight:500;line-height:1;margin-right:2px}
+.plates.xl b{width:50px;height:82px;font-size:76px;padding-top:.13em}
+.plates.xl .cur,.plates.xl .sgn{font-size:60px;padding-top:.12em}
+.plates.xl .sep{font-size:56px;align-self:flex-end;margin-bottom:-6px}
+.plates.lg b{width:42px;height:68px;font-size:63px;padding-top:.13em}
+.plates.lg .cur,.plates.lg .sgn{font-size:50px;padding-top:.12em}
+.plates.lg .sep{font-size:46px;align-self:flex-end;margin-bottom:-5px}
+.plates.md b{width:32px;height:50px;font-size:46px;padding-top:.13em}
+.plates.md .cur,.plates.md .sgn{font-size:34px;padding-bottom:3px}
+.plates.md .sep{font-size:32px}
+.plates .ghost{background:transparent;box-shadow:inset 0 0 0 2px var(--line);color:transparent}
+.owedc{color:var(--owed)} .owec{color:var(--owe)} .setc{color:var(--settled)}
+
+/* Text styles */
+.lede{font-size:17px;font-weight:600;line-height:1.3}
+.lede.owedc,.lede.owec{font-weight:600}
+.small{font-size:13px;color:var(--muted);line-height:1.35}
+.h2{font-family:var(--font-plate);font-weight:500;font-size:25px;line-height:1;padding:18px 20px 2px;display:flex;justify-content:space-between;align-items:baseline}
+.h2 a{font-family:var(--font-text);font-size:14px;font-weight:600;color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+
+/* Rows (scorecard lines, not cards) */
+.row{display:flex;align-items:center;gap:14px;padding:8px 20px;min-height:60px}
+.row .main{flex:1;min-width:0}
+.row .t{font-size:16px;font-weight:600;line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .s{font-size:13px;color:var(--muted);line-height:1.3;margin-top:1px}
+.amt{text-align:right;flex:none}
+.amt .w{font-size:13px;font-weight:600;line-height:1.1;display:block}
+.amt .n{font-family:var(--font-plate);font-weight:500;font-size:27px;line-height:1;display:block;padding-top:4px;font-variant-numeric:tabular-nums}
+.av{width:40px;height:40px;border-radius:50%;flex:none;display:grid;place-items:center;font-weight:600;font-size:15px;background:var(--surface2);color:var(--ink)}
+.rule{height:1px;background:var(--line);margin:0 20px}
+
+/* Buttons */
+.btn{font-family:var(--font-text);font-weight:600;font-size:15px;height:44px;padding:2px 18px 0;border-radius:var(--r-action);border:0;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:transform .12s var(--ease-hang),background .12s}
+.btn:hover{filter:brightness(1.12)}
+.btn:active{transform:translateY(1px)}
+.btn.solid{background:var(--board);color:var(--on-board)}
+.btn.line{background:transparent;color:var(--ink);box-shadow:inset 0 0 0 1.5px var(--ink)}
+.btn.tonal{background:var(--surface2);color:var(--ink)}
+.btn.big{height:56px;width:100%;justify-content:center;font-size:17px}
+.btn.s{height:38px;padding:2px 14px 0;font-size:14px}
+
+/* Nav bar */
+.nav{height:80px;flex:none;background:var(--surface2);display:flex;justify-content:space-around;padding-top:12px}
+.nav div{display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12.5px;font-weight:500;color:var(--muted);width:96px;position:relative}
+.nav .pill{width:64px;height:32px;border-radius:var(--r-action);display:grid;place-items:center;color:var(--ink)}
+.nav .on{color:var(--ink);font-weight:600}
+.nav .on .pill{background:var(--board);color:var(--on-board)}
+.nav .badge{position:absolute;top:-2px;left:52px;min-width:18px;height:18px;border-radius:9px;background:var(--ink);color:var(--ground);box-shadow:0 0 0 2px var(--surface2);font-size:11px;font-weight:700;display:grid;place-items:center;padding:1px 5px 0}
+
+/* FAB */
+.fab{position:absolute;right:16px;bottom:16px;height:56px;padding:2px 20px 0 16px;border-radius:var(--r-action);background:var(--board);color:var(--on-board);display:flex;align-items:center;gap:10px;font-weight:600;font-size:16px;box-shadow:0 3px 0 rgba(0,0,0,.18),0 6px 16px rgba(0,0,0,.18);border:0}
+.dark .fab{box-shadow:0 3px 0 #000,0 6px 16px rgba(0,0,0,.5)}
+
+/* Chips / segmented */
+.chips{display:flex;gap:8px;padding:0 20px;flex-wrap:nowrap}
+.chip{border:0;font-family:var(--font-text);height:36px;padding:2px 14px 0;border-radius:var(--r-action);font-size:14px;font-weight:500;display:inline-flex;align-items:center;gap:6px;white-space:nowrap;box-shadow:inset 0 0 0 1px var(--line);color:var(--ink);background:var(--ground)}
+.chip.on{background:var(--board);color:var(--on-board);box-shadow:none;font-weight:600}
+
+/* Home */
+.hero{padding:6px 20px 0}
+.hero .lede{margin-bottom:12px}
+.hero .plates{margin-left:-2px}
+.hero .split{margin-top:12px;font-size:14.5px;color:var(--ink);line-height:1.45}
+.score{margin-top:12px;font-size:15px;line-height:1.5}
+.score strong{font-weight:600}
+.hero .split strong{font-weight:600}
+.syncstrip{margin:16px 20px 0;background:var(--surface2);border-radius:var(--r-field);display:flex;align-items:center;gap:12px;padding:8px 8px 8px 14px}
+.syncstrip .main{flex:1;font-size:14.5px;line-height:1.3}
+.syncstrip .main b{font-weight:600}
+
+/* Group detail */
+.tabs{display:flex;border-bottom:1px solid var(--line);margin-top:18px}
+.tabs div{flex:1;text-align:center;font-weight:600;font-size:15px;padding:12px 0 11px;color:var(--muted);position:relative}
+.tabs .on{color:var(--ink)}
+.tabs .on::after{content:"";position:absolute;left:28%;right:28%;bottom:-1px;height:3px;background:var(--board);border-radius:2px 2px 0 0}
+.tabs .count{font-weight:500;color:var(--muted)}
+.day{font-size:13px;font-weight:600;color:var(--muted);padding:14px 20px 2px}
+.cat{width:24px;color:var(--muted);flex:none;text-align:center}
+.pay .t{font-weight:500}
+.actions{display:flex;gap:10px;margin-top:14px}
+
+/* Add expense */
+.field{margin:4px 20px 0;background:var(--surface2);border-radius:var(--r-field);padding:9px 14px 9px;display:flex;align-items:center;gap:12px}
+.field .main{flex:1}
+.field label{font-size:12.5px;color:var(--muted);display:block;line-height:1.2}
+.field .v{font-size:18px;font-weight:600;line-height:1.35}
+.field .tag{display:flex;align-items:center;gap:6px;font-size:14px;font-weight:500;color:var(--ink)}
+.amountblock{padding:16px 20px 0}
+.amountblock .top{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
+.amountblock .top .small{font-size:13px}
+.caret{width:3px;height:56px;background:var(--owed);margin-left:4px;align-self:center;border-radius:1px}
+.sentence{padding:16px 20px 0;font-size:17px;line-height:1.9}
+.pick{display:inline-flex;align-items:center;gap:2px;font-weight:600;border-bottom:2px solid var(--ink);line-height:1.25;padding:0 1px}
+.pick .ms{font-size:20px}
+.chips.scrolling{overflow:hidden;margin-top:8px;padding-right:0}
+.who{display:flex;justify-content:space-between;align-items:baseline;padding:16px 20px 4px}
+.who .lede{font-size:15px}
+.mem{display:flex;align-items:center;gap:14px;padding:0 20px;height:46px}
+.mem .box{width:20px;height:20px;border-radius:3px;box-shadow:inset 0 0 0 2px var(--ink);display:grid;place-items:center;flex:none}
+.mem .box.on{background:var(--board);box-shadow:none;color:var(--on-board)}
+.mem .box .ms{font-size:18px;font-variation-settings:"FILL" 0,"wght" 600,"GRAD" 0,"opsz" 20}
+.mem .name{flex:1;font-size:16px;font-weight:500}
+.mem .share{font-family:var(--font-plate);font-size:24px;font-weight:500;padding-top:4px;font-variant-numeric:tabular-nums}
+.mem.off .name,.mem.off .share{color:var(--muted)}
+.mem.off .share{font-family:var(--font-text);font-size:14px;padding:0}
+.footer{position:absolute;left:0;right:0;bottom:0;padding:12px 20px 16px;background:var(--ground);border-top:1px solid var(--line)}
+.footer .chips{padding:0;margin-bottom:12px}
+
+/* Settle up */
+.party{display:flex;align-items:center;gap:10px;margin-top:14px;font-size:15px;font-weight:500}
+.party .ms{color:var(--muted)}
+.label{font-size:14px;font-weight:600;padding:20px 20px 8px}
+.note{margin:12px 20px 0;font-size:14px;line-height:1.4;color:var(--ink);display:flex;gap:10px}
+.note .ms{color:var(--muted);font-size:20px;margin-top:1px}
+.ba{margin:0 20px;border-top:1.5px solid var(--ink)}
+.ba .r{display:grid;grid-template-columns:1fr auto 20px auto;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--line)}
+.ba .r .k{font-size:15px;font-weight:600;line-height:1.2}
+.ba .r .k span{display:block;font-size:12.5px;font-weight:400;color:var(--muted)}
+.ba .v{text-align:right}
+.ba .v .w{font-size:12px;font-weight:600;display:block;line-height:1.1}
+.ba .v .n{font-family:var(--font-plate);font-size:22px;font-weight:500;line-height:1;display:block;padding-top:4px}
+.ba .v.before{opacity:1}
+.ba .arrow{color:var(--muted);font-size:18px;text-align:center}
+.ba .head{display:grid;grid-template-columns:1fr auto 20px auto;gap:8px;font-size:12.5px;color:var(--muted);padding:8px 0 0}
+
+/* Sync */
+.visible{margin:16px 20px 0;background:var(--surface2);border-radius:var(--r-field);padding:14px 16px 16px}
+.visible .head{display:flex;align-items:center;justify-content:space-between}
+.visible .head .lede{font-size:16px}
+.switch{width:52px;height:32px;border-radius:16px;background:var(--board);position:relative;flex:none}
+.switch::after{content:"";position:absolute;right:4px;top:4px;width:24px;height:24px;border-radius:50%;background:var(--on-board)}
+.qrwrap{display:flex;gap:16px;margin-top:14px;align-items:center}
+.qr{width:132px;height:132px;flex:none;display:block;border-radius:4px}
+.qrtext{font-size:14px;line-height:1.45}
+.addr{font-family:var(--font-plate);font-size:24px;font-weight:500;line-height:1;display:block;margin:6px 0 6px;letter-spacing:.3px}
+.timer{display:inline-flex;align-items:center;gap:4px;font-size:13px;color:var(--muted)}
+.timer .ms{font-size:16px}
+.scanrow{padding:12px 20px 0}
+.peer .ms.lead{color:var(--ink)}
+.safe{display:flex;gap:10px;margin:8px 20px 0;padding-top:12px;border-top:1px solid var(--line);font-size:13px;color:var(--muted);line-height:1.4}
+.safe .ms{font-size:18px;color:var(--ink)}
+.searching{font-family:var(--font-text);font-size:13px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:6px}
+.dotpulse{width:8px;height:8px;border-radius:50%;background:var(--owed)}
+@media (prefers-reduced-motion:no-preference){
+  .dotpulse{animation:pulse 1.6s ease-out infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 var(--owed)}100%{box-shadow:0 0 0 8px transparent}}
+}
+</style>
+</head>
+<body>
+
+<!-- ============ 1. HOME LIGHT ============ -->
+<section class="phone light" id="screen-1" aria-label="Home, light">
+  <div class="status"><span>9:41</span><span class="ic"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_full</span></span></div>
+  <div class="scroll">
+    <div class="bar"><h1>Settle Up</h1><button class="ibtn" aria-label="Search"><span class="ms">search</span></button><button class="ibtn" aria-label="Settings"><span class="ms">settings</span></button></div>
+    <div class="hero">
+      <p class="lede owedc">You’re owed overall</p>
+      <div class="plates xl" aria-label="plus 4,250 rupees"><span class="sgn owedc">+</span><span class="cur">₹</span><b>4</b><span class="sep">,</span><b>2</b><b>5</b><b>0</b></div>
+      <p class="score">Flat 4B owes you <strong class="owedc">+₹5,090</strong><br>You owe <strong class="owec">−₹840</strong> in Goa trip</p>
+    </div>
+    <div class="syncstrip"><span class="ms">sync_alt</span><div class="main"><b>3 changes to share</b><br><span class="small">Last synced with Priya, yesterday</span></div><button class="btn s solid">Sync now</button></div>
+
+    <div class="h2">Groups <a>New group</a></div>
+    <div class="row"><div class="main"><div class="t">Goa trip</div><div class="s">6 people</div></div><div class="amt owec"><span class="w">you owe</span><span class="n">−₹840</span></div></div>
+    <div class="rule"></div>
+    <div class="row"><div class="main"><div class="t">Flat 4B</div><div class="s">3 people</div></div><div class="amt owedc"><span class="w">you’re owed</span><span class="n">+₹5,090</span></div></div>
+    <div class="rule"></div>
+    <div class="row"><div class="main"><div class="t">Cabin weekend</div><div class="s">4 people</div></div><div class="amt setc"><span class="w">settled up</span><span class="n">₹0</span></div></div>
+
+    <div class="h2">People</div>
+    <div class="row"><div class="av">PS</div><div class="main"><div class="t">Priya Sharma</div><div class="s">Goa trip, Flat 4B</div></div><div class="amt owedc"><span class="w">owes you</span><span class="n">+₹1,200</span></div></div>
+    <div class="rule" style="margin-left:74px"></div>
+    <div class="row"><div class="av">RK</div><div class="main"><div class="t">Ravi Kumar</div><div class="s">Goa trip</div></div><div class="amt owec"><span class="w">you owe</span><span class="n">−₹960</span></div></div>
+    <button class="fab"><span class="ms">add</span>Add expense</button>
+  </div>
+  <nav class="nav"><div class="on"><span class="pill"><span class="ms fill">home</span></span>Home</div><div><span class="pill"><span class="ms">receipt_long</span></span>Activity</div><div><span class="pill"><span class="ms">sync_alt</span></span><span class="badge">3</span>Sync</div></nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- ============ 2. GROUP DETAIL ============ -->
+<section class="phone light" id="screen-2" aria-label="Group detail, Goa trip">
+  <div class="status"><span>9:41</span><span class="ic"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_full</span></span></div>
+  <div class="scroll">
+    <div class="bar back"><button class="ibtn" aria-label="Back"><span class="ms">arrow_back</span></button><div class="title"><h1>Goa trip</h1><p class="sub">6 people, 11 expenses</p></div><button class="ibtn" aria-label="Invite"><span class="ms">person_add</span></button><button class="ibtn" aria-label="More"><span class="ms">more_vert</span></button></div>
+    <div class="hero">
+      <p class="lede owec">In this trip you owe</p>
+      <div class="plates lg" aria-label="minus 840 rupees"><span class="sgn owec">−</span><span class="cur">₹</span><b>8</b><b>4</b><b>0</b></div>
+      <p class="split">Debts are simplified: you pay <strong>Priya ₹840</strong> and you’re square with everyone.</p>
+      <div class="actions"><button class="btn solid">Settle up</button><button class="btn line">Who owes whom</button></div>
+    </div>
+    <div class="tabs"><div class="on">Expenses</div><div>Balances</div></div>
+    <div class="day">Sat 7 Nov</div>
+    <div class="row"><span class="ms cat">restaurant</span><div class="main"><div class="t">Dinner at Britto’s</div><div class="s">You paid ₹6,000</div></div><div class="amt owedc"><span class="w">you lent</span><span class="n">+₹5,000</span></div></div>
+    <div class="rule" style="margin-left:58px"></div>
+    <div class="row"><span class="ms cat">two_wheeler</span><div class="main"><div class="t">Scooter rental</div><div class="s">Priya paid ₹2,400</div></div><div class="amt owec"><span class="w">you borrowed</span><span class="n">−₹600</span></div></div>
+    <div class="day">Fri 6 Nov</div>
+    <div class="row"><span class="ms cat">hotel</span><div class="main"><div class="t">Hotel deposit</div><div class="s">Ravi paid ₹30,000</div></div><div class="amt owec"><span class="w">you borrowed</span><span class="n">−₹5,000</span></div></div>
+    <div class="rule" style="margin-left:58px"></div>
+    <div class="row pay"><span class="ms cat">payments</span><div class="main"><div class="t">Ravi paid you ₹2,000</div><div class="s">Cash payment</div></div><div class="amt setc"><span class="w">received</span><span class="n">₹2,000</span></div></div>
+    <button class="fab"><span class="ms">add</span>Add expense</button>
+  </div>
+  <nav class="nav"><div class="on"><span class="pill"><span class="ms fill">home</span></span>Home</div><div><span class="pill"><span class="ms">receipt_long</span></span>Activity</div><div><span class="pill"><span class="ms">sync_alt</span></span><span class="badge">3</span>Sync</div></nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- ============ 3. ADD EXPENSE ============ -->
+<section class="phone light" id="screen-3" aria-label="Add expense">
+  <div class="status"><span>9:41</span><span class="ic"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_full</span></span></div>
+  <div class="scroll">
+    <div class="bar back"><button class="ibtn" aria-label="Close"><span class="ms">close</span></button><div class="title"><h1>Add expense</h1><p class="sub">In Goa trip</p></div></div>
+    <div class="field"><div class="main"><label>What was it for?</label><div class="v">Scooter rental</div></div><span class="tag"><span class="ms sm">two_wheeler</span>Transport</span></div>
+    <div class="amountblock">
+      <div class="top"><span class="small">How much</span><button class="chip">INR ₹<span class="ms sm">expand_more</span></button></div>
+      <div class="plates lg" aria-label="2,400 rupees"><span class="cur">₹</span><b>2</b><span class="sep">,</span><b>4</b><b>0</b><b>0</b><span class="caret"></span></div>
+    </div>
+    <p class="sentence">Paid by <span class="pick">Priya<span class="ms">arrow_drop_down</span></span></p>
+    <p class="label" style="padding:14px 20px 0">Split</p>
+    <div class="chips scrolling"><span class="chip on">Equally</span><span class="chip">Exact amounts</span><span class="chip">Percent</span><span class="chip">Shares</span><span class="chip">Adjust</span></div>
+    <div class="who"><span class="lede">4 of 6 people</span><span class="small"><strong style="color:var(--ink)">₹600</strong> each</span></div>
+    <div class="mem"><span class="box on"><span class="ms">check</span></span><span class="name">You</span><span class="share">₹600</span></div>
+    <div class="mem"><span class="box on"><span class="ms">check</span></span><span class="name">Priya</span><span class="share">₹600</span></div>
+    <div class="mem"><span class="box on"><span class="ms">check</span></span><span class="name">Ravi</span><span class="share">₹600</span></div>
+    <div class="mem"><span class="box on"><span class="ms">check</span></span><span class="name">Arjun</span><span class="share">₹600</span></div>
+    <div class="mem off"><span class="box"></span><span class="name">Meera</span><span class="share">not in this</span></div>
+    <div class="mem off"><span class="box"></span><span class="name">Kabir</span><span class="share">not in this</span></div>
+    <div class="footer">
+      <div class="chips"><span class="chip"><span class="ms sm">event</span>Today, 9 Nov</span><span class="chip"><span class="ms sm">notes</span>Add note</span></div>
+      <button class="btn solid big">Save expense</button>
+    </div>
+  </div>
+  <div class="gesture" style="background:var(--ground)"><i></i></div>
+</section>
+
+<!-- ============ 4. SETTLE UP ============ -->
+<section class="phone light" id="screen-4" aria-label="Settle up">
+  <div class="status"><span>9:41</span><span class="ic"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_full</span></span></div>
+  <div class="scroll">
+    <div class="bar back"><button class="ibtn" aria-label="Back"><span class="ms">arrow_back</span></button><div class="title"><h1>Settle up</h1><p class="sub">Goa trip</p></div></div>
+    <div class="hero">
+      <p class="lede owec">You pay Priya</p>
+      <div class="plates xl" aria-label="minus 840 rupees"><span class="sgn owec">−</span><span class="cur">₹</span><b>8</b><b>4</b><b>0</b></div>
+      <p class="party">From you to Priya Sharma <button class="btn tonal s" style="margin-left:auto"><span class="ms sm">swap_horiz</span>Priya paid me</button></p>
+    </div>
+    <p class="label">Paid with</p>
+    <div class="chips"><span class="chip on">UPI</span><span class="chip">Cash</span><span class="chip">Bank transfer</span><span class="chip">Other</span></div>
+    <p class="note"><span class="ms">info</span><span>Pay in your UPI app first. This records it here so the group sees it.</span></p>
+    <p class="label">What changes</p>
+    <div class="ba">
+      <div class="r"><div class="k">Goa trip<span>your balance</span></div><div class="v owec"><span class="w">you owe</span><span class="n">−₹840</span></div><span class="ms arrow">arrow_forward</span><div class="v setc"><span class="w">settled up</span><span class="n">₹0</span></div></div>
+      <div class="r"><div class="k">Priya<span>across all groups</span></div><div class="v owedc"><span class="w">owes you</span><span class="n">+₹1,200</span></div><span class="ms arrow">arrow_forward</span><div class="v owedc"><span class="w">owes you</span><span class="n">+₹2,040</span></div></div>
+      <div class="r"><div class="k">Overall</div><div class="v owedc"><span class="w">you’re owed</span><span class="n">+₹4,250</span></div><span class="ms arrow">arrow_forward</span><div class="v owedc"><span class="w">you’re owed</span><span class="n">+₹5,090</span></div></div>
+    </div>
+    <p class="note" style="margin-top:14px"><span class="ms">sync_alt</span><span>Priya sees this the next time your phones sync.</span></p>
+    <div class="footer" style="border-top:0">
+      <div class="chips"><span class="chip"><span class="ms sm">event</span>Today, 9 Nov</span><span class="chip"><span class="ms sm">notes</span>Add note</span></div>
+      <button class="btn solid big">Record ₹840 payment</button>
+    </div>
+  </div>
+  <div class="gesture" style="background:var(--ground)"><i></i></div>
+</section>
+
+<!-- ============ 5. SYNC ============ -->
+<section class="phone light" id="screen-5" aria-label="Sync">
+  <div class="status"><span>9:41</span><span class="ic"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_full</span></span></div>
+  <div class="scroll">
+    <div class="bar"><h1>Sync</h1><button class="ibtn" aria-label="How sync works"><span class="ms">help</span></button></div>
+    <div class="hero" style="display:flex;align-items:center;gap:14px">
+      <div class="plates md" aria-label="3"><b>3</b></div>
+      <div><p class="lede" style="margin:0">changes to share</p><p class="small">Last synced with Priya’s Pixel 8, yesterday 9:40 pm</p></div>
+    </div>
+    <div class="visible">
+      <div class="head"><span class="lede">Make this phone visible</span><span class="switch" role="switch" aria-checked="true"></span></div>
+      <div class="qrwrap"><svg class="qr" viewBox="-2 -2 33 33" role="img" aria-label="QR code to sync with this phone"><rect x="-2" y="-2" width="33" height="33" fill="#fff"/><path d="M0 0h1v1h-1zM1 0h1v1h-1zM2 0h1v1h-1zM3 0h1v1h-1zM4 0h1v1h-1zM5 0h1v1h-1zM6 0h1v1h-1zM8 0h1v1h-1zM10 0h1v1h-1zM11 0h1v1h-1zM13 0h1v1h-1zM14 0h1v1h-1zM15 0h1v1h-1zM16 0h1v1h-1zM22 0h1v1h-1zM23 0h1v1h-1zM24 0h1v1h-1zM25 0h1v1h-1zM26 0h1v1h-1zM27 0h1v1h-1zM28 0h1v1h-1zM0 1h1v1h-1zM6 1h1v1h-1zM8 1h1v1h-1zM9 1h1v1h-1zM11 1h1v1h-1zM12 1h1v1h-1zM14 1h1v1h-1zM17 1h1v1h-1zM18 1h1v1h-1zM20 1h1v1h-1zM22 1h1v1h-1zM28 1h1v1h-1zM0 2h1v1h-1zM2 2h1v1h-1zM3 2h1v1h-1zM4 2h1v1h-1zM6 2h1v1h-1zM9 2h1v1h-1zM10 2h1v1h-1zM15 2h1v1h-1zM17 2h1v1h-1zM20 2h1v1h-1zM22 2h1v1h-1zM24 2h1v1h-1zM25 2h1v1h-1zM26 2h1v1h-1zM28 2h1v1h-1zM0 3h1v1h-1zM2 3h1v1h-1zM3 3h1v1h-1zM4 3h1v1h-1zM6 3h1v1h-1zM9 3h1v1h-1zM10 3h1v1h-1zM12 3h1v1h-1zM13 3h1v1h-1zM14 3h1v1h-1zM16 3h1v1h-1zM17 3h1v1h-1zM18 3h1v1h-1zM19 3h1v1h-1zM22 3h1v1h-1zM24 3h1v1h-1zM25 3h1v1h-1zM26 3h1v1h-1zM28 3h1v1h-1zM0 4h1v1h-1zM2 4h1v1h-1zM3 4h1v1h-1zM4 4h1v1h-1zM6 4h1v1h-1zM8 4h1v1h-1zM11 4h1v1h-1zM12 4h1v1h-1zM16 4h1v1h-1zM17 4h1v1h-1zM18 4h1v1h-1zM19 4h1v1h-1zM20 4h1v1h-1zM22 4h1v1h-1zM24 4h1v1h-1zM25 4h1v1h-1zM26 4h1v1h-1zM28 4h1v1h-1zM0 5h1v1h-1zM6 5h1v1h-1zM9 5h1v1h-1zM11 5h1v1h-1zM12 5h1v1h-1zM14 5h1v1h-1zM17 5h1v1h-1zM19 5h1v1h-1zM22 5h1v1h-1zM28 5h1v1h-1zM0 6h1v1h-1zM1 6h1v1h-1zM2 6h1v1h-1zM3 6h1v1h-1zM4 6h1v1h-1zM5 6h1v1h-1zM6 6h1v1h-1zM8 6h1v1h-1zM10 6h1v1h-1zM12 6h1v1h-1zM14 6h1v1h-1zM16 6h1v1h-1zM18 6h1v1h-1zM20 6h1v1h-1zM22 6h1v1h-1zM23 6h1v1h-1zM24 6h1v1h-1zM25 6h1v1h-1zM26 6h1v1h-1zM27 6h1v1h-1zM28 6h1v1h-1zM9 7h1v1h-1zM11 7h1v1h-1zM12 7h1v1h-1zM13 7h1v1h-1zM14 7h1v1h-1zM15 7h1v1h-1zM20 7h1v1h-1zM0 8h1v1h-1zM1 8h1v1h-1zM2 8h1v1h-1zM3 8h1v1h-1zM6 8h1v1h-1zM10 8h1v1h-1zM19 8h1v1h-1zM27 8h1v1h-1zM0 9h1v1h-1zM2 9h1v1h-1zM4 9h1v1h-1zM7 9h1v1h-1zM8 9h1v1h-1zM9 9h1v1h-1zM11 9h1v1h-1zM12 9h1v1h-1zM13 9h1v1h-1zM14 9h1v1h-1zM18 9h1v1h-1zM22 9h1v1h-1zM25 9h1v1h-1zM26 9h1v1h-1zM27 9h1v1h-1zM28 9h1v1h-1zM0 10h1v1h-1zM1 10h1v1h-1zM6 10h1v1h-1zM11 10h1v1h-1zM12 10h1v1h-1zM13 10h1v1h-1zM16 10h1v1h-1zM17 10h1v1h-1zM22 10h1v1h-1zM23 10h1v1h-1zM24 10h1v1h-1zM27 10h1v1h-1zM0 11h1v1h-1zM1 11h1v1h-1zM2 11h1v1h-1zM5 11h1v1h-1zM7 11h1v1h-1zM10 11h1v1h-1zM11 11h1v1h-1zM12 11h1v1h-1zM14 11h1v1h-1zM17 11h1v1h-1zM0 12h1v1h-1zM1 12h1v1h-1zM6 12h1v1h-1zM8 12h1v1h-1zM11 12h1v1h-1zM14 12h1v1h-1zM16 12h1v1h-1zM17 12h1v1h-1zM18 12h1v1h-1zM21 12h1v1h-1zM25 12h1v1h-1zM27 12h1v1h-1zM28 12h1v1h-1zM1 13h1v1h-1zM2 13h1v1h-1zM3 13h1v1h-1zM9 13h1v1h-1zM11 13h1v1h-1zM12 13h1v1h-1zM13 13h1v1h-1zM15 13h1v1h-1zM16 13h1v1h-1zM17 13h1v1h-1zM18 13h1v1h-1zM22 13h1v1h-1zM24 13h1v1h-1zM25 13h1v1h-1zM26 13h1v1h-1zM28 13h1v1h-1zM4 14h1v1h-1zM5 14h1v1h-1zM6 14h1v1h-1zM7 14h1v1h-1zM8 14h1v1h-1zM9 14h1v1h-1zM11 14h1v1h-1zM12 14h1v1h-1zM13 14h1v1h-1zM15 14h1v1h-1zM16 14h1v1h-1zM17 14h1v1h-1zM20 14h1v1h-1zM21 14h1v1h-1zM23 14h1v1h-1zM24 14h1v1h-1zM4 15h1v1h-1zM7 15h1v1h-1zM10 15h1v1h-1zM11 15h1v1h-1zM12 15h1v1h-1zM15 15h1v1h-1zM21 15h1v1h-1zM22 15h1v1h-1zM24 15h1v1h-1zM25 15h1v1h-1zM26 15h1v1h-1zM27 15h1v1h-1zM4 16h1v1h-1zM6 16h1v1h-1zM7 16h1v1h-1zM8 16h1v1h-1zM9 16h1v1h-1zM11 16h1v1h-1zM14 16h1v1h-1zM15 16h1v1h-1zM16 16h1v1h-1zM17 16h1v1h-1zM18 16h1v1h-1zM19 16h1v1h-1zM20 16h1v1h-1zM22 16h1v1h-1zM23 16h1v1h-1zM25 16h1v1h-1zM1 17h1v1h-1zM7 17h1v1h-1zM8 17h1v1h-1zM9 17h1v1h-1zM10 17h1v1h-1zM11 17h1v1h-1zM13 17h1v1h-1zM16 17h1v1h-1zM18 17h1v1h-1zM19 17h1v1h-1zM25 17h1v1h-1zM26 17h1v1h-1zM27 17h1v1h-1zM0 18h1v1h-1zM1 18h1v1h-1zM3 18h1v1h-1zM6 18h1v1h-1zM7 18h1v1h-1zM8 18h1v1h-1zM10 18h1v1h-1zM11 18h1v1h-1zM13 18h1v1h-1zM14 18h1v1h-1zM17 18h1v1h-1zM18 18h1v1h-1zM19 18h1v1h-1zM20 18h1v1h-1zM21 18h1v1h-1zM22 18h1v1h-1zM24 18h1v1h-1zM26 18h1v1h-1zM0 19h1v1h-1zM1 19h1v1h-1zM3 19h1v1h-1zM4 19h1v1h-1zM5 19h1v1h-1zM7 19h1v1h-1zM8 19h1v1h-1zM9 19h1v1h-1zM10 19h1v1h-1zM14 19h1v1h-1zM15 19h1v1h-1zM17 19h1v1h-1zM18 19h1v1h-1zM22 19h1v1h-1zM23 19h1v1h-1zM25 19h1v1h-1zM0 20h1v1h-1zM2 20h1v1h-1zM6 20h1v1h-1zM7 20h1v1h-1zM9 20h1v1h-1zM10 20h1v1h-1zM11 20h1v1h-1zM12 20h1v1h-1zM13 20h1v1h-1zM16 20h1v1h-1zM18 20h1v1h-1zM20 20h1v1h-1zM22 20h1v1h-1zM24 20h1v1h-1zM26 20h1v1h-1zM27 20h1v1h-1zM9 21h1v1h-1zM10 21h1v1h-1zM11 21h1v1h-1zM12 21h1v1h-1zM13 21h1v1h-1zM15 21h1v1h-1zM16 21h1v1h-1zM18 21h1v1h-1zM22 21h1v1h-1zM26 21h1v1h-1zM27 21h1v1h-1zM28 21h1v1h-1zM0 22h1v1h-1zM1 22h1v1h-1zM2 22h1v1h-1zM3 22h1v1h-1zM4 22h1v1h-1zM5 22h1v1h-1zM6 22h1v1h-1zM9 22h1v1h-1zM10 22h1v1h-1zM11 22h1v1h-1zM12 22h1v1h-1zM18 22h1v1h-1zM19 22h1v1h-1zM20 22h1v1h-1zM21 22h1v1h-1zM22 22h1v1h-1zM23 22h1v1h-1zM24 22h1v1h-1zM25 22h1v1h-1zM27 22h1v1h-1zM28 22h1v1h-1zM0 23h1v1h-1zM6 23h1v1h-1zM9 23h1v1h-1zM12 23h1v1h-1zM14 23h1v1h-1zM18 23h1v1h-1zM21 23h1v1h-1zM24 23h1v1h-1zM26 23h1v1h-1zM0 24h1v1h-1zM2 24h1v1h-1zM3 24h1v1h-1zM4 24h1v1h-1zM6 24h1v1h-1zM15 24h1v1h-1zM17 24h1v1h-1zM23 24h1v1h-1zM24 24h1v1h-1zM27 24h1v1h-1zM0 25h1v1h-1zM2 25h1v1h-1zM3 25h1v1h-1zM4 25h1v1h-1zM6 25h1v1h-1zM8 25h1v1h-1zM11 25h1v1h-1zM12 25h1v1h-1zM13 25h1v1h-1zM15 25h1v1h-1zM16 25h1v1h-1zM17 25h1v1h-1zM18 25h1v1h-1zM19 25h1v1h-1zM22 25h1v1h-1zM27 25h1v1h-1zM28 25h1v1h-1zM0 26h1v1h-1zM2 26h1v1h-1zM3 26h1v1h-1zM4 26h1v1h-1zM6 26h1v1h-1zM11 26h1v1h-1zM12 26h1v1h-1zM15 26h1v1h-1zM16 26h1v1h-1zM22 26h1v1h-1zM23 26h1v1h-1zM25 26h1v1h-1zM26 26h1v1h-1zM0 27h1v1h-1zM6 27h1v1h-1zM8 27h1v1h-1zM11 27h1v1h-1zM12 27h1v1h-1zM15 27h1v1h-1zM19 27h1v1h-1zM20 27h1v1h-1zM21 27h1v1h-1zM22 27h1v1h-1zM23 27h1v1h-1zM26 27h1v1h-1zM27 27h1v1h-1zM28 27h1v1h-1zM0 28h1v1h-1zM1 28h1v1h-1zM2 28h1v1h-1zM3 28h1v1h-1zM4 28h1v1h-1zM5 28h1v1h-1zM6 28h1v1h-1zM8 28h1v1h-1zM12 28h1v1h-1zM13 28h1v1h-1zM16 28h1v1h-1zM18 28h1v1h-1zM23 28h1v1h-1zM26 28h1v1h-1zM28 28h1v1h-1z" fill="#13261E"/></svg>
+        <div class="qrtext">Friends scan this, or join your hotspot and type
+          <span class="addr">192.168.43.1:4180</span>
+          <span class="timer"><span class="ms">timer</span>Visible for 1:48</span></div>
+      </div>
+    </div>
+    <div class="scanrow"><button class="btn line big" style="height:48px"><span class="ms">qr_code_scanner</span>Scan a QR</button></div>
+    <div class="h2" style="padding-top:18px">Nearby phones <span class="searching"><span class="dotpulse"></span>Looking</span></div>
+    <div class="row peer"><span class="ms lead">wifi</span><div class="main"><div class="t">Priya’s Pixel 8</div><div class="s">Wi-Fi, shares Goa trip</div></div><button class="btn s solid">Sync</button></div>
+    <div class="rule" style="margin-left:58px"></div>
+    <div class="row peer"><span class="ms lead">bluetooth</span><div class="main"><div class="t">Ravi’s iPhone</div><div class="s">Bluetooth, shares Goa trip</div></div><button class="btn s solid">Sync</button></div>
+    <div class="rule" style="margin-left:58px"></div>
+    <div class="row peer"><span class="ms lead">bluetooth</span><div class="main"><div class="t">Unknown phone</div><div class="s">Bluetooth, no shared groups</div></div><button class="btn s line">Pair</button></div>
+    <p class="safe"><span class="ms">lock</span><span>Only phones in your groups get your expenses, and every sync is encrypted.</span></p>
+  </div>
+  <nav class="nav"><div><span class="pill"><span class="ms">home</span></span>Home</div><div><span class="pill"><span class="ms">receipt_long</span></span>Activity</div><div class="on"><span class="pill"><span class="ms">sync_alt</span></span><span class="badge">3</span>Sync</div></nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+<!-- ============ 6. HOME DARK ============ -->
+<section class="phone dark" id="screen-6" aria-label="Home, dark">
+  <div class="status"><span>9:41</span><span class="ic"><span class="ms fill">signal_cellular_alt</span><span class="ms fill">wifi</span><span class="ms fill">battery_full</span></span></div>
+  <div class="scroll">
+    <div class="bar"><h1>Settle Up</h1><button class="ibtn" aria-label="Search"><span class="ms">search</span></button><button class="ibtn" aria-label="Settings"><span class="ms">settings</span></button></div>
+    <div class="hero">
+      <p class="lede owedc">You’re owed overall</p>
+      <div class="plates xl" aria-label="plus 4,250 rupees"><span class="sgn owedc">+</span><span class="cur">₹</span><b>4</b><span class="sep">,</span><b>2</b><b>5</b><b>0</b></div>
+      <p class="score">Flat 4B owes you <strong class="owedc">+₹5,090</strong><br>You owe <strong class="owec">−₹840</strong> in Goa trip</p>
+    </div>
+    <div class="syncstrip"><span class="ms">sync_alt</span><div class="main"><b>3 changes to share</b><br><span class="small">Last synced with Priya, yesterday</span></div><button class="btn s solid">Sync now</button></div>
+
+    <div class="h2">Groups <a>New group</a></div>
+    <div class="row"><div class="main"><div class="t">Goa trip</div><div class="s">6 people</div></div><div class="amt owec"><span class="w">you owe</span><span class="n">−₹840</span></div></div>
+    <div class="rule"></div>
+    <div class="row"><div class="main"><div class="t">Flat 4B</div><div class="s">3 people</div></div><div class="amt owedc"><span class="w">you’re owed</span><span class="n">+₹5,090</span></div></div>
+    <div class="rule"></div>
+    <div class="row"><div class="main"><div class="t">Cabin weekend</div><div class="s">4 people</div></div><div class="amt setc"><span class="w">settled up</span><span class="n">₹0</span></div></div>
+
+    <div class="h2">People</div>
+    <div class="row"><div class="av">PS</div><div class="main"><div class="t">Priya Sharma</div><div class="s">Goa trip, Flat 4B</div></div><div class="amt owedc"><span class="w">owes you</span><span class="n">+₹1,200</span></div></div>
+    <div class="rule" style="margin-left:74px"></div>
+    <div class="row"><div class="av">RK</div><div class="main"><div class="t">Ravi Kumar</div><div class="s">Goa trip</div></div><div class="amt owec"><span class="w">you owe</span><span class="n">−₹960</span></div></div>
+    <button class="fab"><span class="ms">add</span>Add expense</button>
+  </div>
+  <nav class="nav"><div class="on"><span class="pill"><span class="ms fill">home</span></span>Home</div><div><span class="pill"><span class="ms">receipt_long</span></span>Activity</div><div><span class="pill"><span class="ms">sync_alt</span></span><span class="badge">3</span>Sync</div></nav>
+  <div class="gesture"><i></i></div>
+</section>
+
+</body>
+</html>

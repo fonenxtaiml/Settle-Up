@@ -1,0 +1,576 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Block Party screens</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Lexend+Mega:wght@500;600;700&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Sharp:opsz,wght,FILL,GRAD@20..48,500,0..1,0&display=block" rel="stylesheet">
+<style>*{box-sizing:border-box;margin:0;padding:0}
+html,body{background:#C9CCD3}
+body{display:flex;flex-direction:column;align-items:flex-start;gap:0}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+ul{list-style:none}
+
+.phone{
+  --bg:#F1F2F5;--surface:#FFFFFF;--surface-2:#E7E9EE;--ink:#15171E;--ink-2:#4A4F5C;--line:#D3D7DF;
+  --primary:#15171E;--on-primary:#FFFFFF;--primary-soft:#E2E4EA;--primary-t:#15171E;
+  --owed:#20C374;--owed-t:#0A7A44;--owe:#FF7A59;--owe-h:#E8603E;--owe-t:#C03A1C;
+  --settled:#D9DCE3;--settled-t:#5B606C;--hero:#15171E;--hero-ink:#FFFFFF;--hero-2:#B9BDC8;
+  --p-you:#15171E;--p-you-ink:#FFFFFF;--p-priya:#E65CC9;--p-ravi:#FFA41B;--p-meera:#4CC2FF;--p-kabir:#B49CFF;--p-arjun:#E8B98A;
+  --r-s:4px;--r:8px;
+  position:relative;width:412px;height:915px;overflow:hidden;background:var(--bg);color:var(--ink);
+  font-family:'Public Sans',sans-serif;font-size:16px;line-height:1.4;font-feature-settings:'tnum' 1;
+  -webkit-font-smoothing:antialiased;
+}
+.phone.dark{
+  --bg:#101218;--surface:#1B1E27;--surface-2:#272B36;--ink:#F2F3F6;--ink-2:#A9AEBB;--line:#353A48;
+  --primary:#F2F3F6;--on-primary:#15171E;--primary-soft:#272B36;--primary-t:#F2F3F6;
+  --owed:#2BD283;--owed-t:#4FE09A;--owe:#FF8A6B;--owe-h:#E86A49;--owe-t:#FF967B;
+  --settled:#3B404D;--settled-t:#A9AEBB;--hero:#1B1E27;--hero-ink:#F2F3F6;--hero-2:#A9AEBB;
+  --p-you:#F2F3F6;--p-you-ink:#15171E;
+}
+
+.ms{font-family:'Material Symbols Sharp';font-weight:500;font-style:normal;font-size:24px;line-height:1;letter-spacing:normal;text-transform:none;display:inline-block;white-space:nowrap;direction:ltr;font-variation-settings:'FILL' 0,'opsz' 24;-webkit-font-feature-settings:'liga';user-select:none}
+.ms.fill{font-variation-settings:'FILL' 1,'opsz' 24}
+.ms.tiny{font-size:18px;vertical-align:-4px;margin-right:4px}
+
+/* system chrome */
+.status{height:36px;padding:0 20px 0 24px;display:flex;align-items:center;justify-content:space-between;font-size:14px;font-weight:600}
+.sicons{display:flex;gap:4px}.sicons .ms{font-size:18px;font-variation-settings:'FILL' 1}
+.gesture{position:absolute;left:0;right:0;bottom:0;height:24px;display:flex;align-items:center;justify-content:center}
+.gesture i{width:108px;height:4px;border-radius:2px;background:var(--ink);opacity:.55}
+.gesture.solo{background:var(--bg)}
+
+/* bars */
+.topbar{height:60px;padding:0 8px 0 16px;display:flex;align-items:center;justify-content:space-between}
+.wordmark{font-family:'Lexend Mega';font-weight:700;font-size:17px;letter-spacing:-.06em}
+.title{font-family:'Lexend Mega';font-weight:700;font-size:26px;letter-spacing:-.07em}
+.actions{display:flex;align-items:center}
+.iconbtn{width:48px;height:48px;display:grid;place-items:center;border-radius:var(--r)}
+.appbar{height:64px;padding:0 4px;display:flex;align-items:center;gap:4px}
+.abt{flex:1;display:flex;flex-direction:column;padding-left:4px}
+.abt h1{font-family:'Lexend Mega';font-weight:700;font-size:20px;letter-spacing:-.07em;line-height:1.2}
+.abt span{font-size:13px;color:var(--ink-2)}
+.pad{padding:0 16px}
+
+/* tiles = people */
+.t{display:inline-grid;place-items:center;flex:none;border-radius:var(--r-s);font-weight:800;color:#15171E;font-size:15px;width:40px;height:40px;letter-spacing:-.02em}
+.t.xxs{width:20px;height:20px;font-size:11px;border-radius:3px}
+.t.xs{width:22px;height:22px;font-size:11px;border-radius:3px}
+.t.sm{width:36px;height:36px;font-size:14px}
+.t.md{width:44px;height:44px;font-size:15px}
+.t.xl{width:76px;height:76px;font-size:30px;border-radius:var(--r)}
+.p-you{background:var(--p-you);color:var(--p-you-ink)}
+.p-priya{background:var(--p-priya)}.p-ravi{background:var(--p-ravi)}.p-meera{background:var(--p-meera)}.p-kabir{background:var(--p-kabir)}.p-arjun{background:var(--p-arjun)}
+.t.more{background:var(--surface-2);color:var(--ink);font-size:10px}
+.t.unknown{background:transparent;border:2px dashed var(--ink-2);color:var(--ink-2)}
+.cluster{width:48px;height:48px;display:grid;grid-template-columns:22px 22px;grid-auto-rows:22px;gap:4px;flex:none}
+
+/* hero */
+.hero{background:var(--hero);color:var(--hero-ink);border-radius:var(--r);padding:16px 18px 14px;margin-top:2px}
+.hero-lbl{font-size:15px;font-weight:600;color:var(--hero-2)}
+.amt-xl{font-family:'Lexend Mega';font-weight:700;font-size:46px;letter-spacing:-.08em;line-height:1.1;margin:2px 0 14px}
+.bar{display:flex;gap:3px;height:12px}
+.bar .seg{border-radius:var(--r-s);display:flex;align-items:center;padding:0 10px;font-size:13px;font-weight:700;color:#15171E;min-width:10px;overflow:hidden;white-space:nowrap}
+.bar.tall{height:26px}
+.seg.owed{background:var(--owed)}
+.seg.owe{background:repeating-linear-gradient(135deg,var(--owe) 0 5px,var(--owe-h) 5px 8px)}
+.seg.settled{background:transparent;border:2px solid var(--settled-t)}
+.legend{display:flex;justify-content:space-between;margin-top:12px;font-size:14px;color:var(--hero-2)}
+.legend b{color:var(--hero-ink);font-weight:700;margin-left:4px}
+.key{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-1px}
+.key.owed{background:var(--owed)}.key.owe{background:repeating-linear-gradient(135deg,var(--owe) 0 3px,var(--owe-h) 3px 5px)}
+
+.unused{margin-top:10px;background:var(--primary-soft);border-radius:var(--r);padding:10px 10px 10px 14px;display:flex;align-items:center;gap:12px}
+.syncstrip .sicon{color:var(--primary-t)}
+.st{flex:1;display:flex;flex-direction:column;line-height:1.3}
+.st b{font-size:15px}.st span{font-size:13px;color:var(--ink-2)}
+
+/* buttons */
+.btn{height:48px;padding:0 20px;border-radius:var(--r);font-weight:700;font-size:16px;display:inline-flex;align-items:center;justify-content:center;gap:8px}
+.btn.sm{height:40px;padding:0 16px;font-size:15px}
+.btn.primary{background:var(--primary);color:var(--on-primary)}
+.btn.ink{background:#15171E;color:#fff}
+.btn.outline{border:2px solid var(--ink);color:var(--ink)}
+.btn.full{width:100%;height:56px;font-size:17px}
+.textbtn{height:48px;padding:0 4px;font-weight:700;color:var(--primary-t);display:flex;align-items:center;gap:2px;font-size:15px}
+.textbtn .ms{font-size:20px}
+
+.sechead{display:flex;align-items:center;justify-content:space-between;margin:10px 0 2px;min-height:44px}
+.sechead.tight{margin:14px 0 8px;min-height:28px}
+.sechead h2,.beforeafter h2{font-size:18px;font-weight:800;letter-spacing:-.01em}
+
+.cards{display:flex;flex-direction:column;gap:6px}
+.card{background:var(--surface);border-radius:var(--r);min-height:62px;padding:7px 14px 7px 12px;display:flex;align-items:center;gap:14px}
+.ct{flex:1;min-width:0;display:flex;flex-direction:column;line-height:1.3}
+.ct b{font-size:16px;font-weight:700}
+.ct span{font-size:14px;color:var(--ink-2)}
+.ct span .ms.tiny{font-size:16px;vertical-align:-3px;margin-right:3px}
+.money{display:flex;flex-direction:column;align-items:flex-end;line-height:1.25;text-align:right}
+.money .dir{font-size:13px;font-weight:600}
+.money .v{font-size:18px;font-weight:800;letter-spacing:-.01em}
+.money.owed{color:var(--owed-t)}.money.owe{color:var(--owe-t)}.money.settled{color:var(--settled-t)}
+.money.settled .ms.tiny{font-size:15px;vertical-align:-3px;margin-right:2px}
+
+.fab{position:absolute;right:16px;bottom:120px;height:56px;padding:0 22px 0 18px;border-radius:var(--r);background:var(--primary);color:var(--on-primary);font-weight:800;font-size:16px;display:flex;align-items:center;gap:8px;box-shadow:0 6px 16px rgba(21,23,30,.22)}
+.dark .fab{box-shadow:0 6px 16px rgba(0,0,0,.5)}
+
+.nav{position:absolute;left:0;right:0;bottom:0;height:104px;padding:10px 0 24px;background:var(--surface);display:flex;border-top:1px solid var(--line)}
+.navi{flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:13px;font-weight:600;color:var(--ink-2)}
+.navi .ind{position:relative;width:64px;height:32px;border-radius:var(--r-s);display:grid;place-items:center}
+.navi.on{color:var(--ink);font-weight:800}
+.navi.on .ind{background:var(--ink);color:var(--surface)}
+.badge{position:absolute;top:-6px;right:6px;min-width:20px;height:20px;padding:0 4px;border-radius:4px;background:var(--ink);color:var(--bg);box-shadow:0 0 0 2px var(--surface);font-size:11px;font-weight:800;display:grid;place-items:center}
+
+/* group detail */
+.members{display:flex;gap:6px;margin:2px 0 12px}
+.position{border-radius:var(--r);padding:16px;color:#15171E}
+.position.owe{background:var(--owe)}
+.pos-top{display:flex;align-items:flex-end;justify-content:space-between}
+.pos-lbl{font-size:15px;font-weight:700}
+.amt-l{font-family:'Lexend Mega';font-weight:700;font-size:34px;letter-spacing:-.08em;line-height:1.15}
+.suggest{margin-top:14px;background:rgba(255,255,255,.55);border-radius:var(--r-s);padding:10px 12px;display:flex;align-items:center;gap:10px;font-size:15px}
+.pair{display:flex;align-items:center;gap:2px}
+.pair .ms.tiny{margin:0}
+.pos-foot{margin-top:10px;font-size:13px;font-weight:600}
+.pos-foot .ms.tiny{font-size:16px}
+.dark .position .btn.ink{background:#15171E}
+.dark .suggest{background:rgba(255,255,255,.45)}
+
+.tabs{display:flex;margin:14px 0 4px;border-bottom:2px solid var(--line)}
+.tab{flex:1;height:48px;font-weight:700;color:var(--ink-2);font-size:15px;margin-bottom:-2px;border-bottom:3px solid transparent}
+.tab.on{color:var(--ink);border-bottom-color:var(--ink)}
+.day{font-size:13px;font-weight:700;color:var(--ink-2);margin:12px 0 6px}
+.rows{display:flex;flex-direction:column;gap:6px}
+.row{background:var(--surface);border-radius:var(--r);padding:10px 14px 10px 12px;min-height:68px;display:flex;align-items:center;gap:14px}
+.row.pay{background:transparent;border:2px dashed var(--line)}
+.pair.big{width:44px;flex-wrap:wrap;gap:0}
+.pair.big .t:last-child{margin:0 0 0 auto}
+.pair.big .t:first-child{margin:0}
+.pair.big{height:44px;display:grid;grid-template-columns:22px 22px;grid-template-rows:22px 22px}
+.pair.big .t:first-child{grid-column:1;grid-row:1}.pair.big .t:last-child{grid-column:2;grid-row:2}
+.paytag{font-size:13px;font-weight:700;color:var(--settled-t)}
+.paytag .ms.tiny{font-size:16px;margin-right:2px}
+
+/* add expense */
+.amountbox{background:var(--surface);border-radius:var(--r);padding:12px 16px 14px;margin-top:4px}
+.flabel{font-size:13px;font-weight:700;color:var(--ink-2);display:block}
+.amtrow{display:flex;align-items:center;gap:4px;margin-top:2px}
+.amt-xxl{font-family:'Lexend Mega';font-weight:700;font-size:52px;letter-spacing:-.09em;line-height:1.1}
+.amt-xxl.center{text-align:center;display:block}
+.caret{width:3px;height:48px;background:var(--primary);margin-left:6px}
+.chip{height:40px;padding:0 12px;border-radius:var(--r-s);border:1.5px solid var(--line);background:var(--surface);display:inline-flex;align-items:center;gap:6px;font-size:14px;font-weight:700;white-space:nowrap}
+.chip .ms.tiny{margin:0}
+.chip.cur{margin-left:auto}
+.chiplbl{font-weight:500;color:var(--ink-2)}
+.field{background:var(--surface);border-radius:var(--r);padding:10px 16px 12px;margin-top:6px;border-bottom:3px solid var(--ink)}
+.fval{font-size:18px;font-weight:600;margin-top:2px}
+.chiprow{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.ok{font-size:14px;font-weight:700;color:var(--owed-t)}
+.ok .ms.tiny{font-size:17px;margin-right:3px}
+.seg-ctl{display:flex;background:var(--surface-2);border-radius:var(--r);padding:4px;gap:4px}
+.seg-ctl button{flex:1;height:40px;border-radius:var(--r-s);font-weight:700;font-size:14px;color:var(--ink-2)}
+.seg-ctl button.on{background:var(--ink);color:var(--bg)}
+.bar.share{height:40px;margin-top:12px}
+.bar.share .seg{justify-content:center;font-size:14px}
+.bar.share .seg.p-you{color:var(--p-you-ink)}
+.hint{font-size:14px;color:var(--ink-2);margin-top:8px}
+.hint b{color:var(--ink)}
+.hint .ms.tiny{font-size:17px}
+.memgrid{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:10px}
+.mem{background:var(--surface);border-radius:var(--r);height:60px;padding:0 8px 0 12px;display:flex;align-items:center;gap:10px}
+.mt{flex:1;display:flex;flex-direction:column;line-height:1.25}
+.mt b{font-size:15px}.mt span{font-size:14px;font-weight:600}
+.mem .cb{color:var(--ink)}
+.mem.off{background:transparent;border:2px dashed var(--line)}
+.mem.off .t{opacity:.35}
+.mem.off .mt span,.mem.off .mt b{color:var(--ink-2);font-weight:500}
+.bottombar{position:absolute;left:0;right:0;bottom:24px;padding:12px 16px;background:var(--bg)}
+
+/* settle */
+.handoff{display:flex;align-items:center;justify-content:center;gap:14px;margin:16px 0 14px}
+.who{display:flex;flex-direction:column;align-items:center;gap:6px;font-weight:700;font-size:14px}
+.flow{display:flex;align-items:center;gap:5px;color:var(--owe-t);margin-bottom:24px}
+.flow i{width:10px;height:10px;border-radius:2px;background:var(--owe)}
+.flow i:nth-child(1){opacity:.35}.flow i:nth-child(2){opacity:.65}
+.paylbl{text-align:center;font-size:17px;font-weight:700}
+.paysub{text-align:center;font-size:14px;color:var(--ink-2);margin:2px 0 16px}
+.seg-ctl.four button{font-size:15px}
+.beforeafter{margin-top:16px;background:var(--surface);border-radius:var(--r);padding:14px 14px 4px}
+.ba{padding:12px 0;border-top:1px solid var(--line)}
+.beforeafter h2{margin-bottom:2px}
+.ba-h{font-size:14px;font-weight:700;margin-bottom:8px}
+.ba-row{display:flex;align-items:flex-start;gap:8px}
+.ba-row .arrow{margin:16px 0 0;color:var(--ink-2)}
+.ba-c{flex:1;display:flex;flex-direction:column;gap:6px}
+.when{font-size:12px;font-weight:700;color:var(--ink-2)}
+.bar.mini{height:14px}
+.bar.mini .seg{padding:0}
+.bv{font-size:14px;font-weight:700;color:var(--settled-t)}
+.bv .ms.tiny{font-size:16px;margin-right:2px}
+.owe-t{color:var(--owe-t)}.owed-t{color:var(--owed-t)}
+
+/* sync */
+.pending{background:var(--hero);color:var(--hero-ink);border-radius:var(--r);padding:14px 16px 12px;display:flex;gap:14px;align-items:center}
+.pending .pend-t{flex:1}
+.pend-n{font-family:'Lexend Mega';font-weight:700;font-size:24px;letter-spacing:-.07em;line-height:1.2}
+.pend-s{font-size:14px;margin-top:4px;color:var(--hero-2)}
+.host{background:var(--surface);border-radius:var(--r);margin-top:8px;padding:12px 14px}
+.host-h{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.host-h div{display:flex;flex-direction:column;line-height:1.3}
+.host-h b{font-size:16px}.host-h span{font-size:14px;color:var(--ink-2)}
+.switch{width:52px;height:32px;border-radius:var(--r-s);background:var(--surface-2);position:relative;flex:none}
+.switch.on{background:var(--ink)}
+.switch i{position:absolute;top:4px;left:4px;width:24px;height:24px;border-radius:3px;background:var(--surface)}
+.switch.on i{left:24px}
+.host-b{display:flex;gap:16px;margin-top:12px;align-items:center}
+.qr{width:116px;height:116px;flex:none;border-radius:var(--r-s);border:2px solid var(--ink)}
+.hostinfo{display:grid;grid-template-columns:auto;row-gap:2px}
+.hostinfo dt{font-size:12px;font-weight:700;color:var(--ink-2)}
+.hostinfo dd{font-size:15px;font-weight:700;margin-bottom:4px}
+.scan{margin-top:8px;height:52px;width:100%}
+.searching{font-size:14px;font-weight:600;color:var(--ink-2);display:flex;align-items:center;gap:6px}
+.searching i{width:8px;height:8px;border-radius:2px;background:var(--primary)}
+.safe{font-size:13px;color:var(--ink-2);margin-top:10px}
+.safe .ms.tiny{font-size:16px}
+
+button:focus-visible,a:focus-visible,[role=switch]:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.syncchip{height:40px;padding:0 12px 0 8px;border-radius:var(--r-s);background:var(--primary-soft);display:flex;align-items:center;gap:6px;font-weight:700;font-size:14px;margin-right:4px}
+.syncchip .ms{font-size:20px}
+.syncchip b{display:inline-grid;place-items:center;min-width:20px;height:20px;border-radius:3px;background:var(--ink);color:var(--bg);font-size:12px}
+.fab.nonav{bottom:40px}
+.pend-n2{font-family:'Lexend Mega';font-weight:700;font-size:44px;letter-spacing:-.08em;line-height:1}
+.pend-t b{font-size:17px;display:block}
+.chiprow.two{flex-wrap:nowrap}
+.chiprow.two .chip{flex:1;justify-content:flex-start}
+.chiprow.two .chip .ms:last-child{margin-left:auto}
+.field{display:flex;align-items:flex-end;gap:8px}
+.field .fcol{flex:1}
+.field .chip{height:36px;background:var(--surface-2);border-color:transparent}
+.morepay{margin-top:4px}
+.sechead.sm{margin:12px 0 4px}
+
+.textbtn .u{text-decoration:underline;text-underline-offset:4px;text-decoration-thickness:2px}
+</style></head>
+<body>
+<div class="phone" id="screen-1">
+<div class="status"><span>9:41</span><span class="sicons"><span class="ms " aria-hidden="true">signal_cellular_alt</span><span class="ms " aria-hidden="true">wifi</span><span class="ms bat" aria-hidden="true">battery_full</span></span></div>
+<header class="topbar">
+  <div class="wordmark">settle up</div>
+  <div class="actions"><button class="syncchip" aria-label="3 changes to share. Open sync"><span class="ms " aria-hidden="true">sync_alt</span><b>3</b>to share</button><button class="iconbtn me" aria-label="Your profile and settings"><span class="t sm p-you " aria-hidden="true">A</span></button></div>
+</header>
+<main class="pad">
+  <section class="hero" aria-label="Overall balance">
+    <div class="hero-lbl">Overall, you're owed</div>
+    <div class="amt-xl">+₹4,250</div>
+    <div class="bar tall" role="img" aria-label="Owed to you ₹5,090, you owe ₹840">
+      <div class="seg owed" style="flex:5090"></div>
+      <div class="seg owe" style="flex:840"></div>
+    </div>
+    <div class="legend">
+      <span><i class="key owed"></i>Owed to you <b>+₹5,090</b></span>
+      <span><i class="key owe"></i>You owe <b>−₹840</b></span>
+    </div>
+  </section>
+
+
+  <div class="sechead"><h2>Groups</h2><button class="textbtn"><span class="ms " aria-hidden="true">add</span><span class="u">New group</span></button></div>
+  <ul class="cards">
+    <li class="card">
+      <span class="cluster"><span class="t xs p-you " aria-hidden="true">A</span><span class="t xs p-priya " aria-hidden="true">P</span><span class="t xs p-ravi " aria-hidden="true">R</span><span class="t xs more">+3</span></span>
+      <div class="ct"><b>Goa trip</b><span>6 people</span></div>
+      <div class="money owe"><span class="dir">you owe</span><span class="v">−₹840</span></div>
+    </li>
+    <li class="card">
+      <span class="cluster"><span class="t xs p-you " aria-hidden="true">A</span><span class="t xs p-kabir " aria-hidden="true">K</span><span class="t xs p-meera " aria-hidden="true">M</span></span>
+      <div class="ct"><b>Flat 4B</b><span>3 people</span></div>
+      <div class="money owed"><span class="dir">you're owed</span><span class="v">+₹5,090</span></div>
+    </li>
+    <li class="card">
+      <span class="cluster"><span class="t xs p-you " aria-hidden="true">A</span><span class="t xs p-ravi " aria-hidden="true">R</span><span class="t xs p-arjun " aria-hidden="true">J</span><span class="t xs p-meera " aria-hidden="true">M</span></span>
+      <div class="ct"><b>Cabin weekend</b><span>4 people</span></div>
+      <div class="money settled"><span class="dir"><span class="ms tiny" aria-hidden="true">check</span>settled up</span><span class="v">₹0</span></div>
+    </li>
+  </ul>
+
+  <div class="sechead"><h2>People</h2><button class="textbtn"><span class="u">See all</span></button></div>
+  <ul class="cards">
+    <li class="card">
+      <span class="t md p-priya " aria-hidden="true">PS</span>
+      <div class="ct"><b>Priya Sharma</b><span>Goa trip, Flat 4B</span></div>
+      <div class="money owed"><span class="dir">owes you</span><span class="v">+₹1,200</span></div>
+    </li>
+    <li class="card">
+      <span class="t md p-ravi " aria-hidden="true">RK</span>
+      <div class="ct"><b>Ravi Kumar</b><span>Goa trip, Cabin weekend</span></div>
+      <div class="money owe"><span class="dir">you owe</span><span class="v">−₹960</span></div>
+    </li>
+  </ul>
+</main>
+<button class="fab"><span class="ms " aria-hidden="true">add</span>Add expense</button>
+<nav class="nav"><a class="navi on"><span class="ind"><span class="ms fill" aria-hidden="true">home</span></span><span>Home</span></a><a class="navi"><span class="ind"><span class="ms " aria-hidden="true">receipt_long</span></span><span>Activity</span></a><a class="navi"><span class="ind"><span class="ms " aria-hidden="true">sync_alt</span><span class="badge" aria-label="3 changes to share">3</span></span><span>Sync</span></a></nav><div class="gesture"><i></i></div>
+</div>
+<div class="phone" id="screen-2">
+<div class="status"><span>9:41</span><span class="sicons"><span class="ms " aria-hidden="true">signal_cellular_alt</span><span class="ms " aria-hidden="true">wifi</span><span class="ms bat" aria-hidden="true">battery_full</span></span></div>
+<header class="appbar">
+  <button class="iconbtn" aria-label="Back"><span class="ms " aria-hidden="true">arrow_back</span></button>
+  <div class="abt"><h1>Goa trip</h1><span>6 people, INR</span></div>
+  <button class="iconbtn" aria-label="Invite people"><span class="ms " aria-hidden="true">person_add</span></button>
+  <button class="iconbtn" aria-label="More options"><span class="ms " aria-hidden="true">more_vert</span></button>
+</header>
+<main class="pad">
+  <div class="members" aria-label="Members">
+    <span class="t sm p-you " aria-hidden="true">A</span><span class="t sm p-priya " aria-hidden="true">P</span><span class="t sm p-ravi " aria-hidden="true">R</span><span class="t sm p-meera " aria-hidden="true">M</span><span class="t sm p-kabir " aria-hidden="true">K</span><span class="t sm p-arjun " aria-hidden="true">J</span>
+  </div>
+  <section class="position owe">
+    <div class="pos-top">
+      <div><div class="pos-lbl">You owe in this trip</div><div class="amt-l">−₹840</div></div>
+      <button class="btn ink">Settle up</button>
+    </div>
+    <div class="suggest">
+      <span class="pair"><span class="t xs p-you " aria-hidden="true">A</span><span class="ms tiny" aria-hidden="true">arrow_forward</span><span class="t xs p-priya " aria-hidden="true">P</span></span>
+      <span>Pay Priya <b>₹840</b> to be settled up</span>
+    </div>
+    <div class="pos-foot"><span class="ms tiny" aria-hidden="true">call_merge</span>Simplify debts is on: 4 payments settle everyone</div>
+  </section>
+
+  <div class="tabs" role="tablist">
+    <button class="tab on" role="tab" aria-selected="true">Expenses</button>
+    <button class="tab" role="tab" aria-selected="false">Balances</button>
+  </div>
+
+  <div class="day">Today</div>
+  <ul class="rows">
+    <li class="row">
+      <span class="t md p-priya " aria-hidden="true">P</span>
+      <div class="ct"><b>Scooter rental</b><span>Priya paid ₹2,400</span></div>
+      <div class="money owe"><span class="dir">you owe</span><span class="v">−₹600</span></div>
+    </li>
+  </ul>
+  <div class="day">Tue, 7 Nov</div>
+  <ul class="rows">
+    <li class="row">
+      <span class="t md p-you " aria-hidden="true">A</span>
+      <div class="ct"><b>Dinner at Britto's</b><span>You paid ₹6,000</span></div>
+      <div class="money owed"><span class="dir">you lent</span><span class="v">+₹5,000</span></div>
+    </li>
+    <li class="row pay">
+      <span class="pair big"><span class="t xs p-ravi " aria-hidden="true">R</span><span class="t xs p-you " aria-hidden="true">A</span></span>
+      <div class="ct"><b>Ravi paid you ₹2,000</b><span>via UPI</span></div>
+      <span class="paytag"><span class="ms tiny" aria-hidden="true">payments</span>payment</span>
+    </li>
+  </ul>
+  <div class="day">Mon, 6 Nov</div>
+  <ul class="rows">
+    <li class="row">
+      <span class="t md p-ravi " aria-hidden="true">R</span>
+      <div class="ct"><b>Hotel deposit</b><span>Ravi paid ₹30,000</span></div>
+      <div class="money owe"><span class="dir">you owe</span><span class="v">−₹5,000</span></div>
+    </li>
+  </ul>
+</main>
+<button class="fab nonav"><span class="ms " aria-hidden="true">add</span>Add expense</button>
+<div class="gesture solo"><i></i></div>
+</div>
+<div class="phone" id="screen-3">
+<div class="status"><span>9:41</span><span class="sicons"><span class="ms " aria-hidden="true">signal_cellular_alt</span><span class="ms " aria-hidden="true">wifi</span><span class="ms bat" aria-hidden="true">battery_full</span></span></div>
+<header class="appbar">
+  <button class="iconbtn" aria-label="Close"><span class="ms " aria-hidden="true">close</span></button>
+  <div class="abt"><h1>Add expense</h1><span>in Goa trip</span></div>
+</header>
+<main class="pad">
+  <section class="amountbox">
+    <label class="flabel">Amount</label>
+    <div class="amtrow"><span class="amt-xxl">₹2,400</span><span class="caret"></span><button class="chip cur">INR<span class="ms tiny" aria-hidden="true">expand_more</span></button></div>
+  </section>
+  <section class="field">
+    <div class="fcol"><label class="flabel">Description</label>
+    <div class="fval">Scooter rental</div></div>
+    <button class="chip" aria-label="Category: Transport, suggested"><span class="ms tiny" aria-hidden="true">two_wheeler</span>Transport</button>
+  </section>
+  <div class="chiprow two">
+    <button class="chip"><span class="chiplbl">Paid by</span><span class="t xxs p-priya " aria-hidden="true">P</span>Priya<span class="ms tiny" aria-hidden="true">expand_more</span></button>
+    <button class="chip"><span class="ms tiny" aria-hidden="true">calendar_today</span>Today, 9 Nov<span class="ms tiny" aria-hidden="true">expand_more</span></button>
+  </div>
+
+  <div class="sechead tight"><h2>Split</h2><span class="ok"><span class="ms tiny fill" aria-hidden="true">check_circle</span>Adds up to ₹2,400</span></div>
+  <div class="seg-ctl" role="radiogroup" aria-label="Split method">
+    <button class="on" role="radio" aria-checked="true">Equally</button><button role="radio">Exact</button><button role="radio">Percent</button><button role="radio">Shares</button><button role="radio">Adjust</button>
+  </div>
+  <div class="bar share" role="img" aria-label="Four equal shares of ₹600">
+    <div class="seg p-you" style="flex:1"><span>₹600</span></div>
+    <div class="seg p-priya" style="flex:1"><span>₹600</span></div>
+    <div class="seg p-ravi" style="flex:1"><span>₹600</span></div>
+    <div class="seg p-meera" style="flex:1"><span>₹600</span></div>
+  </div>
+  <p class="hint"><b>₹600 each</b> for 4 of 6 people. Priya paid, so the other 3 owe her ₹600.</p>
+  <ul class="memgrid"><li class="mem" aria-checked="true" role="checkbox">
+      <span class="t sm p-you " aria-hidden="true">A</span><div class="mt"><b>You</b><span>₹600</span></div><span class="ms cb fill" aria-hidden="true">check_box</span>
+    </li><li class="mem" aria-checked="true" role="checkbox">
+      <span class="t sm p-priya " aria-hidden="true">P</span><div class="mt"><b>Priya</b><span>₹600</span></div><span class="ms cb fill" aria-hidden="true">check_box</span>
+    </li><li class="mem" aria-checked="true" role="checkbox">
+      <span class="t sm p-ravi " aria-hidden="true">R</span><div class="mt"><b>Ravi</b><span>₹600</span></div><span class="ms cb fill" aria-hidden="true">check_box</span>
+    </li><li class="mem" aria-checked="true" role="checkbox">
+      <span class="t sm p-meera " aria-hidden="true">M</span><div class="mt"><b>Meera</b><span>₹600</span></div><span class="ms cb fill" aria-hidden="true">check_box</span>
+    </li><li class="mem off" aria-checked="false" role="checkbox">
+      <span class="t sm p-kabir " aria-hidden="true">K</span><div class="mt"><b>Kabir</b><span>Not in this</span></div><span class="ms cb" aria-hidden="true">check_box_outline_blank</span>
+    </li><li class="mem off" aria-checked="false" role="checkbox">
+      <span class="t sm p-arjun " aria-hidden="true">J</span><div class="mt"><b>Arjun</b><span>Not in this</span></div><span class="ms cb" aria-hidden="true">check_box_outline_blank</span>
+    </li></ul>
+  <button class="textbtn morepay"><span class="ms " aria-hidden="true">group_add</span><span class="u">More than one person paid</span></button>
+</main>
+<div class="bottombar"><button class="btn primary full">Save expense</button></div>
+<div class="gesture solo"><i></i></div>
+</div>
+<div class="phone" id="screen-4">
+<div class="status"><span>9:41</span><span class="sicons"><span class="ms " aria-hidden="true">signal_cellular_alt</span><span class="ms " aria-hidden="true">wifi</span><span class="ms bat" aria-hidden="true">battery_full</span></span></div>
+<header class="appbar">
+  <button class="iconbtn" aria-label="Back"><span class="ms " aria-hidden="true">arrow_back</span></button>
+  <div class="abt"><h1>Settle up</h1><span>in Goa trip</span></div>
+</header>
+<main class="pad">
+  <section class="handoff">
+    <div class="who"><span class="t xl p-you " aria-hidden="true">A</span><span>You</span></div>
+    <div class="flow" aria-hidden="true"><i></i><i></i><i></i><span class="ms " aria-hidden="true">arrow_forward</span></div>
+    <div class="who"><span class="t xl p-priya " aria-hidden="true">P</span><span>Priya</span></div>
+  </section>
+  <div class="paylbl">You pay Priya</div>
+  <div class="amt-xxl center">₹840</div>
+  <div class="paysub">The full amount you owe her in Goa trip. Tap to change.</div>
+
+  <div class="seg-ctl four" role="radiogroup" aria-label="How you paid">
+    <button class="on" role="radio" aria-checked="true">UPI</button><button role="radio">Cash</button><button role="radio">Bank</button><button role="radio">Other</button>
+  </div>
+  <p class="hint"><span class="ms tiny" aria-hidden="true">info</span>Pay in your UPI app first. This records it for the group, it doesn't move money.</p>
+
+  <section class="beforeafter">
+    <h2>What changes</h2>
+    <div class="ba">
+      <div class="ba-h">You and Priya, Goa trip</div>
+      <div class="ba-row">
+        <div class="ba-c"><span class="when">Now</span><div class="bar mini"><div class="seg owe" style="flex:1"></div></div><span class="bv owe-t">you owe −₹840</span></div>
+        <span class="ms tiny arrow" aria-hidden="true">arrow_forward</span>
+        <div class="ba-c"><span class="when">After</span><div class="bar mini"><div class="seg settled" style="flex:1"></div></div><span class="bv"><span class="ms tiny" aria-hidden="true">check</span>settled up ₹0</span></div>
+      </div>
+    </div>
+    <div class="ba">
+      <div class="ba-h">Your overall balance</div>
+      <div class="ba-row">
+        <div class="ba-c"><span class="when">Now</span><div class="bar mini"><div class="seg owed" style="flex:5090"></div><div class="seg owe" style="flex:840"></div></div><span class="bv owed-t">you're owed +₹4,250</span></div>
+        <span class="ms tiny arrow" aria-hidden="true">arrow_forward</span>
+        <div class="ba-c"><span class="when">After</span><div class="bar mini"><div class="seg owed" style="flex:1"></div></div><span class="bv owed-t">you're owed +₹5,090</span></div>
+      </div>
+    </div>
+  </section>
+</main>
+<div class="bottombar"><button class="btn primary full">Record ₹840 payment</button></div>
+<div class="gesture solo"><i></i></div>
+</div>
+<div class="phone" id="screen-5">
+<div class="status"><span>9:41</span><span class="sicons"><span class="ms " aria-hidden="true">signal_cellular_alt</span><span class="ms " aria-hidden="true">wifi</span><span class="ms bat" aria-hidden="true">battery_full</span></span></div>
+<header class="topbar">
+  <h1 class="title">Sync</h1>
+  <div class="actions"><button class="iconbtn" aria-label="How sync works"><span class="ms " aria-hidden="true">help</span></button></div>
+</header>
+<main class="pad">
+  <section class="pending">
+    <div class="pend-n2">3</div>
+    <div class="pend-t"><b>changes to share</b><div class="pend-s">2 in Goa trip, 1 in Flat 4B. Last synced with Priya's Pixel 8 yesterday, 9:40 pm.</div></div>
+  </section>
+
+  <section class="host">
+    <div class="host-h">
+      <div><b>Make this phone visible</b><span>Friends join your hotspot and scan this</span></div>
+      <span class="switch on" role="switch" aria-checked="true" aria-label="Make this phone visible"><i></i></span>
+    </div>
+    <div class="host-b">
+      <svg class="qr" viewBox="-10 -10 145 145" aria-label="QR code to connect to this phone"><rect x="-10" y="-10" width="145" height="145" fill="#fff"/><g fill="#15171E"><rect x="0" y="0" width="5" height="5"/><rect x="5" y="0" width="5" height="5"/><rect x="10" y="0" width="5" height="5"/><rect x="15" y="0" width="5" height="5"/><rect x="20" y="0" width="5" height="5"/><rect x="25" y="0" width="5" height="5"/><rect x="30" y="0" width="5" height="5"/><rect x="40" y="0" width="5" height="5"/><rect x="45" y="0" width="5" height="5"/><rect x="50" y="0" width="5" height="5"/><rect x="60" y="0" width="5" height="5"/><rect x="65" y="0" width="5" height="5"/><rect x="80" y="0" width="5" height="5"/><rect x="90" y="0" width="5" height="5"/><rect x="95" y="0" width="5" height="5"/><rect x="100" y="0" width="5" height="5"/><rect x="105" y="0" width="5" height="5"/><rect x="110" y="0" width="5" height="5"/><rect x="115" y="0" width="5" height="5"/><rect x="120" y="0" width="5" height="5"/><rect x="0" y="5" width="5" height="5"/><rect x="30" y="5" width="5" height="5"/><rect x="45" y="5" width="5" height="5"/><rect x="80" y="5" width="5" height="5"/><rect x="90" y="5" width="5" height="5"/><rect x="120" y="5" width="5" height="5"/><rect x="0" y="10" width="5" height="5"/><rect x="10" y="10" width="5" height="5"/><rect x="15" y="10" width="5" height="5"/><rect x="20" y="10" width="5" height="5"/><rect x="30" y="10" width="5" height="5"/><rect x="40" y="10" width="5" height="5"/><rect x="45" y="10" width="5" height="5"/><rect x="80" y="10" width="5" height="5"/><rect x="90" y="10" width="5" height="5"/><rect x="100" y="10" width="5" height="5"/><rect x="105" y="10" width="5" height="5"/><rect x="110" y="10" width="5" height="5"/><rect x="120" y="10" width="5" height="5"/><rect x="0" y="15" width="5" height="5"/><rect x="10" y="15" width="5" height="5"/><rect x="15" y="15" width="5" height="5"/><rect x="20" y="15" width="5" height="5"/><rect x="30" y="15" width="5" height="5"/><rect x="45" y="15" width="5" height="5"/><rect x="50" y="15" width="5" height="5"/><rect x="65" y="15" width="5" height="5"/><rect x="70" y="15" width="5" height="5"/><rect x="75" y="15" width="5" height="5"/><rect x="90" y="15" width="5" height="5"/><rect x="100" y="15" width="5" height="5"/><rect x="105" y="15" width="5" height="5"/><rect x="110" y="15" width="5" height="5"/><rect x="120" y="15" width="5" height="5"/><rect x="0" y="20" width="5" height="5"/><rect x="10" y="20" width="5" height="5"/><rect x="15" y="20" width="5" height="5"/><rect x="20" y="20" width="5" height="5"/><rect x="30" y="20" width="5" height="5"/><rect x="40" y="20" width="5" height="5"/><rect x="55" y="20" width="5" height="5"/><rect x="65" y="20" width="5" height="5"/><rect x="80" y="20" width="5" height="5"/><rect x="90" y="20" width="5" height="5"/><rect x="100" y="20" width="5" height="5"/><rect x="105" y="20" width="5" height="5"/><rect x="110" y="20" width="5" height="5"/><rect x="120" y="20" width="5" height="5"/><rect x="0" y="25" width="5" height="5"/><rect x="30" y="25" width="5" height="5"/><rect x="45" y="25" width="5" height="5"/><rect x="55" y="25" width="5" height="5"/><rect x="70" y="25" width="5" height="5"/><rect x="75" y="25" width="5" height="5"/><rect x="90" y="25" width="5" height="5"/><rect x="120" y="25" width="5" height="5"/><rect x="0" y="30" width="5" height="5"/><rect x="5" y="30" width="5" height="5"/><rect x="10" y="30" width="5" height="5"/><rect x="15" y="30" width="5" height="5"/><rect x="20" y="30" width="5" height="5"/><rect x="25" y="30" width="5" height="5"/><rect x="30" y="30" width="5" height="5"/><rect x="40" y="30" width="5" height="5"/><rect x="45" y="30" width="5" height="5"/><rect x="50" y="30" width="5" height="5"/><rect x="60" y="30" width="5" height="5"/><rect x="75" y="30" width="5" height="5"/><rect x="80" y="30" width="5" height="5"/><rect x="90" y="30" width="5" height="5"/><rect x="95" y="30" width="5" height="5"/><rect x="100" y="30" width="5" height="5"/><rect x="105" y="30" width="5" height="5"/><rect x="110" y="30" width="5" height="5"/><rect x="115" y="30" width="5" height="5"/><rect x="120" y="30" width="5" height="5"/><rect x="40" y="35" width="5" height="5"/><rect x="45" y="35" width="5" height="5"/><rect x="50" y="35" width="5" height="5"/><rect x="60" y="35" width="5" height="5"/><rect x="65" y="35" width="5" height="5"/><rect x="70" y="35" width="5" height="5"/><rect x="75" y="35" width="5" height="5"/><rect x="80" y="35" width="5" height="5"/><rect x="15" y="40" width="5" height="5"/><rect x="25" y="40" width="5" height="5"/><rect x="30" y="40" width="5" height="5"/><rect x="35" y="40" width="5" height="5"/><rect x="40" y="40" width="5" height="5"/><rect x="50" y="40" width="5" height="5"/><rect x="60" y="40" width="5" height="5"/><rect x="65" y="40" width="5" height="5"/><rect x="90" y="40" width="5" height="5"/><rect x="95" y="40" width="5" height="5"/><rect x="120" y="40" width="5" height="5"/><rect x="15" y="45" width="5" height="5"/><rect x="25" y="45" width="5" height="5"/><rect x="30" y="45" width="5" height="5"/><rect x="45" y="45" width="5" height="5"/><rect x="50" y="45" width="5" height="5"/><rect x="60" y="45" width="5" height="5"/><rect x="75" y="45" width="5" height="5"/><rect x="95" y="45" width="5" height="5"/><rect x="105" y="45" width="5" height="5"/><rect x="110" y="45" width="5" height="5"/><rect x="120" y="45" width="5" height="5"/><rect x="0" y="50" width="5" height="5"/><rect x="10" y="50" width="5" height="5"/><rect x="15" y="50" width="5" height="5"/><rect x="30" y="50" width="5" height="5"/><rect x="35" y="50" width="5" height="5"/><rect x="40" y="50" width="5" height="5"/><rect x="60" y="50" width="5" height="5"/><rect x="65" y="50" width="5" height="5"/><rect x="95" y="50" width="5" height="5"/><rect x="105" y="50" width="5" height="5"/><rect x="120" y="50" width="5" height="5"/><rect x="0" y="55" width="5" height="5"/><rect x="5" y="55" width="5" height="5"/><rect x="15" y="55" width="5" height="5"/><rect x="30" y="55" width="5" height="5"/><rect x="40" y="55" width="5" height="5"/><rect x="60" y="55" width="5" height="5"/><rect x="65" y="55" width="5" height="5"/><rect x="70" y="55" width="5" height="5"/><rect x="75" y="55" width="5" height="5"/><rect x="90" y="55" width="5" height="5"/><rect x="105" y="55" width="5" height="5"/><rect x="110" y="55" width="5" height="5"/><rect x="115" y="55" width="5" height="5"/><rect x="20" y="60" width="5" height="5"/><rect x="25" y="60" width="5" height="5"/><rect x="30" y="60" width="5" height="5"/><rect x="55" y="60" width="5" height="5"/><rect x="60" y="60" width="5" height="5"/><rect x="65" y="60" width="5" height="5"/><rect x="80" y="60" width="5" height="5"/><rect x="90" y="60" width="5" height="5"/><rect x="120" y="60" width="5" height="5"/><rect x="5" y="65" width="5" height="5"/><rect x="30" y="65" width="5" height="5"/><rect x="40" y="65" width="5" height="5"/><rect x="55" y="65" width="5" height="5"/><rect x="65" y="65" width="5" height="5"/><rect x="70" y="65" width="5" height="5"/><rect x="80" y="65" width="5" height="5"/><rect x="85" y="65" width="5" height="5"/><rect x="90" y="65" width="5" height="5"/><rect x="95" y="65" width="5" height="5"/><rect x="110" y="65" width="5" height="5"/><rect x="120" y="65" width="5" height="5"/><rect x="15" y="70" width="5" height="5"/><rect x="25" y="70" width="5" height="5"/><rect x="35" y="70" width="5" height="5"/><rect x="40" y="70" width="5" height="5"/><rect x="45" y="70" width="5" height="5"/><rect x="55" y="70" width="5" height="5"/><rect x="70" y="70" width="5" height="5"/><rect x="80" y="70" width="5" height="5"/><rect x="90" y="70" width="5" height="5"/><rect x="120" y="70" width="5" height="5"/><rect x="0" y="75" width="5" height="5"/><rect x="10" y="75" width="5" height="5"/><rect x="15" y="75" width="5" height="5"/><rect x="30" y="75" width="5" height="5"/><rect x="35" y="75" width="5" height="5"/><rect x="40" y="75" width="5" height="5"/><rect x="45" y="75" width="5" height="5"/><rect x="50" y="75" width="5" height="5"/><rect x="55" y="75" width="5" height="5"/><rect x="60" y="75" width="5" height="5"/><rect x="85" y="75" width="5" height="5"/><rect x="95" y="75" width="5" height="5"/><rect x="100" y="75" width="5" height="5"/><rect x="105" y="75" width="5" height="5"/><rect x="120" y="75" width="5" height="5"/><rect x="0" y="80" width="5" height="5"/><rect x="5" y="80" width="5" height="5"/><rect x="10" y="80" width="5" height="5"/><rect x="25" y="80" width="5" height="5"/><rect x="30" y="80" width="5" height="5"/><rect x="45" y="80" width="5" height="5"/><rect x="65" y="80" width="5" height="5"/><rect x="70" y="80" width="5" height="5"/><rect x="75" y="80" width="5" height="5"/><rect x="80" y="80" width="5" height="5"/><rect x="85" y="80" width="5" height="5"/><rect x="95" y="80" width="5" height="5"/><rect x="100" y="80" width="5" height="5"/><rect x="110" y="80" width="5" height="5"/><rect x="50" y="85" width="5" height="5"/><rect x="55" y="85" width="5" height="5"/><rect x="65" y="85" width="5" height="5"/><rect x="0" y="90" width="5" height="5"/><rect x="5" y="90" width="5" height="5"/><rect x="10" y="90" width="5" height="5"/><rect x="15" y="90" width="5" height="5"/><rect x="20" y="90" width="5" height="5"/><rect x="25" y="90" width="5" height="5"/><rect x="30" y="90" width="5" height="5"/><rect x="45" y="90" width="5" height="5"/><rect x="50" y="90" width="5" height="5"/><rect x="55" y="90" width="5" height="5"/><rect x="60" y="90" width="5" height="5"/><rect x="65" y="90" width="5" height="5"/><rect x="75" y="90" width="5" height="5"/><rect x="80" y="90" width="5" height="5"/><rect x="95" y="90" width="5" height="5"/><rect x="100" y="90" width="5" height="5"/><rect x="110" y="90" width="5" height="5"/><rect x="115" y="90" width="5" height="5"/><rect x="120" y="90" width="5" height="5"/><rect x="0" y="95" width="5" height="5"/><rect x="30" y="95" width="5" height="5"/><rect x="55" y="95" width="5" height="5"/><rect x="75" y="95" width="5" height="5"/><rect x="80" y="95" width="5" height="5"/><rect x="85" y="95" width="5" height="5"/><rect x="90" y="95" width="5" height="5"/><rect x="95" y="95" width="5" height="5"/><rect x="105" y="95" width="5" height="5"/><rect x="110" y="95" width="5" height="5"/><rect x="115" y="95" width="5" height="5"/><rect x="120" y="95" width="5" height="5"/><rect x="0" y="100" width="5" height="5"/><rect x="10" y="100" width="5" height="5"/><rect x="15" y="100" width="5" height="5"/><rect x="20" y="100" width="5" height="5"/><rect x="30" y="100" width="5" height="5"/><rect x="40" y="100" width="5" height="5"/><rect x="45" y="100" width="5" height="5"/><rect x="50" y="100" width="5" height="5"/><rect x="55" y="100" width="5" height="5"/><rect x="65" y="100" width="5" height="5"/><rect x="80" y="100" width="5" height="5"/><rect x="85" y="100" width="5" height="5"/><rect x="90" y="100" width="5" height="5"/><rect x="105" y="100" width="5" height="5"/><rect x="0" y="105" width="5" height="5"/><rect x="10" y="105" width="5" height="5"/><rect x="15" y="105" width="5" height="5"/><rect x="20" y="105" width="5" height="5"/><rect x="30" y="105" width="5" height="5"/><rect x="40" y="105" width="5" height="5"/><rect x="55" y="105" width="5" height="5"/><rect x="70" y="105" width="5" height="5"/><rect x="85" y="105" width="5" height="5"/><rect x="90" y="105" width="5" height="5"/><rect x="95" y="105" width="5" height="5"/><rect x="110" y="105" width="5" height="5"/><rect x="120" y="105" width="5" height="5"/><rect x="0" y="110" width="5" height="5"/><rect x="10" y="110" width="5" height="5"/><rect x="15" y="110" width="5" height="5"/><rect x="20" y="110" width="5" height="5"/><rect x="30" y="110" width="5" height="5"/><rect x="45" y="110" width="5" height="5"/><rect x="50" y="110" width="5" height="5"/><rect x="55" y="110" width="5" height="5"/><rect x="65" y="110" width="5" height="5"/><rect x="80" y="110" width="5" height="5"/><rect x="105" y="110" width="5" height="5"/><rect x="120" y="110" width="5" height="5"/><rect x="0" y="115" width="5" height="5"/><rect x="30" y="115" width="5" height="5"/><rect x="40" y="115" width="5" height="5"/><rect x="50" y="115" width="5" height="5"/><rect x="55" y="115" width="5" height="5"/><rect x="65" y="115" width="5" height="5"/><rect x="70" y="115" width="5" height="5"/><rect x="80" y="115" width="5" height="5"/><rect x="85" y="115" width="5" height="5"/><rect x="95" y="115" width="5" height="5"/><rect x="110" y="115" width="5" height="5"/><rect x="115" y="115" width="5" height="5"/><rect x="0" y="120" width="5" height="5"/><rect x="5" y="120" width="5" height="5"/><rect x="10" y="120" width="5" height="5"/><rect x="15" y="120" width="5" height="5"/><rect x="20" y="120" width="5" height="5"/><rect x="25" y="120" width="5" height="5"/><rect x="30" y="120" width="5" height="5"/><rect x="40" y="120" width="5" height="5"/><rect x="45" y="120" width="5" height="5"/><rect x="55" y="120" width="5" height="5"/><rect x="65" y="120" width="5" height="5"/><rect x="75" y="120" width="5" height="5"/><rect x="85" y="120" width="5" height="5"/><rect x="95" y="120" width="5" height="5"/><rect x="100" y="120" width="5" height="5"/><rect x="105" y="120" width="5" height="5"/><rect x="110" y="120" width="5" height="5"/><rect x="115" y="120" width="5" height="5"/></g></svg>
+      <dl class="hostinfo">
+        <dt>Hotspot</dt><dd>Aman's Galaxy</dd>
+        <dt>Address</dt><dd class="num">192.168.43.1:4821</dd>
+        <dt>Visible for</dt><dd class="num">1:48</dd>
+      </dl>
+    </div>
+  </section>
+  <button class="btn outline full scan"><span class="ms " aria-hidden="true">qr_code_scanner</span>Scan a QR</button>
+
+  <div class="sechead sm"><h2>Nearby phones</h2><span class="searching"><i></i>Looking</span></div>
+  <ul class="cards">
+    <li class="card">
+      <span class="t md p-priya " aria-hidden="true">P</span>
+      <div class="ct"><b>Priya's Pixel 8</b><span><span class="ms tiny" aria-hidden="true">wifi</span>Wi-Fi, shares Goa trip</span></div>
+      <button class="btn sm primary">Sync</button>
+    </li>
+    <li class="card">
+      <span class="t md p-ravi " aria-hidden="true">R</span>
+      <div class="ct"><b>Ravi's iPhone</b><span><span class="ms tiny" aria-hidden="true">bluetooth</span>Bluetooth, shares Goa trip</span></div>
+      <button class="btn sm primary">Sync</button>
+    </li>
+    <li class="card">
+      <span class="t md unknown" aria-hidden="true">?</span>
+      <div class="ct"><b>Unknown phone</b><span><span class="ms tiny" aria-hidden="true">bluetooth</span>Bluetooth, no shared groups</span></div>
+      <button class="btn sm outline">Pair</button>
+    </li>
+  </ul>
+  <p class="safe"><span class="ms tiny" aria-hidden="true">lock</span>Phones only swap groups you are both in, encrypted with that group's key.</p>
+</main>
+<nav class="nav"><a class="navi"><span class="ind"><span class="ms " aria-hidden="true">home</span></span><span>Home</span></a><a class="navi"><span class="ind"><span class="ms " aria-hidden="true">receipt_long</span></span><span>Activity</span></a><a class="navi on"><span class="ind"><span class="ms fill" aria-hidden="true">sync_alt</span><span class="badge" aria-label="3 changes to share">3</span></span><span>Sync</span></a></nav><div class="gesture"><i></i></div>
+</div>
+<div class="phone dark" id="screen-6">
+<div class="status"><span>9:41</span><span class="sicons"><span class="ms " aria-hidden="true">signal_cellular_alt</span><span class="ms " aria-hidden="true">wifi</span><span class="ms bat" aria-hidden="true">battery_full</span></span></div>
+<header class="topbar">
+  <div class="wordmark">settle up</div>
+  <div class="actions"><button class="syncchip" aria-label="3 changes to share. Open sync"><span class="ms " aria-hidden="true">sync_alt</span><b>3</b>to share</button><button class="iconbtn me" aria-label="Your profile and settings"><span class="t sm p-you " aria-hidden="true">A</span></button></div>
+</header>
+<main class="pad">
+  <section class="hero" aria-label="Overall balance">
+    <div class="hero-lbl">Overall, you're owed</div>
+    <div class="amt-xl">+₹4,250</div>
+    <div class="bar tall" role="img" aria-label="Owed to you ₹5,090, you owe ₹840">
+      <div class="seg owed" style="flex:5090"></div>
+      <div class="seg owe" style="flex:840"></div>
+    </div>
+    <div class="legend">
+      <span><i class="key owed"></i>Owed to you <b>+₹5,090</b></span>
+      <span><i class="key owe"></i>You owe <b>−₹840</b></span>
+    </div>
+  </section>
+
+
+  <div class="sechead"><h2>Groups</h2><button class="textbtn"><span class="ms " aria-hidden="true">add</span><span class="u">New group</span></button></div>
+  <ul class="cards">
+    <li class="card">
+      <span class="cluster"><span class="t xs p-you " aria-hidden="true">A</span><span class="t xs p-priya " aria-hidden="true">P</span><span class="t xs p-ravi " aria-hidden="true">R</span><span class="t xs more">+3</span></span>
+      <div class="ct"><b>Goa trip</b><span>6 people</span></div>
+      <div class="money owe"><span class="dir">you owe</span><span class="v">−₹840</span></div>
+    </li>
+    <li class="card">
+      <span class="cluster"><span class="t xs p-you " aria-hidden="true">A</span><span class="t xs p-kabir " aria-hidden="true">K</span><span class="t xs p-meera " aria-hidden="true">M</span></span>
+      <div class="ct"><b>Flat 4B</b><span>3 people</span></div>
+      <div class="money owed"><span class="dir">you're owed</span><span class="v">+₹5,090</span></div>
+    </li>
+    <li class="card">
+      <span class="cluster"><span class="t xs p-you " aria-hidden="true">A</span><span class="t xs p-ravi " aria-hidden="true">R</span><span class="t xs p-arjun " aria-hidden="true">J</span><span class="t xs p-meera " aria-hidden="true">M</span></span>
+      <div class="ct"><b>Cabin weekend</b><span>4 people</span></div>
+      <div class="money settled"><span class="dir"><span class="ms tiny" aria-hidden="true">check</span>settled up</span><span class="v">₹0</span></div>
+    </li>
+  </ul>
+
+  <div class="sechead"><h2>People</h2><button class="textbtn"><span class="u">See all</span></button></div>
+  <ul class="cards">
+    <li class="card">
+      <span class="t md p-priya " aria-hidden="true">PS</span>
+      <div class="ct"><b>Priya Sharma</b><span>Goa trip, Flat 4B</span></div>
+      <div class="money owed"><span class="dir">owes you</span><span class="v">+₹1,200</span></div>
+    </li>
+    <li class="card">
+      <span class="t md p-ravi " aria-hidden="true">RK</span>
+      <div class="ct"><b>Ravi Kumar</b><span>Goa trip, Cabin weekend</span></div>
+      <div class="money owe"><span class="dir">you owe</span><span class="v">−₹960</span></div>
+    </li>
+  </ul>
+</main>
+<button class="fab"><span class="ms " aria-hidden="true">add</span>Add expense</button>
+<nav class="nav"><a class="navi on"><span class="ind"><span class="ms fill" aria-hidden="true">home</span></span><span>Home</span></a><a class="navi"><span class="ind"><span class="ms " aria-hidden="true">receipt_long</span></span><span>Activity</span></a><a class="navi"><span class="ind"><span class="ms " aria-hidden="true">sync_alt</span><span class="badge" aria-label="3 changes to share">3</span></span><span>Sync</span></a></nav><div class="gesture"><i></i></div>
+</div>
+</body></html>
