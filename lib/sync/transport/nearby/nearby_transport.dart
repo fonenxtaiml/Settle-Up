@@ -325,7 +325,15 @@ final class NearbyTransport implements SyncTransport {
 
   Future<void> _onInitiated(String id, {required bool incoming}) async {
     final api = _api;
-    final existing = _links[id];
+    var existing = _links[id];
+    if (incoming &&
+        existing != null &&
+        !existing.outbound &&
+        existing.channel == null) {
+      // An earlier inbound attempt that never got a result: start over.
+      _links.remove(id);
+      existing = null;
+    }
     final ours = existing != null && existing.outbound && !incoming;
     final accept = ours ||
         (incoming && existing == null && _info != null && !_disposed);

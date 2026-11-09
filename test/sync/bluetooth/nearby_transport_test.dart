@@ -329,6 +329,20 @@ void main() {
       expect((await a.connect(peer)).peerAddress, 'B');
     });
 
+    test('a retried inbound request replaces one that never completed',
+        () async {
+      // A raw phone (no transport) asks twice and only accepts the second.
+      final raw = air.phone('R');
+      await raw.requestConnection('1|rrrrrrrr|Raw|', 'B');
+      await pumpUntil(() => apiB.count('acceptConnection') == 1);
+      await raw.requestConnection('1|rrrrrrrr|Raw|', 'B');
+      await pumpUntil(() => apiB.count('acceptConnection') == 2);
+      expect(apiB.count('rejectConnection'), 0);
+      await raw.acceptConnection('B');
+      await pumpUntil(() => inbound.isNotEmpty);
+      expect(inbound.single.peerAddress, 'R');
+    });
+
     test('an unreachable endpoint fails with a SocketException', () async {
       await b.stopAdvertising();
       await expectLater(a.connect(peer), throwsA(isA<SocketException>()));
