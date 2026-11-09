@@ -11,6 +11,10 @@ import 'tether.dart';
 /// "You pay Priya" and the amount. Payments that involve you carry the
 /// direction colour and sign; payments between other people are ink.
 class TransferRow extends StatelessWidget {
+  /// Avatar, line, avatar: the fixed width of [TetherTransfer] in a row.
+  static const double _tetherWidth =
+      Sizes.avatarSmall * 2 + Sizes.tetherRowLine;
+
   const TransferRow({
     super.key,
     required this.fromId,
@@ -74,41 +78,69 @@ class TransferRow extends StatelessWidget {
       toIsMe: toIsMe,
     );
 
+    final amountText = MoneyFormat.format(value, currency, signed: involvesMe);
+    final stacked = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        tether,
+        const SizedBox(height: Space.xs),
+        text,
+        Align(
+          alignment: AlignmentDirectional.centerEnd,
+          child: FittedBox(fit: BoxFit.scaleDown, child: amount),
+        ),
+      ],
+    );
+
     final Widget body;
     if (isLargeText(context)) {
-      body = Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          tether,
-          const SizedBox(height: Space.xs),
-          text,
-          Align(
-            alignment: AlignmentDirectional.centerEnd,
-            child: FittedBox(fit: BoxFit.scaleDown, child: amount),
-          ),
-        ],
-      );
+      body = stacked;
     } else {
-      // The sentence wraps or ellipsizes; the amount keeps at most about
-      // 40% of the row and scales down within it, so it is never pushed
-      // past the card edge.
+      // One line when it reads: the sentence wraps (two lines at most)
+      // beside the tether, and the amount keeps at most about 40% of the
+      // row, scaling down within it so it never passes the card edge. When
+      // that leaves the sentence less room than it needs ("P" for "Priya
+      // pays you" at 320 dp, 1.3x), the row stacks as at large text.
       body = LayoutBuilder(
-        builder: (context, constraints) => Row(
-          children: [
-            tether,
-            const SizedBox(width: Space.md),
-            Expanded(child: text),
-            const SizedBox(width: Space.sm),
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: constraints.maxWidth * 0.4),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: AlignmentDirectional.centerEnd,
-                child: amount,
+        builder: (context, constraints) {
+          final maxAmount = constraints.maxWidth * 0.4;
+          final amountWidth = measureTextWidth(
+            context,
+            amountText,
+            amount.style,
+          ).clamp(0.0, maxAmount);
+          final sentenceRoom =
+              constraints.maxWidth -
+              _tetherWidth -
+              Space.md -
+              Space.sm -
+              amountWidth;
+          if (!textFitsWords(
+            context,
+            sentence,
+            text.style,
+            sentenceRoom,
+            maxLines: 2,
+          )) {
+            return stacked;
+          }
+          return Row(
+            children: [
+              tether,
+              const SizedBox(width: Space.md),
+              Expanded(child: text),
+              const SizedBox(width: Space.sm),
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: maxAmount),
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: AlignmentDirectional.centerEnd,
+                  child: amount,
+                ),
               ),
-            ),
-          ],
-        ),
+            ],
+          );
+        },
       );
     }
 
