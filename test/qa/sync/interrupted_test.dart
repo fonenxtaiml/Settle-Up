@@ -121,23 +121,23 @@ void main() {
     );
   }
 
-  test('drop after the last ACK, before DONE/BYE: partial, then resumes '
-      'with nothing to send', () async {
+  test('drop after the last ACK, before the BYEs: completed on both sides '
+      '(SYNC-R1-04), then resumes with nothing to send', () async {
     // 1 op from Alex, nothing from Priya: HELLO x2, AUTH x2, VV x2,
-    // DONE(R), OPS, DONE(I), ACK = 10 frames.
+    // DONE(R), OPS, DONE(I), ACK = 10 frames. Both sides have sent DONE
+    // and every batch is ACKed, so the exchange is complete: losing the
+    // link while the BYEs cross is the same as the 2 s close timeout.
     await alex.addExpenses(seed, 1);
     alex.lan.dropAfterFrames = 10;
     final pBefore = (await priya.records()).length;
     final host = await priya.engine.startHosting();
-    final err = await alex.engine
-        .syncWithLink(host.connectLink)
-        .then<Object?>((_) => null, onError: (Object e) => e);
-    expect(err, isA<SyncException>());
-    expect((err! as SyncException).partial?.sentOps, 1);
-    expect((await alex.records()).first.outcome, SyncOutcome.partial);
+    final summary = await alex.engine.syncWithLink(host.connectLink);
+    expect(summary.sentOps, 1);
+    expect((await alex.records()).first.outcome, SyncOutcome.completed);
     expect(priya.opCount(seed.g), alex.opCount(seed.g));
     expect(unshared(alex), 0, reason: 'the ACK arrived');
     await recorded(priya, pBefore);
+    expect((await priya.records()).first.outcome, SyncOutcome.completed);
 
     alex.lan.dropAfterFrames = null;
     final again = await alex.engine.syncWithLink(host.connectLink);
