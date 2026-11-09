@@ -34,18 +34,30 @@ void main() {
         expect(t.extension<MoneyColors>(), isNotNull);
         expect(t.colorScheme.tertiaryContainer, Palette.vial);
         expect(t.floatingActionButtonTheme.backgroundColor, Palette.vial);
-        expect(t.scaffoldBackgroundColor,
-            brightness == Brightness.light ? Palette.fog : Palette.night);
+        expect(
+          t.scaffoldBackgroundColor,
+          brightness == Brightness.light ? Palette.fog : Palette.night,
+        );
       });
 
       test('$name type scale uses the bundled family and weights only', () {
         final t = build().textTheme;
         final styles = [
-          t.displayLarge, t.displayMedium, t.displaySmall,
-          t.headlineLarge, t.headlineMedium, t.headlineSmall,
-          t.titleLarge, t.titleMedium, t.titleSmall,
-          t.bodyLarge, t.bodyMedium, t.bodySmall,
-          t.labelLarge, t.labelMedium, t.labelSmall,
+          t.displayLarge,
+          t.displayMedium,
+          t.displaySmall,
+          t.headlineLarge,
+          t.headlineMedium,
+          t.headlineSmall,
+          t.titleLarge,
+          t.titleMedium,
+          t.titleSmall,
+          t.bodyLarge,
+          t.bodyMedium,
+          t.bodySmall,
+          t.labelLarge,
+          t.labelMedium,
+          t.labelSmall,
         ];
         for (final s in styles) {
           expect(s, isNotNull);
@@ -54,8 +66,10 @@ void main() {
         }
         expect(t.displayMedium!.fontSize, 44);
         expect(t.displayMedium!.fontWeight, FontWeight.w800);
-        expect(t.displayMedium!.fontFeatures,
-            contains(const FontFeature.tabularFigures()));
+        expect(
+          t.displayMedium!.fontFeatures,
+          contains(const FontFeature.tabularFigures()),
+        );
         expect(t.bodyMedium!.fontFeatures ?? const [], isEmpty);
       });
 
@@ -76,11 +90,17 @@ void main() {
         expect(contrast(m.onVial, m.vial), greaterThanOrEqualTo(7));
         expect(contrast(s.onSurface, s.surface), greaterThanOrEqualTo(7));
         expect(
-            contrast(s.onSurfaceVariant, s.surface), greaterThanOrEqualTo(4.5));
-        expect(contrast(m.onOwedContainer, m.owedContainer),
-            greaterThanOrEqualTo(4.5));
-        expect(contrast(m.onOweContainer, m.oweContainer),
-            greaterThanOrEqualTo(4.5));
+          contrast(s.onSurfaceVariant, s.surface),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrast(m.onOwedContainer, m.owedContainer),
+          greaterThanOrEqualTo(4.5),
+        );
+        expect(
+          contrast(m.onOweContainer, m.oweContainer),
+          greaterThanOrEqualTo(4.5),
+        );
       });
     }
 
@@ -116,8 +136,10 @@ void main() {
         for (var i = 0; i < 64; i++) AvatarTones.forId('person-$i'),
       };
       expect(used.length, AvatarTones.all.length);
-      expect(AvatarTones.forId('00000000-0000-7000-8000-000000000001'),
-          same(AvatarTones.forId('00000000-0000-7000-8000-000000000001')));
+      expect(
+        AvatarTones.forId('00000000-0000-7000-8000-000000000001'),
+        same(AvatarTones.forId('00000000-0000-7000-8000-000000000001')),
+      );
     });
 
     test('every tone pair is readable', () {
