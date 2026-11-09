@@ -6,7 +6,9 @@ plugins {
 
 android {
     namespace = "app.settleup.settle_up"
-    compileSdk = flutter.compileSdkVersion
+    // 37 (not 36 as in SPEC 9.1): permission_handler_android 14.1.1 AAR metadata
+    // requires consumers to compile against API 37. targetSdk stays 36.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -19,8 +21,8 @@ android {
         applicationId = "app.settleup.settle_up"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 26 // LocalOnlyHotspot (P1); bluetooth_low_energy needs 24
+        targetSdk = 36 // NOT 37: Android 17 local-network permission is unverified
         // Uses the version code from pubspec.yaml. When using split APKs, 1000 * ABI_VERSION
         // is added automatically by Flutter. (https://developer.android.com/studio/build/configure-apk-splits#configure-APK-versions)
         // You can force using the value of versionCode by specifying the `-P force-version-code-ignoring-abi=true`
