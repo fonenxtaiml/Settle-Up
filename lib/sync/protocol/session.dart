@@ -214,6 +214,7 @@ final class SyncSession {
   Timer? _ticker;
   Timer? _progressTimer;
   Timer? _liveFlushTimer;
+  Timer? _sendFailedTimer;
   Future<void> _tasks = Future.value();
   Future<void> _sends = Future.value();
   Duration _lastReceived = Duration.zero;
@@ -333,7 +334,12 @@ final class SyncSession {
           sendCode: ErrorCodes.badOp,
         );
       case _SendFailed(:final cause):
-        await _fail(SyncFailure.connectionLost, 'Connection lost: $cause');
+        // Frames the peer sent before it closed (an ERROR saying why, for
+        // instance) may still be queued: let them and the end of the
+        // stream decide, with a fallback in case the stream never ends.
+        _sendFailedTimer ??= Timer(const Duration(seconds: 1), () {
+          unawaited(_fail(SyncFailure.connectionLost, 'Connection lost: $cause'));
+        });
       default:
         developer.log('Sync session error', error: e, stackTrace: st,
             name: 'settle_up.sync');
@@ -845,6 +851,7 @@ final class SyncSession {
     _ticker?.cancel();
     _progressTimer?.cancel();
     _liveFlushTimer?.cancel();
+    _sendFailedTimer?.cancel();
     final local = _localOps;
     _localOps = null;
     await local?.cancel();
