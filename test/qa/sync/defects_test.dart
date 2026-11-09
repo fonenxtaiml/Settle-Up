@@ -193,9 +193,6 @@ void main() {
       );
       expect(priya.engine.status.session, isA<SessionCompleted>());
     },
-    skip:
-        'QA SYNC-R1-04: a drop after the peer BYE makes the responder '
-        'record partial/connectionLost for a complete sync',
   );
 
   group('SYNC-R1-06: phones set up within the same minute', () {
