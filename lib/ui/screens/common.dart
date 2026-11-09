@@ -2,6 +2,7 @@
 // copy, snack bars, confirmations and small ledger lookups.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/balances.dart';
 import '../../core/categories.dart';
@@ -11,6 +12,7 @@ import '../../core/models.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
+import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
 import '../widgets/widgets.dart';
@@ -50,16 +52,26 @@ PreferredSizeWidget screenAppBar({
   ],
 );
 
-/// Back arrow that pops, or goes to [fallback] when nothing is below.
+/// Back arrow that pops, or goes Home when nothing is below (a screen
+/// opened by a deep link).
 class BackArrow extends StatelessWidget {
   const BackArrow({super.key, this.close = false, this.onPressed});
 
   final bool close;
   final VoidCallback? onPressed;
 
+  static void _back(BuildContext context) {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.maybePop();
+    } else {
+      GoRouter.of(context).go(Routes.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => IconButton(
-    onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
+    onPressed: onPressed ?? () => _back(context),
     tooltip: close ? S.close : S.back,
     icon: Icon(close ? Icons.close_rounded : Icons.arrow_back_rounded),
   );
