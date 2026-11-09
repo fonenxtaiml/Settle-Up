@@ -76,9 +76,14 @@ class LabeledTextField extends StatelessWidget {
                     counterText: '',
                     labelText: label,
                     floatingLabelBehavior: FloatingLabelBehavior.always,
-                    labelStyle: theme.textTheme.labelSmall!
+                    // M3 draws a floating label at 0.75x; 16 renders as the
+                    // 12 dp label of render 3.
+                    floatingLabelStyle: theme.textTheme.labelSmall!
                         .withWeight(FontWeight.w500)
-                        .copyWith(color: scheme.onSurfaceVariant),
+                        .copyWith(
+                          fontSize: 16,
+                          color: scheme.onSurfaceVariant,
+                        ),
                     hintText: hintText,
                     hintStyle: valueStyle.copyWith(
                       color: scheme.onSurfaceVariant,

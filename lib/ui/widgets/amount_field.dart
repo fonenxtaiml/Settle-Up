@@ -148,7 +148,7 @@ class _AmountFieldState extends State<AmountField> {
             ),
           ),
           child: Padding(
-            padding: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: 10),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.baseline,
               textBaseline: TextBaseline.alphabetic,
@@ -166,7 +166,7 @@ class _AmountFieldState extends State<AmountField> {
                       child: symbol,
                     ),
                   ),
-                const SizedBox(width: Space.xs),
+                // The symbol's own side bearing gives the reference gap.
                 Expanded(
                   child:
                       TextField(
