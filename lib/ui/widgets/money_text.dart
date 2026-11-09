@@ -208,10 +208,16 @@ class BalanceTrailing extends StatelessWidget {
             ],
           ),
           if (value != null)
-            Text(
-              MoneyFormat.format(value, currency, signed: signed),
-              maxLines: 1,
-              style: amountStyle,
+            // Never clipped: in a narrow column (Now / After, a stacked
+            // row at 2x) the amount scales down to fit instead.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                MoneyFormat.format(value, currency, signed: signed),
+                maxLines: 1,
+                style: amountStyle,
+              ),
             ),
           if (footnote != null)
             Text(

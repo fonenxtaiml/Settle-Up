@@ -86,6 +86,9 @@ class GroupScreen extends ConsumerWidget {
                   g.activeMembers.length,
                   MoneyFormat.format(spent, currency),
                 ),
+          shortSubtitle: info.isDirect
+              ? null
+              : S.groupSpent(MoneyFormat.format(spent, currency)),
         ),
         actions: [
           if (!info.isDirect)
