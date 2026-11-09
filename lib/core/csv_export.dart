@@ -63,7 +63,8 @@ abstract final class CsvExport {
         _text(_description(group, e)),
         e.isPayment ? 'Payment' : Categories.byId(e.category).label,
         _decimal(e.money.total, currency),
-        e.money.currency,
+        // The code comes from synced ops, so it is untrusted text too.
+        _text(e.money.currency),
         for (final m in columns) _decimal(_impact(group, e, m.id), currency),
       ]);
     }

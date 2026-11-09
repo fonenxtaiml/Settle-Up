@@ -2,11 +2,13 @@
 // before its fix.
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/balances.dart';
+import 'package:settle_up/core/csv_export.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/core/split.dart';
 
+import 'csv_export_test.dart' show parseCsv;
 import 'helpers.dart';
 
 const g = 'g1';
@@ -139,6 +141,19 @@ void main() {
       expect(SplitCalculator.compute(100, spec), {'a': 34, 'b': 33, 'c': 33});
       final over = SplitSpec(SplitMethod.adjustment, {'a': k, 'b': k, 'c': 0});
       expect(SplitCalculator.check(100, over).error, SplitError.negativeShare);
+    });
+  });
+
+  group('csv', () {
+    test('a formula-looking currency code is neutralised', () {
+      final gs = groupOf(
+        [member('a'), member('b')],
+        [
+          expense(rawBlock({'a': 100}, {'b': 100}, currency: '=HYPERLINK(1)')),
+        ],
+      );
+      final rows = parseCsv(CsvExport.group(gs));
+      expect(rows[1][4], "'=HYPERLINK(1)");
     });
   });
 }
