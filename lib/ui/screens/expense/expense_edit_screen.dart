@@ -184,6 +184,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
           break;
         }
       }
+      // Only 1:1 groups left: the first of those.
+      g ??= state.visibleGroups
+          .where((x) => x.group!.isDirect && !x.group!.archived)
+          .firstOrNull;
     }
     if (g != null) _useGroup(g, profile.personId, settings);
   }
