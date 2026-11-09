@@ -245,6 +245,9 @@ final class SyncSession {
   final Map<GroupId, int> _receivedNew = {};
   final Set<OpId> _offered = {};
   final List<Operation> _liveBuffer = [];
+
+  /// The peer sent BYE while we were LIVE with batches still un-ACKed.
+  bool _peerLeftLive = false;
   int _sentOps = 0;
   int _receivedOps = 0;
   int _bytesSent = 0;
@@ -612,6 +615,13 @@ final class SyncSession {
     }
     _sentOps += n;
     await store.recordPeerKnowledge(_peerHello!.deviceId, g, msg.vv);
+    if (_peerLeftLive) {
+      if (_inFlight.isEmpty) {
+        await _sendSealed(const ByeMessage());
+        await _finishSuccess();
+      }
+      return;
+    }
     await _pump();
     _emitProgress();
     await _checkComplete();
@@ -633,6 +643,21 @@ final class SyncSession {
     if (_exchangeComplete) {
       await _sendSealed(const ByeMessage());
       return _finishSuccess();
+    }
+    if (_state == SessionState.live) {
+      // The peer left live mode while our pushes were on the wire. It
+      // still applies and ACKs OPS while closing, so wait for those ACKs
+      // (or the close timeout), then answer. Unsent ops go next session.
+      _peerLeftLive = true;
+      _pending.clear();
+      _liveBuffer.clear();
+      _liveFlushTimer?.cancel();
+      _liveFlushTimer = null;
+      _state = SessionState.closing;
+      _phase = SyncPhase.finishing;
+      _closingSince = _clock.elapsed;
+      _emitProgress(force: true);
+      return;
     }
     await _fail(SyncFailure.connectionLost, 'Peer closed before finishing');
   }

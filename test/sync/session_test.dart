@@ -388,4 +388,46 @@ void main() {
     expect(ra.receivedOps, 1);
     expect(priya.canonical, alex.canonical);
   });
+
+  test('leaving live mode while the peer pushes an op completes both sides',
+      () async {
+    final s = await alex.seedGroup();
+    await priya.join(alex, s.g);
+    final (ci, cr) =
+        await channelPair(latency: const Duration(milliseconds: 40));
+    final tap = InterceptChannel(cr, passThrough);
+    final si = SyncSession(
+        channel: ci,
+        store: alex.store,
+        role: SessionRole.initiator,
+        timings: fastTimings,
+        liveMode: true);
+    final sr = SyncSession(
+        channel: tap,
+        store: priya.store,
+        role: SessionRole.responder,
+        timings: fastTimings,
+        liveMode: true);
+    final fa = si.run();
+    final fp = sr.run();
+    expect(
+        await eventually(() =>
+            si.state == SessionState.live && sr.state == SessionState.live),
+        isTrue);
+    final sent = tap.sentSizes.length;
+
+    // Priya pushes an op; Alex leaves the Sync screen while it is on the
+    // wire, so his BYE crosses her OPS.
+    await priya.addExpense(s.g, payer: s.b, owers: [s.a, s.b], total: 321);
+    expect(await eventually(() => tap.sentSizes.length > sent), isTrue);
+    si.liveMode = false;
+
+    final ra = await fa;
+    final rp = await fp;
+    expect(ra.outcome, SyncOutcome.completed, reason: ra.message);
+    expect(rp.outcome, SyncOutcome.completed, reason: rp.message);
+    expect(alex.opCount(s.g), 7);
+    expect(rp.sentOps, 1);
+    expect(priya.canonical, alex.canonical);
+  });
 }
