@@ -2,6 +2,8 @@
 // Money is ALWAYS integer minor units + ISO 4217 code. No doubles anywhere.
 import 'package:meta/meta.dart';
 
+import 'currencies_data.dart';
+
 @immutable
 final class Currency {
   const Currency({
@@ -28,13 +30,7 @@ final class Currency {
 abstract final class Currencies {
   /// Owner (core) fills in the full ISO 4217 active list (>= 150 entries),
   /// sorted by code. These four are the minimum the tests rely on.
-  static const List<Currency> all = <Currency>[
-    Currency(code: 'EUR', minorDigits: 2, symbol: '€', name: 'Euro'),
-    Currency(code: 'GBP', minorDigits: 2, symbol: '£', name: 'British pound'),
-    Currency(code: 'INR', minorDigits: 2, symbol: '₹', name: 'Indian rupee'),
-    Currency(code: 'JPY', minorDigits: 0, symbol: '¥', name: 'Japanese yen'),
-    Currency(code: 'USD', minorDigits: 2, symbol: r'$', name: 'US dollar'),
-  ];
+  static const List<Currency> all = isoCurrencies;
 
   static final Map<String, Currency> _byCode = {
     for (final c in all) c.code: c,

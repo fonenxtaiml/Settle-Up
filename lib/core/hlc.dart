@@ -15,18 +15,23 @@ final class Hlc implements Comparable<Hlc> {
   factory Hlc.zero(DeviceId deviceId) => Hlc(0, 0, deviceId);
 
   /// Throws FormatException on malformed input.
+  ///
+  /// Only the exact form [encode] produces is accepted (15 decimal digits,
+  /// 4 lower-case hex digits). int.parse alone would also take a sign,
+  /// whitespace, a 0x prefix or upper-case hex, whose text does not sort
+  /// like [compareTo].
   factory Hlc.parse(String encoded) {
-    final a = encoded.indexOf('-');
-    final b = a < 0 ? -1 : encoded.indexOf('-', a + 1);
-    if (a != 15 || b != 20 || encoded.length <= 21) {
-      throw FormatException('Bad HLC', encoded);
-    }
+    final m = _encoded.firstMatch(encoded);
+    if (m == null) throw FormatException('Bad HLC', encoded);
     return Hlc(
-      int.parse(encoded.substring(0, a)),
-      int.parse(encoded.substring(a + 1, b), radix: 16),
-      encoded.substring(b + 1),
+      int.parse(m.group(1)!),
+      int.parse(m.group(2)!, radix: 16),
+      m.group(3)!,
     );
   }
+
+  static final RegExp _encoded =
+      RegExp(r'^([0-9]{15})-([0-9a-f]{4})-([\s\S]+)$');
 
   static const int maxCounter = 0xFFFF;
 
