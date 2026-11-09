@@ -330,7 +330,8 @@ void main() {
         await tamper((db) => db.execute(
             'UPDATE kv SET value = ? WHERE key = ?', [bad, KvKeys.hlcLast]));
         a.clock.now = kQaBaseMs;
-        await a.ledger.renameMember(t.g, t.sam, 'S $bad');
+        // A distinct short name each time (member names are 1..40).
+        await a.ledger.renameMember(t.g, t.sam, 'S ${bad.length}');
         expect(a.mineIn(t.g).last.hlc > last, isTrue, reason: bad);
       }
     });
