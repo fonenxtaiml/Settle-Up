@@ -5,6 +5,8 @@ import 'package:intl/intl.dart';
 import '../../core/money.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
+import '../format/amount_input.dart';
+import '../format/money_format.dart';
 import 'kit_strings.dart';
 
 /// The large amount field on Add expense (render 3): a small "Amount"
@@ -42,10 +44,12 @@ class AmountField extends StatefulWidget {
   /// Makes the symbol a button that opens a currency picker.
   final VoidCallback? onCurrencyTap;
 
-  /// Digits and one decimal separator, grouped for display. Exposed for
-  /// tests.
+  /// Digits and one decimal separator, grouped for display. [raw] may use
+  /// either separator convention ("1,234.50", "1.234,50", "12,5"); see
+  /// [normalizeAmountInput]. Exposed for tests.
   static String groupForDisplay(String raw, Currency c) {
-    final clean = raw.replaceAll(RegExp(r'[^0-9.]'), '');
+    final clean =
+        normalizeAmountInput(raw) ?? raw.replaceAll(RegExp(r'[^0-9.]'), '');
     final dot = clean.indexOf('.');
     var whole = dot < 0 ? clean : clean.substring(0, dot);
     var frac = dot < 0 ? null : clean.substring(dot + 1).replaceAll('.', '');
@@ -69,6 +73,21 @@ class AmountField extends StatefulWidget {
   static int? parse(String text, Currency c) =>
       Money.parseMinor(text.replaceAll(',', ''), c);
 
+  /// Whether the displayed [text] is a well-formed amount above
+  /// [Money.maxMinor], the largest the ledger holds.
+  static bool tooLarge(String text, Currency c) {
+    final m = RegExp(r'^(\d+)(?:\.(\d*))?$')
+        .firstMatch(text.replaceAll(',', ''));
+    if (m == null) return false;
+    final whole = m.group(1)!;
+    if (whole.length > 12) return true;
+    final frac = (m.group(2) ?? '').padRight(c.minorDigits, '0');
+    final minor =
+        int.parse(whole) * c.minorPerMajor +
+        (c.minorDigits == 0 ? 0 : int.parse(frac.substring(0, c.minorDigits)));
+    return minor > Money.maxMinor;
+  }
+
   /// Initial text for [minor] without trailing zero paise.
   static String textFor(int minor, Currency c) {
     final whole = minor ~/ c.minorPerMajor;
@@ -86,6 +105,16 @@ class AmountField extends StatefulWidget {
 class _AmountFieldState extends State<AmountField> {
   late final TextEditingController _controller;
   late Currency _currency = Currencies.of(widget.currency);
+
+  /// The last keystroke was refused because the amount would pass the
+  /// largest one the app holds; the field says so instead of ignoring it.
+  bool _tooLarge = false;
+  late final _formatter = _GroupingFormatter(
+    () => _currency,
+    onTooLarge: (v) {
+      if (v != _tooLarge && mounted) setState(() => _tooLarge = v);
+    },
+  );
 
   @override
   void initState() {
@@ -126,7 +155,13 @@ class _AmountFieldState extends State<AmountField> {
         .copyWith(fontSize: 32, color: scheme.onSurfaceVariant)
         .withWeight(FontWeight.w500);
     final symbol = Text(_currency.symbol, style: symbolStyle);
-    final error = widget.errorText;
+    final error =
+        widget.errorText ??
+        (_tooLarge
+            ? KitStrings.amountUpTo(
+                MoneyFormat.format(Money.maxMinor, _currency.code),
+              )
+            : null);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -181,7 +216,7 @@ class _AmountFieldState extends State<AmountField> {
                         cursorColor: scheme.onSurface,
                         cursorWidth: 2,
                         cursorHeight: 44,
-                        inputFormatters: [_GroupingFormatter(() => _currency)],
+                        inputFormatters: [_formatter],
                         decoration: InputDecoration.collapsed(
                           hintText: '0',
                           hintStyle: amountStyle.copyWith(
@@ -221,28 +256,73 @@ extension on TextField {
 }
 
 class _GroupingFormatter extends TextInputFormatter {
-  _GroupingFormatter(this.currency);
+  _GroupingFormatter(this.currency, {required this.onTooLarge});
 
   final Currency Function() currency;
+  final ValueChanged<bool> onTooLarge;
+
+  /// What the user typed at the end of the field, before the display cut
+  /// extra decimals: "1.234" shows as "1.23" in EUR, and a comma typed next
+  /// must still read "1.234," as one thousand two hundred and thirty-four.
+  String? _typed;
 
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
     TextEditingValue newValue,
   ) {
-    // Accept a comma typed as the decimal separator on keyboards that
-    // offer one, unless it is just grouping we inserted ourselves.
-    var raw = newValue.text;
-    final typedComma =
-        raw.length == oldValue.text.length + 1 &&
-        raw.endsWith(',') &&
-        !raw.contains('.');
-    if (typedComma) raw = '${raw.substring(0, raw.length - 1)}.';
-    final text = AmountField.groupForDisplay(raw, currency());
     final c = currency();
+    final o = oldValue.text;
+    final n = newValue.text;
+    var p = 0;
+    while (p < o.length && p < n.length && o[p] == n[p]) {
+      p++;
+    }
+    var s = 0;
+    while (s < o.length - p &&
+        s < n.length - p &&
+        o[o.length - 1 - s] == n[n.length - 1 - s]) {
+      s++;
+    }
+    final inserted = n.substring(p, n.length - s);
+    final removed = o.substring(p, o.length - s);
+
+    final String raw;
+    if (o.isEmpty || (p == 0 && s == 0)) {
+      // Fresh or replaced text (a paste): read it as written.
+      raw = n;
+    } else if (s == 0 &&
+        removed.isEmpty &&
+        _typed != null &&
+        AmountField.groupForDisplay(_typed!, c) == o) {
+      // Typing at the end.
+      raw = _typed! + inserted;
+    } else {
+      // An edit of the shown text: its commas are our grouping.
+      final before = o.substring(0, p).replaceAll(',', '');
+      final after = o.substring(o.length - s).replaceAll(',', '');
+      var ins = inserted;
+      // A comma typed as the decimal separator on keyboards that offer one.
+      if (ins == ',' && !before.contains('.') && !after.contains('.')) {
+        ins = '.';
+      }
+      raw = before + ins + after;
+    }
+
+    final canonical = normalizeAmountInput(raw);
+    if (canonical == null) return oldValue; // cannot be read: refuse it
+    // Over the largest amount: refuse the keystroke, and say why.
+    final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+    if (AmountField.tooLarge(big, c)) {
+      onTooLarge(true);
+      return oldValue;
+    }
+    final text = AmountField.groupForDisplay(canonical, c);
     if (AmountField.parse(text, c) == null && text.isNotEmpty) {
       return oldValue;
     }
+    onTooLarge(false);
+    _typed = raw;
     return TextEditingValue(
       text: text,
       selection: TextSelection.collapsed(offset: text.length),

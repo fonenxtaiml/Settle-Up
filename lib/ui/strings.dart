@@ -222,6 +222,17 @@ abstract final class S {
   static const descriptionNeeded = 'Add a short description, like Groceries';
   static String amountNeeded(String zero) => 'Enter an amount above $zero';
   static const splitNotDone = 'Finish the split first';
+  static String payersAddUp(String paid, String total) =>
+      'Paid by adds up to $paid, not $total. Tap Paid by to fix it.';
+  static const splitNobody = 'Pick at least one person';
+  static const splitBelowZero = 'A share would be below zero';
+  static const splitUnreadable = 'Check the amounts in the split';
+  static const discardTitle = 'Discard this expense?';
+  static const discardBody = 'What you typed here will be lost.';
+  static const keepEditing = 'Keep editing';
+  static const sharesTitle = 'Shares';
+  static String sharesHelper(int max) => 'A whole number from 1 to $max';
+  static String setSharesOf(String name) => 'Shares for $name. Tap to type';
   static const youOweShort = 'you owe';
   static String youOweName(String name) => 'you owe $name';
   static String youGetBack(String amount) => 'you get back $amount';
