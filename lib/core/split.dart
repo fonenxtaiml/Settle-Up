@@ -71,8 +71,8 @@ abstract final class SplitCalculator {
               SplitError.sumMismatch, 'assigned $sum of $total');
         }
         shares = {
-          for (final e in values.entries)
-            if (e.value != 0) e.key: e.value,
+          for (final m in _sortedKeys(values))
+            if (values[m] != 0) m: values[m]!,
         };
       case SplitMethod.percent:
         if (values.values.any((v) => v < 0)) {
