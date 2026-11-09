@@ -3,17 +3,27 @@
 import 'dart:typed_data';
 
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/sync/transport/hosting_details.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
 /// Delegates to a MemoryTransport; channels it opens pass every frame
 /// through [onSend] / [onReceive] (index counts per channel).
-final class TapTransport implements SyncTransport {
+final class TapTransport implements SyncTransport, HostingDetails {
   TapTransport(this.inner);
   final MemoryTransport inner;
   Uint8List? Function(int index, Uint8List frame)? onSend;
   Uint8List? Function(int index, Uint8List frame)? onReceive;
   final List<List<Uint8List>> sent = [];
+
+  // Transparent for host mode and connect links, like the transport it
+  // wraps (SPEC 8.6: only hosts the transport accepts are dialed).
+  @override
+  Future<List<String>> hostAddresses() => inner.hostAddresses();
+  @override
+  Future<String?> wifiName() => inner.wifiName();
+  @override
+  bool isLinkHost(String address) => inner.isLinkHost(address);
 
   @override
   TransportKind get kind => inner.kind;

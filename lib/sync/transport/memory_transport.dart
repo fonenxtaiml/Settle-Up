@@ -208,6 +208,10 @@ final class MemoryTransport implements SyncTransport, HostingDetails {
   @override
   Future<String?> wifiName() async => null;
 
+  /// Hub addresses are names, not IP addresses: every one is in-process.
+  @override
+  bool isLinkHost(String address) => true;
+
   void _checkAlive() {
     if (_disposed) throw StateError('MemoryTransport disposed');
   }

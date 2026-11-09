@@ -122,9 +122,6 @@ void main() {
 
   test(
     'a connect link to a public internet host is refused before dialing',
-    skip:
-        'QA SECURITY-R1-14: settleup://sync deep links dial any host, '
-        'including public internet addresses, and leak the HELLO',
     () async {
       final dialed = <String>[];
       final engine = DefaultSyncEngine(

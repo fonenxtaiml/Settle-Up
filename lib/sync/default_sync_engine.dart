@@ -28,6 +28,7 @@ import 'protocol/session.dart';
 import 'sync_clock.dart';
 import 'sync_engine.dart';
 import 'transport/hosting_details.dart';
+import 'transport/lan/local_address.dart';
 import 'transport/transport.dart';
 
 export 'sync_clock.dart';
@@ -582,16 +583,32 @@ final class DefaultSyncEngine implements SyncEngine {
     return _connectAndRun(out, target.name, target.routes, linkConnectTimeout);
   }
 
+  /// Whether a link may make this phone dial [address] (SPEC 8.6): only
+  /// local-network addresses, so a link from a web page cannot reach the
+  /// internet.
+  bool _isLinkHost(String address) {
+    final t = _transportOf(TransportKind.lan);
+    if (t is HostingDetails) return (t as HostingDetails).isLinkHost(address);
+    return isLocalNetworkHostPort(address);
+  }
+
   /// Hosts to try for a connect link, or an invite carrying `h`.
   Future<({String name, List<DiscoveredPeer> routes})> _parseSyncTarget(
     String link,
   ) async {
     final connect = ConnectLink.tryParse(link);
     if (connect != null) {
+      final hosts = connect.hosts.where(_isLinkHost).toList();
+      if (hosts.isEmpty) {
+        throw const SyncException(
+          SyncFailure.invalidCode,
+          'This code is not for a phone on your network',
+        );
+      }
       return (
         name: connect.deviceName,
         routes: [
-          for (final h in connect.hosts)
+          for (final h in hosts)
             DiscoveredPeer(
               kind: TransportKind.lan,
               address: h,
@@ -602,7 +619,10 @@ final class DefaultSyncEngine implements SyncEngine {
     }
     final invite = InviteLink.tryParse(link);
     final host = invite?.host;
-    if (invite == null || host == null || !_validInvite(invite)) {
+    if (invite == null ||
+        host == null ||
+        !_validInvite(invite) ||
+        !_isLinkHost(host)) {
       throw const SyncException(SyncFailure.invalidCode, 'Not a sync link');
     }
     await _registerInvite(invite);
@@ -963,7 +983,7 @@ final class DefaultSyncEngine implements SyncEngine {
     final added = await _registerInvite(invite);
     SyncSummary? first;
     final host = invite.host;
-    if (host != null && !_busy) {
+    if (host != null && !_busy && _isLinkHost(host)) {
       try {
         first = await _connectAndRun(
           _claim(),
