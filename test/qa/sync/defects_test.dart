@@ -309,8 +309,5 @@ void main() {
       expect(xml, contains('<device-transfer>'));
       expect(xml, contains('<exclude'));
     },
-    skip:
-        'QA SYNC-R1-08: no dataExtractionRules, so Android 12+ '
-        'device-to-device transfer copies the op log and device id',
   );
 }

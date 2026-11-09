@@ -64,9 +64,6 @@ void main() {
 
   test(
     'API 31+ device-to-device transfer is excluded by dataExtractionRules',
-    skip:
-        'QA SECURITY-R1-07: no android:dataExtractionRules; on Android 12+ '
-        'allowBackup=false does not stop device-to-device transfer',
     () {
       final app = _openings(xml, 'application').single;
       final m = RegExp(r'android:dataExtractionRules="@xml/([^"]+)"')
@@ -128,9 +125,6 @@ void main() {
   test(
     'the invite QR screen is protected from screenshots and the recents '
     'thumbnail',
-    skip:
-        'QA SECURITY-R1-09: invite QR (the group key) is captured in the '
-        'recents thumbnail and screenshots; no FLAG_SECURE',
     () {
       final activity = _read(
         'android/app/src/main/kotlin/app/settleup/settle_up/MainActivity.kt',

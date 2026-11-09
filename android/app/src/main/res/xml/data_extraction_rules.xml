@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android 12+ (API 31+): nothing of this app is backed up to the cloud or
+     copied to a new phone by device-to-device transfer. allowBackup="false"
+     alone does not stop device-to-device transfer on targetSdk 31+.
+
+     Why everything is excluded:
+     - settle_up.db holds the op log and the kv "device" id. A copy on a
+       second phone would mint the same (deviceId, counter) pairs as the old
+       one, and peers keep only the first of each pair (SPEC 7.4).
+     - flutter_secure_storage keeps the group keys in shared prefs, encrypted
+       with an Android Keystore key that never leaves the old phone, so a
+       copy is unreadable anyway.
+     A new phone joins its groups again with an invite and gets the history
+     by syncing (SPEC 9.1). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+        <exclude domain="device_root" path="." />
+        <exclude domain="device_file" path="." />
+        <exclude domain="device_database" path="." />
+        <exclude domain="device_sharedpref" path="." />
+    </device-transfer>
+</data-extraction-rules>

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Settle Up launcher icon (minSdk 26, so every phone uses this): the
+     tether in ink on stone. The monochrome layer is the same mark, tinted
+     by Android 13+ themed icons. Source: tool/brand/generate_icons.py. -->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@color/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_foreground" />
+</adaptive-icon>
