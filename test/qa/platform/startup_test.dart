@@ -9,6 +9,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:settle_up/bootstrap.dart';
 import 'package:settle_up/data/kv_settings_repository.dart';
 import 'package:settle_up/data/ledger.dart';
@@ -17,6 +18,7 @@ import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/ui/providers.dart';
 import 'package:settle_up/ui/screens/startup/startup_error_screen.dart';
 import 'package:settle_up/ui/startup.dart';
+import 'package:settle_up/ui/strings.dart';
 
 const _pathChannel = MethodChannel('plugins.flutter.io/path_provider');
 const _secureChannel = MethodChannel(
@@ -229,6 +231,69 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 100));
       expect(find.byType(Text), findsWidgets);
+    });
+  });
+
+  // QA PLATFORM round 2.
+  group('round 2: startup failure screen and retry', () {
+    testWidgets('corrupt database: the error screen names the problem and '
+        'offers Try again', (tester) async {
+      _mockPaths(dir: tmp);
+      _mockSecureStorage();
+      File('${tmp.path}/settle_up.db')
+          .writeAsBytesSync(Uint8List.fromList(List.filled(4096, 0x42)));
+      expect(await runMain(tester), isNull);
+      await tester.pump();
+      expect(find.text(S.startupTitle), findsOneWidget);
+      expect(find.text(S.startupDatabase), findsOneWidget);
+      expect(find.text(S.startupKept), findsOneWidget);
+      expect(find.text(S.startupRetry), findsOneWidget);
+    });
+
+    testWidgets('no data folder, then the folder comes back: Try again '
+        'opens the app', (tester) async {
+      _mockPaths(
+        error: PlatformException(code: 'IO', message: 'no dir'),
+      );
+      _mockSecureStorage();
+      expect(await runMain(tester), isNull);
+      await tester.pump();
+      expect(find.text(S.startupStorage), findsOneWidget);
+
+      _mockPaths(dir: tmp);
+      await tester.tap(find.text(S.startupRetry));
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 300)),
+      );
+      for (var i = 0; i < 5; i++) {
+        await tester.pump(const Duration(milliseconds: 100));
+      }
+      expect(find.text(S.startupTitle), findsNothing);
+      expect(File('${tmp.path}/settle_up.db').existsSync(), isTrue);
+    });
+
+    test('a database from a newer app version is reported as tooNew and '
+        'left as it is', () async {
+      _mockPaths(dir: tmp);
+      _mockSecureStorage();
+      final db = File('${tmp.path}/settle_up.db');
+      // A database written by a future version: user_version far ahead.
+      sqlite3.open(db.path)
+        ..execute('CREATE TABLE future (x)')
+        ..execute('PRAGMA user_version = 999')
+        ..close();
+      final container = ProviderContainer(overrides: await realOverrides());
+      expect(container.read(startupFailureProvider), StartupFailure.tooNew);
+      container.dispose();
+      // Only the journal mode in the header may change (WAL is set before
+      // the version check); the version and the data stay as they were.
+      final check = sqlite3.open(db.path);
+      addTearDown(check.close);
+      expect(check.select('PRAGMA user_version').first.values.first, 999);
+      expect(
+        check.select("SELECT name FROM sqlite_master WHERE name = 'future'"),
+        hasLength(1),
+      );
     });
   });
 }
