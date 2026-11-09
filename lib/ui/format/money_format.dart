@@ -9,8 +9,12 @@ abstract final class MoneyFormat {
   /// "£12.00", "¥500", "−£8.40" (signed: true adds '+' for positives).
   /// Uses intl NumberFormat.currency with the currency's minorDigits and
   /// Currencies symbol; [locale] null = Intl.defaultLocale.
-  static String format(int minor, String currency,
-      {bool signed = false, String? locale}) {
+  static String format(
+    int minor,
+    String currency, {
+    bool signed = false,
+    String? locale,
+  }) {
     final c = Currencies.of(currency);
     final f = NumberFormat.currency(
       locale: locale,
