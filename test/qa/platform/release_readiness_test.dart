@@ -137,9 +137,6 @@ void main() {
           );
         }
       },
-      skip:
-          'QA PLATFORM-R1-05: launcher icon is the Flutter default; no '
-          'adaptive icon',
     );
 
     test(
@@ -160,9 +157,6 @@ void main() {
           reason: 'Android 13+ themed icons',
         );
       },
-      skip:
-          'QA PLATFORM-R1-05: launcher icon is the Flutter default; no '
-          'adaptive icon',
     );
   });
 
