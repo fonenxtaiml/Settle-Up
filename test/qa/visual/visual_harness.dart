@@ -383,7 +383,13 @@ final class VisualWorld {
       description: 'Taxi',
     );
     w.payment = await p.pay(a.g, from: sam, to: f, amount: 20000);
-    final b = await p.group('Kuwait $groupName', ['Sam K'], currency: 'KWD');
+    // Group names are 1..60 characters (SPEC 5.16).
+    final kwdName = 'Kuwait $groupName';
+    final b = await p.group(
+      kwdName.length > 60 ? kwdName.substring(0, 60) : kwdName,
+      ['Sam K'],
+      currency: 'KWD',
+    );
     w.kwdGroup = b.g;
     await p.add(
       b.g,

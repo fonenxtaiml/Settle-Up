@@ -139,8 +139,10 @@ void main() {
     });
 
     test('can still send the largest op the app itself writes', () async {
-      // 50 members, exact amounts on both sides, 1,000 characters of notes
-      // that JSON escapes to 6 bytes each.
+      // 50 members, exact amounts on both sides, a 120-character
+      // description and 1,000 characters of notes, each character a flag
+      // (4 UTF-16 units, 8 UTF-8 bytes: the most SPEC 5.16 lets one
+      // character take; control characters are refused).
       final (evil, result, _) = await victim(priya);
       await evil.handshake(only1);
       final template = alex.opsOf(g1).last;
@@ -162,8 +164,8 @@ void main() {
         kind: template.kind,
         payload: {
           ...template.payload,
-          ExpenseFields.description: '\u0001' * 120,
-          ExpenseFields.notes: '\u0001' * 1000,
+          ExpenseFields.description: '\u{1F1EE}\u{1F1F3}' * 120,
+          ExpenseFields.notes: '\u{1F1EE}\u{1F1F3}' * 1000,
           ExpenseFields.money: {
             'total': total,
             'currency': 'INR',
