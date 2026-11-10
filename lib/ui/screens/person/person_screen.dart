@@ -123,6 +123,9 @@ class PersonScreen extends ConsumerWidget {
                   KitListRow(
                     title: r.name,
                     trailing: _trailing(r.net),
+                    // Stack the balance before the group name loses its
+                    // longest word (VISUAL-R4-05).
+                    trailingWidth: _trailing(r.net).naturalWidth(context),
                     onTap: () => r.mine == null
                         ? context.push(Routes.group(r.groupId))
                         : context.push(r.settleRoute()),
@@ -159,7 +162,7 @@ class PersonScreen extends ConsumerWidget {
     );
   }
 
-  static Widget _trailing(Map<String, int> net) {
+  static BalanceTrailing _trailing(Map<String, int> net) {
     final main = BalanceRow.mainEntry(net);
     final currency = main?.key ?? net.keys.first;
     final v = main?.value ?? 0;
