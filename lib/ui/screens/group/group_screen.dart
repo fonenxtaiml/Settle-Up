@@ -202,24 +202,16 @@ class _GroupBody extends ConsumerWidget {
           ),
         const SizedBox(height: 14),
         textGutter(
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () =>
-                      context.push(Routes.settle(groupId: g.groupId)),
-                  child: const Text(S.settleUp),
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () =>
-                      _showAllBalances(context, g, myId, fullNames),
-                  child: const Text(S.allBalances),
-                ),
-              ),
-            ],
+          ButtonPair(
+            labels: const [S.settleUp, S.allBalances],
+            first: FilledButton(
+              onPressed: () => context.push(Routes.settle(groupId: g.groupId)),
+              child: const Text(S.settleUp),
+            ),
+            second: FilledButton.tonal(
+              onPressed: () => _showAllBalances(context, g, myId, fullNames),
+              child: const Text(S.allBalances),
+            ),
           ),
         ),
         const SizedBox(height: 14),

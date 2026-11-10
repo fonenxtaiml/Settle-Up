@@ -97,3 +97,50 @@ bool segmentsFit(
   }
   return true;
 }
+
+/// Two hero buttons side by side (Settle up | All balances). At large text,
+/// or when a label would not fit its half as one whole line, they stack
+/// full width instead, so no word is broken ("All bal/ances").
+class ButtonPair extends StatelessWidget {
+  const ButtonPair({
+    super.key,
+    required this.first,
+    required this.second,
+    required this.labels,
+  });
+
+  final Widget first;
+  final Widget second;
+
+  /// The two button labels, measured to decide the layout.
+  final List<String> labels;
+
+  /// A filled button's side padding (24 a side at 1x).
+  static const double _chrome = 48;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final half = (constraints.maxWidth - 8) / 2;
+      final style = Theme.of(context).textTheme.labelLarge;
+      final fits =
+          !isLargeText(context) &&
+          labels.every(
+            (l) => measureTextWidth(context, l, style) <= half - _chrome,
+          );
+      if (!fits) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [first, const SizedBox(height: 8), second],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: first),
+          const SizedBox(width: 8),
+          Expanded(child: second),
+        ],
+      );
+    },
+  );
+}
