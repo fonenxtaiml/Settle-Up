@@ -300,7 +300,6 @@ void main() {
         final v = await f.typed('JPY', '.50', initial: 1200);
         expect(v, anyOf(isNull, 1200), reason: 'Edit ¥1,200 + ".50" held $v');
       },
-      skip: true, // QA MONEY-R4-01 (reopened)
     );
   });
 
@@ -320,7 +319,6 @@ void main() {
           expect(p, isNull, reason: 'amount "${_shown(s)}" -> $p');
         }
       },
-      skip: true, // QA MONEY-R4-04 (reopened)
     );
 
     testWidgets(
@@ -349,7 +347,6 @@ void main() {
         expect(w.group(gid).liveExpenses, isEmpty);
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R4-04 (reopened)
     );
   });
 
@@ -375,7 +372,6 @@ void main() {
           expect(v, isNull, reason: '"${_shown(s)}" in $c read as $v');
         }
       },
-      skip: true, // QA MONEY-R3-05 (reopened)
     );
 
     testWidgets(
@@ -399,7 +395,6 @@ void main() {
         );
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R3-05 (reopened)
     );
   });
 
@@ -420,7 +415,6 @@ void main() {
           expect(v, isNot(dropped), reason: '"$s" in $c read as $v');
         }
       },
-      skip: true, // QA MONEY-R5-01
     );
 
     testWidgets(
@@ -430,7 +424,6 @@ void main() {
         expect(await f.pasted('USD', '99¢'), anyOf(isNull, 99));
         expect(await f.pasted('GBP', '50p'), anyOf(isNull, 50));
       },
-      skip: true, // QA MONEY-R5-01
     );
   });
 }
