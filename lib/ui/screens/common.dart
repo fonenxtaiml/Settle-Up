@@ -11,7 +11,6 @@ import '../../core/ledger_state.dart';
 import '../../core/models.dart';
 import '../../core/text_clean.dart';
 import '../../data/repositories.dart';
-import '../../data/text_rules.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
 import '../router.dart';
@@ -461,12 +460,12 @@ const int kMemberNameMax = 40;
 /// mark (U+200B, U+200E, ...) is the plain name it will be stored as
 /// (UIFLOW-R4-01). The marks the Ledger keeps inside a name but that draw
 /// nothing after a letter (soft hyphen, ZWJ, variation selectors,
-/// invisible operators; TextRules.isBlankMark) are left out of the
+/// invisible operators; TextClean.isBlankMark) are left out of the
 /// comparison too, never out of what is stored: "Rahul" with a soft hyphen
 /// looks like "Rahul" everywhere (UIFLOW-R5-01).
 String? duplicateName(String candidate, Iterable<String> existing) {
   String key(String n) => String.fromCharCodes(
-    TextClean.clean(n).runes.where((r) => !TextRules.isBlankMark(r)),
+    TextClean.clean(n).runes.where((r) => !TextClean.isBlankMark(r)),
   ).toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
   final k = key(candidate);
   if (k.isEmpty) return null;

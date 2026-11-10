@@ -72,11 +72,6 @@ abstract final class TextRules {
   static bool isBlank(String value) =>
       value.runes.every((r) => _isSpace(r) || isHidden(r) || _isBlankMark(r));
 
-  /// Whether [r] draws nothing after a letter although a name keeps it
-  /// (see [isBlank]): soft hyphen, joiners, variation selectors, invisible
-  /// operators and the like.
-  static bool isBlankMark(int r) => _isBlankMark(r);
-
   /// The characters String.trim removes (a fixed list, so the remote check
   /// does not depend on the Dart version).
   static bool _isSpace(int r) =>
@@ -93,29 +88,9 @@ abstract final class TextRules {
       r == 0x3000 ||
       r == 0xFEFF;
 
-  /// Characters that render as nothing (or as blank space) by themselves:
-  /// every range of Unicode's Default_Ignorable_Code_Point (including the
-  /// unassigned code points reserved there, which text shaping also draws
-  /// as nothing, SECURITY-R3-02) plus a few visible-as-blank fillers.
-  static bool _isBlankMark(int r) =>
-      r == 0x00AD || // soft hyphen
-      r == 0x034F || // combining grapheme joiner
-      r == 0x115F || // Hangul choseong filler
-      r == 0x1160 || // Hangul jungseong filler
-      r == 0x17B4 || // Khmer inherent vowels
-      r == 0x17B5 ||
-      (r >= 0x180B && r <= 0x180F) || // Mongolian selectors and separator
-      r == 0x200C || // ZWNJ
-      r == 0x200D || // ZWJ
-      (r >= 0x2060 && r <= 0x206F) || // joiner, operators, isolates, ...
-      r == 0x2800 || // braille blank
-      r == 0x3164 || // Hangul filler
-      (r >= 0xFE00 && r <= 0xFE0F) || // variation selectors
-      r == 0xFFA0 || // halfwidth Hangul filler
-      (r >= 0xFFF0 && r <= 0xFFF8) || // reserved specials
-      (r >= 0x1BCA0 && r <= 0x1BCA3) || // shorthand format controls
-      (r >= 0x1D173 && r <= 0x1D17A) || // musical format controls
-      (r >= 0xE0000 && r <= 0xE0FFF); // tags, selectors supplement, ...
+  /// Characters that render as nothing (or as blank space) by themselves;
+  /// see [TextClean.isBlankMark].
+  static bool _isBlankMark(int r) => TextClean.isBlankMark(r);
 
   /// Number of user-perceived characters in [value].
   static int length(String value) => value.characters.length;
