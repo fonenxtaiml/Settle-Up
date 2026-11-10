@@ -5,6 +5,13 @@
 // whenever an op touches the entity. Every visible value is "the max-HLC
 // write per field over the op set", so the result does not depend on the
 // order ops arrive in, or on duplicates.
+//
+// Member and expense ids are scoped by group: an op only ever touches the
+// entity of its own group. When the same id has ops in several groups (ids
+// are UUIDs, so only hostile input does this), each group materializes its
+// own entity from its own ops, and nothing written in one group can hide or
+// change the entity of another (QA SECURITY-R1-04). No rule over HLCs or op
+// kinds could do that, since a member of one group can forge any of them.
 import '../hlc.dart';
 import '../ids.dart';
 import '../ledger_state.dart';
@@ -12,8 +19,6 @@ import '../models.dart';
 import '../ops.dart';
 import 'canonical.dart';
 import 'materialize.dart';
-
-typedef _ClaimKey = (EntityType, String);
 
 final class _EntityKey {
   const _EntityKey(this.groupId, this.type, this.id);
@@ -38,46 +43,9 @@ final class _GroupMaterial {
   final Map<ExpenseId, Expense> expenses = {};
 }
 
-/// Decides which group owns a member/expense id when the same id shows up
-/// in several groups (only possible with malicious input). The owner is the
-/// group holding the lowest-HLC op for that id, ties by group id, so every
-/// replica picks the same one whatever the arrival order.
-final class EntityOwnership {
-  final Map<_ClaimKey, Map<GroupId, Hlc>> _claims = {};
-
-  /// Records [op]; returns the owner before and after.
-  (GroupId?, GroupId) record(Operation op) {
-    final key = (op.entityType, op.entityId);
-    final byGroup = _claims.putIfAbsent(key, () => {});
-    final before = byGroup.isEmpty ? null : _ownerOf(byGroup);
-    final current = byGroup[op.groupId];
-    if (current == null || op.hlc < current) byGroup[op.groupId] = op.hlc;
-    return (before, _ownerOf(byGroup));
-  }
-
-  GroupId? ownerOf(EntityType type, String id) {
-    final byGroup = _claims[(type, id)];
-    return byGroup == null || byGroup.isEmpty ? null : _ownerOf(byGroup);
-  }
-
-  static GroupId _ownerOf(Map<GroupId, Hlc> byGroup) {
-    GroupId? best;
-    Hlc? bestHlc;
-    for (final e in byGroup.entries) {
-      final c = bestHlc == null ? -1 : e.value.compareTo(bestHlc);
-      if (c < 0 || (c == 0 && e.key.compareTo(best!) < 0)) {
-        best = e.key;
-        bestHlc = e.value;
-      }
-    }
-    return best!;
-  }
-}
-
 final class ReducerEngine {
   final Set<OpId> _applied = {};
   final Map<_EntityKey, EntityState> _entities = {};
-  final EntityOwnership _owners = EntityOwnership();
   final Map<GroupId, _GroupMaterial> _groups = {};
 
   final Set<GroupId> _dirty = {};
@@ -93,19 +61,11 @@ final class ReducerEngine {
 
     var changed = false;
     final material = _groups[op.groupId];
-    final GroupId? ownerBefore;
-    final GroupId ownerAfter;
     if (material == null) {
       _groups[op.groupId] = _GroupMaterial();
       _dirty.add(op.groupId);
       _snapshot = null;
       changed = true; // a new GroupState appears
-    }
-    if (op.entityType == EntityType.group) {
-      ownerBefore = op.groupId;
-      ownerAfter = op.groupId;
-    } else {
-      (ownerBefore, ownerAfter) = _owners.record(op);
     }
 
     final key = _EntityKey(op.groupId, op.entityType, op.entityId);
@@ -121,11 +81,13 @@ final class ReducerEngine {
     if (maxHlc == null || op.hlc > maxHlc) s.maxHlc = op.hlc;
 
     changed |= _rematerialize(op.groupId, op.entityType, op.entityId);
-    if (ownerBefore != null && ownerBefore != ownerAfter) {
-      changed |= _rematerialize(ownerBefore, op.entityType, op.entityId);
-    }
     return changed;
   }
+
+  /// Max HLC over the ops applied to one entity of [groupId], or null when
+  /// none was.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      _entities[_EntityKey(groupId, type, id)]?.maxHlc;
 
   Set<String> applyAll(Iterable<Operation> ops) => {
         for (final op in ops)
@@ -152,8 +114,6 @@ final class ReducerEngine {
   bool _rematerialize(GroupId groupId, EntityType type, String id) {
     final m = _groups[groupId]!;
     final s = _entities[_EntityKey(groupId, type, id)];
-    final owned =
-        type == EntityType.group || _owners.ownerOf(type, id) == groupId;
     final bool changed;
     switch (type) {
       case EntityType.group:
@@ -161,7 +121,7 @@ final class ReducerEngine {
         changed = !_same(m.group, next, sameGroup);
         m.group = next;
       case EntityType.member:
-        final next = s == null || !owned ? null : buildMember(groupId, id, s);
+        final next = s == null ? null : buildMember(groupId, id, s);
         changed = !_same(m.members[id], next, sameMember);
         if (next == null) {
           m.members.remove(id);
@@ -169,8 +129,7 @@ final class ReducerEngine {
           m.members[id] = next;
         }
       case EntityType.expense:
-        final next =
-            s == null || !owned ? null : buildExpense(groupId, id, s);
+        final next = s == null ? null : buildExpense(groupId, id, s);
         changed = !_same(m.expenses[id], next, sameExpense);
         if (next == null) {
           m.expenses.remove(id);

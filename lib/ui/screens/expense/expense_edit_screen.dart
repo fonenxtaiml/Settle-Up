@@ -15,8 +15,10 @@ import '../../../core/split.dart';
 import '../../../data/repositories.dart';
 import '../../../theme/app_theme.dart';
 import '../../../theme/tokens.dart';
+import '../../format/amount_input.dart';
 import '../../format/dates.dart';
 import '../../format/money_format.dart';
+import '../../format/unit_input_formatter.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
@@ -48,6 +50,10 @@ class ExpenseEditScreen extends ConsumerStatefulWidget {
   ConsumerState<ExpenseEditScreen> createState() => _ExpenseEditScreenState();
 }
 
+/// The least room the group chip gets in the app bar before it moves to
+/// the top of the form.
+const double _minGroupInBar = 120;
+
 class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   final _description = TextEditingController();
   final _notes = TextEditingController();
@@ -76,6 +82,30 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   bool _triedSave = false;
   bool _saving = false;
 
+  /// The user changed something since the screen opened; Android back and
+  /// Close then ask before throwing it away.
+  bool _dirty = false;
+  bool _saved = false;
+
+  void _touch() => _dirty = true;
+
+  Future<void> _confirmDiscard() async {
+    final discard = await confirmAction(
+      context,
+      title: S.discardTitle,
+      body: S.discardBody,
+      confirmLabel: S.discardAndClose,
+      cancelLabel: S.keepEditing,
+    );
+    if (!discard || !mounted) return;
+    setState(() => _dirty = false);
+    if (context.canPop()) {
+      context.pop();
+    } else {
+      context.go(Routes.home);
+    }
+  }
+
   @override
   void dispose() {
     _description.dispose();
@@ -99,7 +129,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final state = snap.state;
 
     if (widget.expenseId != null) {
-      final e = state.expense(widget.expenseId!);
+      final gid = widget.groupId;
+      final e = gid == null
+          ? state.expense(widget.expenseId!)
+          : state.expenseIn(gid, widget.expenseId!);
       if (e == null) return;
       _editing = e;
       final g = state.groups[e.groupId]!;
@@ -150,10 +183,19 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     GroupState? g;
     if (widget.groupId != null) g = state.groups[widget.groupId!];
     if (g == null || g.group == null) {
-      final summaries = ref.read(groupSummariesProvider).value;
-      if (summaries != null && summaries.isNotEmpty) {
-        g = summaries.first.group;
+      // The first active group: never start an expense in an archived one
+      // (the group picker hides those too).
+      final summaries = ref.read(groupSummariesProvider).value ?? const [];
+      for (final s in summaries) {
+        if (!s.group.group!.archived) {
+          g = s.group;
+          break;
+        }
       }
+      // Only 1:1 groups left: the first of those.
+      g ??= state.visibleGroups
+          .where((x) => x.group!.isDirect && !x.group!.archived)
+          .firstOrNull;
     }
     if (g != null) _useGroup(g, profile.personId, settings);
   }
@@ -257,8 +299,11 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   bool get _paidValid {
     final multi = _multiPaid;
     if (multi == null) return _payer != null;
-    return multi.values.fold(0, (a, b) => a + b) == (_amount ?? 0);
+    return _multiPaidSum == (_amount ?? 0);
   }
+
+  int get _multiPaidSum =>
+      (_multiPaid ?? const <MemberId, int>{}).values.fold(0, (a, b) => a + b);
 
   String get _payerLabel {
     final multi = _multiPaid;
@@ -298,6 +343,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     if (picked == null || picked == _groupId || !mounted) return;
     final settings = ref.read(appSettingsProvider).value ?? const AppSettings();
     setState(() {
+      _touch();
       _useGroup(snap.state.groups[picked]!, profile.personId, settings);
     });
   }
@@ -311,6 +357,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     );
     if (code == null || !mounted) return;
     setState(() {
+      _touch();
       _currency = code;
       _amountKey++;
       _amount = null;
@@ -325,6 +372,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     );
     if (id == null || !mounted) return;
     setState(() {
+      _touch();
       _category = id;
       _categoryPicked = true;
     });
@@ -332,14 +380,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
   Future<void> _pickDate() async {
     final now = ref.read(clockProvider)();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(now.year + 1, 12, 31),
-    );
+    final d = await pickEntryDate(context, initial: _date, now: now);
     if (d == null || !mounted) return;
     setState(() {
+      _touch();
       _date = DateTime(d.year, d.month, d.day, _date.hour, _date.minute);
     });
   }
@@ -366,6 +410,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     if (picked == null || !mounted) return;
     if (picked != multiple) {
       setState(() {
+        _touch();
         _payer = picked;
         _multiPaid = null;
         _reorder();
@@ -389,6 +434,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     );
     if (result == null || !mounted) return;
     setState(() {
+      _touch();
       _multiPaid = result;
       _reorder();
     });
@@ -396,6 +442,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
   void _setMethod(SplitMethod m) {
     setState(() {
+      _touch();
       _split.switchTo(m, _amount ?? 0, _cur);
       _syncInputs();
     });
@@ -409,6 +456,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     if (amount <= 0 ||
         description.isEmpty ||
         !check.isValid ||
+        _split.badInput(_cur).isNotEmpty ||
         !_paidValid ||
         _saving) {
       Haptics.invalid(context);
@@ -460,13 +508,14 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
           context,
           S.expenseAdded,
           actionLabel: S.undo,
-          onAction: () => ledger.deleteExpense(id),
+          onAction: () => ledger.deleteExpense(id, groupId: draft.groupId),
         );
       }
     });
     if (!mounted) return;
     setState(() => _saving = false);
     if (!ok) return;
+    _saved = true;
     if (_editing != null) {
       Haptics.medium(context);
       showSnack(context, S.expenseSaved);
@@ -531,154 +580,237 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final amountError = _triedSave && amount <= 0
         ? S.amountNeeded(MoneyFormat.format(0, _currency))
         : null;
-    final canSave = amount > 0 && check.isValid && _paidValid && !_saving;
+    final splitProblem = switch (_split.problem(amount, _cur)) {
+      SplitProblem.nobody => S.splitNobody,
+      SplitProblem.belowZero => S.splitBelowZero,
+      SplitProblem.unreadable => S.splitUnreadable,
+      null => null,
+    };
+    final canSave =
+        amount > 0 &&
+        check.isValid &&
+        _split.badInput(_cur).isEmpty &&
+        _paidValid &&
+        !_saving;
+    // Several payers whose amounts no longer match the bill (it changed
+    // after they were set): say so now, not only after a Save attempt.
+    final payersOff =
+        !_paidValid && (_triedSave || (_multiPaid != null && amount > 0));
 
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: const BackArrow(close: true),
-        title: Text(title),
-        actions: [
-          if (editing == null && widget.personId == null)
-            DropdownChip(
-              label: groupName,
-              onTap: _pickGroup,
-              semanticLabel: S.groupChip(groupName),
-            )
-          else
-            Padding(
-              padding: const EdgeInsets.only(right: Space.sm),
-              child: Center(
-                child: Text(
-                  groupName,
-                  style: Theme.of(context).textTheme.titleSmall!.copyWith(
-                    color: Theme.of(context).colorScheme.onSurfaceVariant,
-                  ),
-                ),
+    // The group name shares the app bar with the title and gives way
+    // first: it gets what the title leaves and ellipsizes, and when that is
+    // too little for a readable chip (small phone, large text) it moves
+    // out of the bar to the top of the form, so the title stays whole.
+    final theme = Theme.of(context);
+    final barWidth = MediaQuery.sizeOf(context).width;
+    final titleWidth = measureTextWidth(
+      context,
+      title,
+      theme.appBarTheme.titleTextStyle ?? theme.textTheme.titleLarge,
+    );
+    final groupRoom =
+        barWidth -
+        kToolbarHeight - // the close button
+        titleWidth -
+        Space.sm - // the actions' end padding
+        Space.xs - // the gap after the group
+        Space.md; // breathing room between title and group
+    final groupInBar = groupRoom >= _minGroupInBar;
+    final Widget groupLabel = editing == null && widget.personId == null
+        ? DropdownChip(
+            label: groupName,
+            onTap: _pickGroup,
+            semanticLabel: S.groupChip(groupName),
+          )
+        : Padding(
+            padding: const EdgeInsets.only(right: Space.sm),
+            child: Text(
+              groupName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall!.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
               ),
             ),
-          const SizedBox(width: Space.xs),
-        ],
-      ),
-      bottomNavigationBar: _SaveBar(
-        summary: _summary(check, amount),
-        left: left,
-        currency: _currency,
-        canSave: canSave,
-        onSave: _save,
-      ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.lg),
-        children: [
-          const SizedBox(height: 6),
-          textGutter(
-            AmountField(
-              key: ValueKey('amount-$_amountKey-$_currency'),
-              currency: _currency,
-              initialMinor: _amount,
-              autofocus: editing == null,
-              currencyName: _cur.name,
-              errorText: amountError,
-              onCurrencyTap: _pickCurrency,
-              onChanged: (v) => setState(() => _amount = v),
-            ),
-          ),
-          const SizedBox(height: 14),
-          gutter(
-            LabeledTextField(
-              label: S.description,
-              hintText: S.descriptionHint,
-              controller: _description,
-              errorText: descriptionError,
-              textInputAction: TextInputAction.done,
-              maxLength: 120,
-              onChanged: (_) => setState(() {}),
-              trailing: CategoryChip(
-                categoryId: _category,
-                label: categoryLabel(_category),
-                onTap: _pickCategory,
+          );
+    return PopScope(
+      canPop: !_dirty || _saved || _saving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _confirmDiscard();
+      },
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(close: true),
+          title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+          actions: [
+            if (groupInBar) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: groupRoom),
+                child: Center(widthFactor: 1, child: groupLabel),
               ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          gutter(
-            Flex(
-              direction: isLargeText(context) ? Axis.vertical : Axis.horizontal,
-              crossAxisAlignment: isLargeText(context)
-                  ? CrossAxisAlignment.stretch
-                  : CrossAxisAlignment.center,
-              children: [
-                _flexible(
-                  context,
-                  PickerTile(
-                    label: S.paidBy,
-                    value: _payerLabel,
-                    leading: _multiPaid == null && _payer != null
-                        ? PersonAvatar(
-                            id: _payer!,
-                            name: _fullNames[_payer] ?? '',
-                            size: Sizes.avatarTiny,
-                            isMe: _payer == _me,
-                          )
-                        : const Icon(Icons.group_outlined, size: 20),
-                    onTap: _pickPayer,
-                  ),
+              const SizedBox(width: Space.xs),
+            ],
+          ],
+        ),
+        bottomNavigationBar: _SaveBar(
+          summary: _summary(check, amount),
+          problem: splitProblem,
+          left: left,
+          currency: _currency,
+          canSave: canSave,
+          onSave: _save,
+        ),
+        body: ListView(
+          padding: const EdgeInsets.only(bottom: Space.lg),
+          children: [
+            if (!groupInBar)
+              textGutter(
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: groupLabel,
                 ),
-                const SizedBox(width: Space.sm, height: Space.sm),
-                _flexible(
-                  context,
-                  PickerTile(
-                    label: S.date,
-                    value: DateLabels.pickerDate(
-                      _date,
-                      now: ref.watch(clockProvider)(),
-                    ),
-                    leading: const Icon(Icons.calendar_today_rounded, size: 20),
-                    onTap: _pickDate,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_triedSave && !_paidValid)
+              ),
+            const SizedBox(height: 6),
             textGutter(
-              Padding(
-                padding: const EdgeInsets.only(top: Space.xs),
-                child: Text(
-                  S.splitNotDone,
-                  style: Theme.of(context).textTheme.bodySmall!
-                      .copyWith(color: Theme.of(context).colorScheme.error),
+              AmountField(
+                key: ValueKey('amount-$_amountKey-$_currency'),
+                currency: _currency,
+                initialMinor: _amount,
+                autofocus: editing == null,
+                currencyName: _cur.name,
+                errorText: amountError,
+                onCurrencyTap: _pickCurrency,
+                onChanged: (v) => setState(() {
+                  _amount = v;
+                  _touch();
+                }),
+              ),
+            ),
+            const SizedBox(height: 14),
+            gutter(
+              LabeledTextField(
+                label: S.description,
+                hintText: S.descriptionHint,
+                controller: _description,
+                errorText: descriptionError,
+                textInputAction: TextInputAction.done,
+                maxLength: 120,
+                onChanged: (_) => setState(_touch),
+                trailing: CategoryChip(
+                  categoryId: _category,
+                  label: categoryLabel(_category),
+                  onTap: _pickCategory,
                 ),
               ),
             ),
-          gutter(
-            SectionHeading(
-              S.splitHeading(
-                _split.method.name,
-                _split.participants.length,
-                _order.length,
+            const SizedBox(height: 10),
+            gutter(
+              Flex(
+                direction: isLargeText(context)
+                    ? Axis.vertical
+                    : Axis.horizontal,
+                crossAxisAlignment: isLargeText(context)
+                    ? CrossAxisAlignment.stretch
+                    : CrossAxisAlignment.center,
+                children: [
+                  _flexible(
+                    context,
+                    PickerTile(
+                      label: S.paidBy,
+                      value: _payerLabel,
+                      leading: _multiPaid == null && _payer != null
+                          ? PersonAvatar(
+                              id: _payer!,
+                              name: _fullNames[_payer] ?? '',
+                              size: Sizes.avatarTiny,
+                              isMe: _payer == _me,
+                            )
+                          : const Icon(Icons.group_outlined, size: 20),
+                      onTap: _pickPayer,
+                    ),
+                  ),
+                  const SizedBox(width: Space.sm, height: Space.sm),
+                  _flexible(
+                    context,
+                    PickerTile(
+                      label: S.date,
+                      value: DateLabels.pickerDate(
+                        _date,
+                        now: ref.watch(clockProvider)(),
+                      ),
+                      leading: const Icon(
+                        Icons.calendar_today_rounded,
+                        size: 20,
+                      ),
+                      onTap: _pickDate,
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-          gutter(
-            SplitMethodSelector(value: _split.method, onChanged: _setMethod),
-          ),
-          const SizedBox(height: 5),
-          gutter(
-            ListSection(
-              dividerIndent: 64,
-              children: [for (final m in _order) _memberRow(m, shares)],
+            if (payersOff)
+              textGutter(
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.xs),
+                  child: Semantics(
+                    liveRegion: true,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          S.splitNotDone,
+                          style: Theme.of(context).textTheme.bodySmall!
+                              .copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                        if (_multiPaid != null)
+                          Text(
+                            S.payersAddUp(
+                              MoneyFormat.format(_multiPaidSum, _currency),
+                              MoneyFormat.format(amount, _currency),
+                            ),
+                            style: Theme.of(context).textTheme.bodySmall!
+                                .copyWith(
+                                  color: Theme.of(context).colorScheme.error,
+                                ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            gutter(
+              SectionHeading(
+                S.splitHeading(
+                  _split.method.name,
+                  _split.participants.length,
+                  _order.length,
+                ),
+              ),
             ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            LabeledTextField(
-              label: S.notes,
-              hintText: S.notesHint,
-              controller: _notes,
-              maxLength: 500,
+            gutter(
+              SplitMethodSelector(value: _split.method, onChanged: _setMethod),
             ),
-          ),
-        ],
+            const SizedBox(height: 5),
+            gutter(
+              ListSection(
+                dividerIndent: 64,
+                children: [for (final m in _order) _memberRow(m, shares)],
+              ),
+            ),
+            const SizedBox(height: Space.md),
+            gutter(
+              LabeledTextField(
+                label: S.notes,
+                hintText: S.notesHint,
+                controller: _notes,
+                maxLength: 500,
+                onChanged: (_) => setState(_touch),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -752,6 +884,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final isMe = m == _me;
     final payers = _paidSpec.values.keys.toSet();
     void toggle(bool v) => setState(() {
+      _touch();
       if (v) {
         _split.included.add(m);
       } else {
@@ -780,30 +913,49 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       SplitMethod.shares => _SharesStepper(
         value: _split.shares[m] ?? 1,
         enabled: included,
-        onChanged: (v) => setState(() => _split.shares[m] = v),
+        label: S.setSharesOf(name),
+        onChanged: (v) => setState(() {
+          _split.shares[m] = v;
+          _touch();
+        }),
       ),
       SplitMethod.exact => _UnitField(
         controller: _input('exact:$m'),
         enabled: included,
+        read: (t) => parseAmountInput(t, _cur),
+        write: (v) => minorToInput(v, _cur),
         prefix: _cur.symbol,
         label: S.amountOf(name),
-        onChanged: (v) => setState(() => _split.exact[m] = v),
+        onChanged: (v) => setState(() {
+          _split.exact[m] = v;
+          _touch();
+        }),
       ),
       SplitMethod.percent => _UnitField(
         controller: _input('percent:$m'),
         enabled: included,
+        read: parsePercent,
+        write: formatPercent,
         suffix: S.percentSuffix,
         label: S.percentOf(name),
-        onChanged: (v) => setState(() => _split.percent[m] = v),
+        onChanged: (v) => setState(() {
+          _split.percent[m] = v;
+          _touch();
+        }),
       ),
       _ => _UnitField(
         controller: _input('adjust:$m'),
         enabled: included,
+        read: (t) => parseSignedMinor(t, _cur),
+        write: (v) => minorToInput(v, _cur),
         prefix: _cur.symbol,
         hint: S.adjustHint,
         signed: true,
         label: S.adjustmentOf(name),
-        onChanged: (v) => setState(() => _split.adjust[m] = v),
+        onChanged: (v) => setState(() {
+          _split.adjust[m] = v;
+          _touch();
+        }),
       ),
     };
     final shareText = included && share != null
@@ -831,6 +983,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 class _SaveBar extends StatelessWidget {
   const _SaveBar({
     required this.summary,
+    this.problem,
     required this.left,
     required this.currency,
     required this.canSave,
@@ -838,6 +991,7 @@ class _SaveBar extends StatelessWidget {
   });
 
   final String summary;
+  final String? problem;
   final int left;
   final String currency;
   final bool canSave;
@@ -863,6 +1017,7 @@ class _SaveBar extends StatelessWidget {
                 summary: summary,
                 leftMinor: left,
                 currency: currency,
+                problem: problem,
               ),
               const SizedBox(height: 10),
               FilledButton(
@@ -908,21 +1063,67 @@ class _InputSplitRow extends StatelessWidget {
     final titleStyle = included
         ? theme.textTheme.titleSmall!
         : theme.textTheme.titleSmall!.copyWith(color: scheme.onSurfaceVariant);
-    final large = isLargeText(context);
+    final subStyle = theme.textTheme.bodySmall!.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(name, style: titleStyle),
-        if (sub.isNotEmpty)
-          Text(
-            sub,
-            style: theme.textTheme.bodySmall!.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
+        // Its amount is set smaller rather than broken over two lines when
+        // even the stacked column is too narrow (VISUAL-R4-03).
+        if (sub.isNotEmpty) FitWordsText(sub, style: subStyle),
       ],
     );
+    final inputWidth = switch (input) {
+      final _UnitField f => f.widthIn(context),
+      _SharesStepper() => _SharesStepper.width,
+      _ => 112.0,
+    };
+    // The input goes under the name at large text, and earlier whenever
+    // the name's longest word or an amount in the subline would not fit
+    // beside it (VISUAL-R4-03): an amount is never broken over two lines.
+    final textNeeds = [
+      _longestWord(context, name, titleStyle),
+      _longestWord(context, sub, subStyle),
+    ].reduce((a, b) => a > b ? a : b);
+    return LayoutBuilder(
+      builder: (context, c) {
+        const fixed =
+            48 + // checkbox
+            Sizes.avatarSmall +
+            Space.md +
+            Space.sm +
+            16; // end padding
+        final large =
+            isLargeText(context) || c.maxWidth - fixed - inputWidth < textNeeds;
+        return _row(context, large: large, text: text);
+      },
+    );
+  }
+
+  static double _longestWord(BuildContext context, String s, TextStyle st) {
+    var widest = 0.0;
+    for (final word in s.split(RegExp(r'\s+'))) {
+      if (word.isEmpty) continue;
+      final tp = TextPainter(
+        text: TextSpan(text: word, style: st),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      if (tp.width > widest) widest = tp.width;
+      tp.dispose();
+    }
+    return widest;
+  }
+
+  Widget _row(
+    BuildContext context, {
+    required bool large,
+    required Widget text,
+  }) {
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 56),
       child: Padding(
@@ -946,15 +1147,16 @@ class _InputSplitRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: Space.md),
+            // The input keeps its place in the tree beside or under the
+            // text, so typing never closes the keyboard (VISUAL-R5-01).
             Expanded(
-              child: large
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [text, const SizedBox(height: 4), input],
-                    )
-                  : text,
+              child: BesideOrUnder(
+                text: text,
+                trailing: input,
+                stacked: large,
+                gap: Space.sm,
+              ),
             ),
-            if (!large) ...[const SizedBox(width: Space.sm), input],
           ],
         ),
       ),
@@ -969,6 +1171,8 @@ class _UnitField extends StatelessWidget {
     required this.enabled,
     required this.onChanged,
     required this.label,
+    required this.read,
+    required this.write,
     this.prefix,
     this.suffix,
     this.hint,
@@ -978,67 +1182,143 @@ class _UnitField extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
   final ValueChanged<String> onChanged;
+
+  /// The reader for this field's text, and how it writes a value back
+  /// (see [UnitInputFormatter]).
+  final int? Function(String text) read;
+  final String Function(int value) write;
   final String label;
   final String? prefix;
   final String? suffix;
   final String? hint;
   final bool signed;
 
+  /// The width that shows the whole value with its symbol (at least the
+  /// design's 112 dp), so no digit scrolls out of sight (VISUAL-R4-03).
+  double widthIn(BuildContext context) {
+    final style = AppType.amount(context);
+    final value = controller.text.isEmpty ? (hint ?? '0') : controller.text;
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '${prefix ?? ''}$value${suffix ?? ''}',
+        style: style,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    // Content padding (10 + 10), the caret and its gap, and a little
+    // room for the next key.
+    final w = tp.width + 20 + 12;
+    tp.dispose();
+    return w < 112 ? 112 : w;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final w = widthIn(context);
+      if (!c.maxWidth.isFinite || c.maxWidth >= w) {
+        return SizedBox(width: w, child: _field(context, 1));
+      }
+      // Narrower than the value (stacked under a long name at large
+      // text): the value is scaled down to fit, never scrolled.
+      final base = AppType.amount(context);
+      final fitted = AmountField.fitted(
+        base,
+        '${prefix ?? ''}${controller.text}${suffix ?? ''}',
+        c.maxWidth - 20 - 12,
+        MediaQuery.textScalerOf(context),
+        Directionality.of(context),
+      );
+      return SizedBox(
+        width: c.maxWidth,
+        child: _field(context, fitted.fontSize! / base.fontSize!),
+      );
+    },
+  );
+
+  Widget _field(BuildContext context, double shrink) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return SizedBox(
-      width: 112,
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        onChanged: onChanged,
-        textAlign: TextAlign.end,
-        keyboardType: TextInputType.numberWithOptions(
-          decimal: true,
-          signed: signed,
+    final style = AppType.amount(context);
+    final side = theme.textTheme.bodyLarge!;
+    final sideStyle = shrink >= 1
+        ? null
+        : side.copyWith(
+            fontSize: side.fontSize! * shrink,
+            color: scheme.onSurfaceVariant,
+          );
+    return TextField(
+      controller: controller,
+      enabled: enabled,
+      onChanged: onChanged,
+      textAlign: TextAlign.end,
+      keyboardType: TextInputType.numberWithOptions(
+        decimal: true,
+        signed: signed,
+      ),
+      // See AmountField: a pasted line break must reach the reader, and
+      // UnitInputFormatter keeps the text on one line.
+      minLines: 1,
+      maxLines: 2,
+      inputFormatters: [
+        UnitInputFormatter(read: read, write: write, signed: signed),
+      ],
+      style: shrink >= 1
+          ? style
+          : style.copyWith(fontSize: style.fontSize! * shrink),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: hint ?? '0',
+        labelText: null,
+        semanticCounterText: label,
+        prefixText: prefix,
+        suffixText: suffix,
+        prefixStyle: sideStyle,
+        suffixStyle: sideStyle,
+        filled: true,
+        fillColor: scheme.surfaceContainer,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
         ),
-        inputFormatters: [
-          FilteringTextInputFormatter.allow(
-            RegExp(signed ? r'[0-9.,+\-−]' : r'[0-9.,]'),
-          ),
-        ],
-        style: AppType.amount(context),
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: hint ?? '0',
-          labelText: null,
-          semanticCounterText: label,
-          prefixText: prefix,
-          suffixText: suffix,
-          filled: true,
-          fillColor: scheme.surfaceContainer,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
-            borderSide: BorderSide.none,
-          ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Radii.md),
+          borderSide: BorderSide.none,
         ),
       ),
     );
   }
 }
 
-/// − n + stepper for shares.
+/// − n + stepper for shares. The number itself can be tapped to type a
+/// weight, up to [SplitCalculator]'s 1000 (SPEC 6.1).
 class _SharesStepper extends StatelessWidget {
   const _SharesStepper({
     required this.value,
     required this.enabled,
+    required this.label,
     required this.onChanged,
   });
 
+  static const max = 1000;
+
+  /// Two 48 dp buttons around the 36 dp number.
+  static const double width = 48 + 36 + 48;
+
   final int value;
   final bool enabled;
+  final String label;
   final ValueChanged<int> onChanged;
+
+  Future<void> _type(BuildContext context) async {
+    final t = await showDialog<int>(
+      context: context,
+      builder: (context) => _WeightPrompt(initial: value),
+    );
+    if (t != null) onChanged(t);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1051,22 +1331,100 @@ class _SharesStepper extends StatelessWidget {
           onPressed: enabled && value > 1 ? () => onChanged(value - 1) : null,
           icon: const Icon(Icons.remove_rounded),
         ),
-        SizedBox(
-          width: 28,
-          child: Text(
-            '$value',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.titleMedium,
+        Semantics(
+          button: enabled,
+          label: label,
+          value: '$value',
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: enabled ? () => _type(context) : null,
+            borderRadius: BorderRadius.circular(Radii.sm),
+            child: SizedBox(
+              width: 36,
+              height: 48,
+              child: Center(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: Text(
+                    '$value',
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.titleMedium,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
         IconButton(
           tooltip: S.moreShares,
-          onPressed: enabled && value < 99 ? () => onChanged(value + 1) : null,
+          onPressed: enabled && value < max ? () => onChanged(value + 1) : null,
           icon: const Icon(Icons.add_rounded),
         ),
       ],
     );
   }
+}
+
+class _WeightPrompt extends StatefulWidget {
+  const _WeightPrompt({required this.initial});
+
+  final int initial;
+
+  @override
+  State<_WeightPrompt> createState() => _WeightPromptState();
+}
+
+class _WeightPromptState extends State<_WeightPrompt> {
+  late final _c = TextEditingController(text: '${widget.initial}')
+    ..selection = TextSelection(
+      baseOffset: 0,
+      extentOffset: '${widget.initial}'.length,
+    );
+
+  int? get _value {
+    final v = int.tryParse(_c.text.trim());
+    return v == null || v < 1 || v > _SharesStepper.max ? null : v;
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    final v = _value;
+    if (v != null) Navigator.of(context).pop(v);
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text(S.sharesTitle),
+    content: TextField(
+      controller: _c,
+      autofocus: true,
+      keyboardType: TextInputType.number,
+      inputFormatters: [
+        FilteringTextInputFormatter.digitsOnly,
+        LengthLimitingTextInputFormatter(4),
+      ],
+      decoration: InputDecoration(
+        helperText: S.sharesHelper(_SharesStepper.max),
+      ),
+      onChanged: (_) => setState(() {}),
+      onSubmitted: (_) => _submit(),
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.of(context).pop(),
+        child: const Text(S.cancel),
+      ),
+      FilledButton(
+        onPressed: _value == null ? null : _submit,
+        child: const Text(S.done),
+      ),
+    ],
+  );
 }
 
 /// "Paid by: multiple people": an amount per payer that must add up.
@@ -1115,9 +1473,14 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
 
   Map<MemberId, int> get _values => {
     for (final e in _c.entries)
-      if ((Money.parseMinor(e.value.text, _cur) ?? 0) > 0)
-        e.key: Money.parseMinor(e.value.text, _cur)!,
+      if ((parseAmountInput(e.value.text, _cur) ?? 0) > 0)
+        e.key: parseAmountInput(e.value.text, _cur)!,
   };
+
+  /// A payer field holds text that cannot be read as an amount.
+  bool get _unreadable => _c.values.any(
+    (c) => c.text.trim().isNotEmpty && parseAmountInput(c.text, _cur) == null,
+  );
 
   void _splitEvenly() {
     final payers = _values.keys.toList();
@@ -1162,6 +1525,8 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
                       input: _UnitField(
                         controller: _c[m]!,
                         enabled: true,
+                        read: (t) => parseAmountInput(t, _cur),
+                        write: (v) => minorToInput(v, _cur),
                         prefix: _cur.symbol,
                         label: '${S.paidBy}, ${widget.names[m]}',
                         onChanged: (_) => setState(() {}),
@@ -1179,6 +1544,7 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
                 ),
                 leftMinor: left,
                 currency: widget.currency,
+                problem: _unreadable ? S.splitUnreadable : null,
               ),
             ),
             Padding(
@@ -1194,7 +1560,7 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
                   const SizedBox(width: Space.sm),
                   Expanded(
                     child: FilledButton(
-                      onPressed: left == 0 && sum > 0
+                      onPressed: left == 0 && sum > 0 && !_unreadable
                           ? () => Navigator.of(context).pop(_values)
                           : null,
                       child: const Text(S.done),

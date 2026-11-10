@@ -1,6 +1,7 @@
 // In-memory OpStore with the same observable behaviour as SqliteOpStore
 // (docs/SPEC.md 5.11, 7.4). Used by tests and by the sync package's
 // end-to-end tests. Owner: data.
+import 'dart:convert';
 import 'dart:developer' as developer;
 
 import '../core/ids.dart';
@@ -101,6 +102,13 @@ final class MemoryOpStore implements OpStore {
   Future<void> purgeGroup(GroupId groupId) async {
     final byDevice = _ops.remove(groupId);
     if (byDevice != null) {
+      final mark = purgedMark(_kv[KvKeys.purged(groupId)]);
+      byDevice.forEach((d, byCounter) {
+        for (final c in byCounter.keys) {
+          if (c > (mark[d] ?? 0)) mark[d] = c;
+        }
+      });
+      if (mark.isNotEmpty) _kv[KvKeys.purged(groupId)] = jsonEncode(mark);
       for (final byCounter in byDevice.values) {
         for (final op in byCounter.values) {
           _byId.remove(op.id);
@@ -132,6 +140,23 @@ final class MemoryOpStore implements OpStore {
     vv.entries.forEach((device, counter) {
       if (counter > (known[device] ?? 0)) known[device] = counter;
     });
+  }
+
+  @override
+  Future<bool> capPeerKnowledge(
+    GroupId groupId,
+    DeviceId deviceId,
+    int max,
+  ) async {
+    var changed = false;
+    for (final known in (_peers[groupId] ?? const {}).values) {
+      final c = known[deviceId];
+      if (c != null && c > max) {
+        known[deviceId] = max;
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   @override

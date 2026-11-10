@@ -3,14 +3,23 @@
 //
 // - serviceId 'app.settleup.sync', Strategy.P2P_CLUSTER (every phone may
 //   advertise and discover at once).
-// - The endpoint name carries the device id prefix, device name and up to
-//   4 discovery tokens (NearbyEndpointName). Discovery parses it into a
-//   DiscoveredPeer without connecting.
+// - The endpoint name carries the rotating advert id (never the device
+//   id), the window tag, the device name and up to 24 discovery tokens
+//   (NearbyEndpointName). Discovery parses it into a DiscoveredPeer
+//   without connecting.
 // - Every connection is accepted automatically; authentication happens in
 //   the session layer (SPEC 8.4).
 // - One channel frame = one BYTES payload. Nearby delivers BYTES payloads
 //   whole and in order; the session's strict frame counters would catch
 //   anything else and fail the session safely.
+//
+// - Nearby Connections is part of Google Play services. On a phone without
+//   it (Huawei / HarmonyOS, Fire tablets, de-Googled ROMs) every call fails
+//   with API_UNAVAILABLE. The first such failure is remembered: from then
+//   on availability() reports unsupported, so the engine hosts and scans
+//   over BLE / LAN only, and every Nearby call fails at once with a
+//   NearbyUnavailableException that names the reason, without calling the
+//   plugin again. It is remembered until the app restarts.
 //
 // All plugin calls go through NearbyApi, so this file is unit tested with
 // a fake radio (test/sync/bluetooth).
@@ -25,7 +34,7 @@ import '../transport.dart';
 import 'nearby_api.dart';
 import 'nearby_endpoint_name.dart';
 
-export 'nearby_api.dart' show kNearbyServiceId;
+export 'nearby_api.dart' show isNearbyApiUnavailable, kNearbyServiceId;
 
 /// Largest frame on a Nearby channel: one BYTES payload
 /// (ConnectionsClient.MAX_BYTES_DATA_SIZE).
@@ -37,6 +46,24 @@ void _log(String message, [Object? error, StackTrace? st]) => developer.log(
       error: error,
       stackTrace: st,
     );
+
+/// Nearby Connections cannot run on this phone (no usable Google Play
+/// services). Thrown by every [NearbyTransport] call once the plugin has
+/// said so, instead of calling it again.
+final class NearbyUnavailableException implements Exception {
+  const NearbyUnavailableException(this.cause);
+
+  /// The plugin error that showed it.
+  final Object cause;
+
+  String get message =>
+      'Nearby Connections is not available on this phone: it needs '
+      'Google Play services, which is missing, disabled or out of date '
+      '(sync uses Bluetooth and Wi-Fi instead)';
+
+  @override
+  String toString() => 'NearbyUnavailableException: $message. Cause: $cause';
+}
 
 final class NearbyTransport implements SyncTransport {
   /// [permissions] defaults to the system wrapper. The other parameters are
@@ -89,8 +116,15 @@ final class NearbyTransport implements SyncTransport {
   Timer? _rediscover;
   bool _disposed = false;
 
+  /// Set once the plugin reported that Nearby cannot run on this phone.
+  NearbyUnavailableException? _unavailable;
+
   @override
   TransportKind get kind => TransportKind.nearby;
+
+  /// Whether a plugin call showed that Nearby Connections cannot run on
+  /// this phone (no usable Google Play services).
+  bool get isApiUnavailable => _unavailable != null;
 
   /// The endpoint name currently advertised, if any.
   String? get advertisedName => _advertisedName;
@@ -108,14 +142,34 @@ final class NearbyTransport implements SyncTransport {
 
   @override
   Future<TransportAvailability> availability() async {
-    if (!_isAndroid) return TransportAvailability.unsupported;
+    if (!_isAndroid || _unavailable != null) {
+      return TransportAvailability.unsupported;
+    }
     return _perms.check(kind);
   }
 
   @override
   Future<TransportAvailability> requestPermissions() async {
-    if (!_isAndroid) return TransportAvailability.unsupported;
+    if (!_isAndroid || _unavailable != null) {
+      return TransportAvailability.unsupported;
+    }
     return _perms.request(kind);
+  }
+
+  /// Runs one plugin call that can show Nearby is unavailable. Once one
+  /// has, fails with the remembered [NearbyUnavailableException] instead
+  /// of calling the plugin.
+  Future<T> _call<T>(Future<T> Function(NearbyApi api) body) async {
+    final known = _unavailable;
+    if (known != null) throw known;
+    try {
+      return await body(_api);
+    } catch (e, st) {
+      if (!isNearbyApiUnavailable(e)) rethrow;
+      final unavailable = _unavailable ??= NearbyUnavailableException(e);
+      _log('Nearby is unavailable on this phone', e, st);
+      throw unavailable;
+    }
   }
 
   // ------------------------------------------------------- advertising --
@@ -129,17 +183,16 @@ final class NearbyTransport implements SyncTransport {
         // Nearby cannot rename an advertisement, so a changed name restarts
         // it; open connections are not touched by that.
         if (name == _advertisedName) return;
-        final api = _api;
         if (_advertisedName != null) {
           _advertisedName = null;
           try {
-            await api.stopAdvertising();
+            await _api.stopAdvertising();
           } catch (e, st) {
             _log('stopAdvertising before re-advertise failed', e, st);
           }
         }
         try {
-          await api.startAdvertising(name);
+          await _call((api) => api.startAdvertising(name));
           _advertisedName = name;
         } catch (e) {
           _info = null;
@@ -190,12 +243,11 @@ final class NearbyTransport implements SyncTransport {
   Future<void> _updateDiscovery() => _serial(() async {
         final want = _listeners.isNotEmpty && !_disposed;
         if (want == _discovering) return;
-        final api = _api;
         if (want) {
           // Set first: Nearby may report endpoints before the call returns.
           _discovering = true;
           try {
-            await api.startDiscovery(_ownName());
+            await _call((api) => api.startDiscovery(_ownName()));
           } catch (e, st) {
             _discovering = false;
             _found.clear();
@@ -212,7 +264,7 @@ final class NearbyTransport implements SyncTransport {
           _rediscover = null;
           _found.clear();
           try {
-            await api.stopDiscovery();
+            await _api.stopDiscovery();
           } catch (e, st) {
             _log('stopDiscovery failed', e, st);
           }
@@ -246,11 +298,15 @@ final class NearbyTransport implements SyncTransport {
     if (_links.containsKey(id)) {
       throw SocketException('Already connecting or connected to $id');
     }
+    final known = _unavailable;
+    if (known != null) {
+      throw SocketException('Nearby connection to $id failed: $known');
+    }
     final link = _Link(id, outbound: true);
     _links[id] = link;
-    final api = _api;
     try {
-      await api.requestConnection(_ownName(), id).timeout(timeout);
+      await _call((api) => api.requestConnection(_ownName(), id))
+          .timeout(timeout);
       return await link.connected!.future.timeout(timeout);
     } on TimeoutException {
       _abandon(link);
@@ -276,7 +332,7 @@ final class NearbyTransport implements SyncTransport {
     final info = _info;
     if (info != null) return NearbyEndpointName.of(info).encode();
     return const NearbyEndpointName(
-      deviceIdPrefix: '',
+      advertId: '',
       deviceName: '',
       groupTokens: [],
     ).encode();
@@ -347,7 +403,7 @@ final class NearbyTransport implements SyncTransport {
     }
     final link = existing ?? (_links[id] = _Link(id, outbound: false));
     try {
-      await api.acceptConnection(id);
+      await _call((api) => api.acceptConnection(id));
     } catch (e, st) {
       _log('acceptConnection($id) failed', e, st);
       if (identical(_links[id], link)) _links.remove(id);
@@ -498,7 +554,7 @@ final class _NearbyChannel implements FrameChannel {
     final sent = _tail.then((_) async {
       if (_dead) throw StateError('Channel closed');
       try {
-        await _transport._api.sendBytes(peerAddress, copy);
+        await _transport._call((api) => api.sendBytes(peerAddress, copy));
       } catch (e) {
         final error = SocketException('Nearby send to $peerAddress failed: $e');
         _fail(error);

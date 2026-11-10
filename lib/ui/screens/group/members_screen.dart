@@ -4,10 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/balances.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
 import '../../../theme/tokens.dart';
+import '../../format/money_format.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
@@ -29,15 +31,26 @@ class MembersScreen extends ConsumerStatefulWidget {
 class _MembersScreenState extends ConsumerState<MembersScreen> {
   final _name = TextEditingController();
 
+  /// "Priya is already in this group" for the typed name.
+  String? _nameError;
+
   @override
   void dispose() {
     _name.dispose();
     super.dispose();
   }
 
-  Future<void> _add() async {
+  Future<void> _add(GroupState g) async {
     final n = _name.text.trim();
     if (n.isEmpty) return;
+    final dup = duplicateName(n, [
+      for (final m in g.activeMembers) m.displayName,
+    ]);
+    if (dup != null) {
+      Haptics.invalid(context);
+      setState(() => _nameError = S.alreadyInGroup(dup));
+      return;
+    }
     final ok = await runGuarded(
       context,
       () => ref
@@ -46,7 +59,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
     );
     if (ok && mounted) {
       _name.clear();
-      setState(() {});
+      setState(() => _nameError = null);
       showSnack(context, S.memberAdded);
     }
   }
@@ -73,7 +86,18 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           context,
           title: S.renameTitle,
           initial: m.displayName,
+          maxLength: kMemberNameMax,
         );
+        final dup = name == null
+            ? null
+            : duplicateName(name, [
+                for (final o in g.activeMembers)
+                  if (o.id != m.id) o.displayName,
+              ]);
+        if (dup != null && mounted) {
+          showSnack(context, S.alreadyInGroup(dup));
+          return;
+        }
         if (name != null && mounted) {
           await runGuarded(
             context,
@@ -100,6 +124,25 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           );
         }
       case _Action.remove:
+        // SPEC 6.7: the UI blocks Remove while their net is not zero.
+        final open = _openBalance(g, m.id);
+        if (open != null) {
+          await showDialog<void>(
+            context: context,
+            builder: (context) => AlertDialog(
+              title: Text(S.cannotRemoveTitle(m.displayName)),
+              content: Text(S.cannotRemoveBody(m.displayName, open)),
+              actions: [
+                FilledButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text(S.ok),
+                ),
+              ],
+            ),
+          );
+          return;
+        }
+        if (!mounted) return;
         final yes = await confirmAction(
           context,
           title: S.removeTitle(m.displayName),
@@ -178,24 +221,40 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
               ],
             ),
           ),
-          gutter(const SectionHeading(S.addMember)),
-          gutter(
-            LabeledTextField(
-              label: S.personName,
-              hintText: S.personNameHint,
-              controller: _name,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _add(),
-              onChanged: (_) => setState(() {}),
-              trailing: FilledButton.tonal(
-                onPressed: _name.text.trim().isEmpty ? null : _add,
-                style: KitButtonStyles.small(context),
-                child: const Text(S.addPerson),
+          // A 1:1 group stays two people: no one to add.
+          if (!g.group!.isDirect) ...[
+            gutter(const SectionHeading(S.addMember)),
+            gutter(
+              LabeledTextField(
+                label: S.personName,
+                hintText: S.personNameHint,
+                controller: _name,
+                maxLength: kMemberNameMax,
+                errorText: _nameError,
+                textInputAction: TextInputAction.done,
+                onSubmitted: (_) => _add(g),
+                onChanged: (_) => setState(() => _nameError = null),
+                trailing: FilledButton.tonal(
+                  onPressed: _name.text.trim().isEmpty ? null : () => _add(g),
+                  style: KitButtonStyles.small(context),
+                  child: const Text(S.addPerson),
+                ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
+  }
+
+  /// The member's open balance in this group ("₹4,000"), or null when it is
+  /// zero in every currency. Merged duplicates count as the member.
+  static String? _openBalance(GroupState g, MemberId member) {
+    final id = g.resolve(member);
+    for (final e in BalanceCalculator.groupNets(g).entries) {
+      final v = e.value[id] ?? 0;
+      if (v != 0) return MoneyFormat.format(v.abs(), e.key);
+    }
+    return null;
   }
 }

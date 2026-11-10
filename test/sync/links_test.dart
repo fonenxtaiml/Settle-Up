@@ -154,4 +154,24 @@ void main() {
       expect(ConnectLink.tryParse(s), isNull, reason: s);
     }
   });
+
+  test('names in links lose bidi, control and zero-width characters', () {
+    // SECURITY-R2-04: the link's maker chooses them; they are shown.
+    final key = Uint8List(32);
+    final invite = InviteLink.tryParse(InviteLink(
+      groupId: 'g',
+      groupKey: key,
+      groupName: 'Goa\u202E trip',
+      currency: 'INR',
+      fromName: 'Alex\u202E5000 diap\u200B',
+    ).encode())!;
+    expect(invite.fromName, 'Alex5000 diap');
+    expect(invite.groupName, 'Goa trip');
+    final connect = ConnectLink.tryParse(const ConnectLink(
+      hosts: ['1.2.3.4:5'],
+      deviceId: 'd',
+      deviceName: '\u2066Priya\u2069\nPixel',
+    ).encode())!;
+    expect(connect.deviceName, 'Priya Pixel');
+  });
 }

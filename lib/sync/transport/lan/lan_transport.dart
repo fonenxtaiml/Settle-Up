@@ -14,6 +14,7 @@ import '../hosting_details.dart';
 import '../transport.dart';
 import 'gateway_probe.dart';
 import 'lan_network.dart';
+import 'local_address.dart';
 import 'mdns.dart';
 import 'tcp_framing.dart';
 
@@ -83,6 +84,10 @@ final class LanTransport implements SyncTransport, HostingDetails {
   ServerSocket? _server;
   StreamSubscription<Socket>? _serverSub;
   AdvertiseInfo? _info;
+
+  /// Advert ids this phone announced lately (the current one and the one
+  /// before it), so our own mDNS answer is not listed while it rotates.
+  final List<String> _ownAdvertIds = [];
   bool _disposed = false;
 
   /// Serializes start/stop advertising.
@@ -117,6 +122,11 @@ final class LanTransport implements SyncTransport, HostingDetails {
         // the server and its open connections stay, only mDNS changes.
         final server = _server ?? await _bind();
         _info = info;
+        final id = info.advertId;
+        if (id != null && !_ownAdvertIds.contains(id)) {
+          _ownAdvertIds.add(id);
+          if (_ownAdvertIds.length > 2) _ownAdvertIds.removeAt(0);
+        }
         try {
           await _mdnsBackend.advertise(MdnsAdvert.of(info, server.port));
         } catch (e, st) {
@@ -241,6 +251,9 @@ final class LanTransport implements SyncTransport, HostingDetails {
   @override
   Future<String?> wifiName() => _network.wifiName();
 
+  @override
+  bool isLinkHost(String address) => isLocalNetworkHostPort(address);
+
   // --------------------------------------------------------- discovery --
 
   @override
@@ -251,12 +264,11 @@ final class LanTransport implements SyncTransport, HostingDetails {
     StreamSubscription<DiscoveredPeer>? probe;
     Timer? refresh;
 
-    bool isSelf(DiscoveredPeer p) {
-      final info = _info;
-      if (info == null || p.deviceIdPrefix == null) return false;
-      final id = info.deviceId;
-      return p.deviceIdPrefix == (id.length >= 8 ? id.substring(0, 8) : id);
-    }
+    // Advert ids are random per phone and window (SPEC 8.3), so a match
+    // is our own answer; a prefix of the device id would also match phones
+    // set up in the same minute.
+    bool isSelf(DiscoveredPeer p) =>
+        p.advertId != null && _ownAdvertIds.contains(p.advertId);
 
     void emit(DiscoveredPeer p) {
       if (ctl.isClosed || isSelf(p)) return;

@@ -2,14 +2,18 @@
 // copy, snack bars, confirmations and small ledger lookups.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/balances.dart';
 import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
+import '../../core/models.dart';
+import '../../core/text_clean.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
+import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
 import '../widgets/widgets.dart';
@@ -49,16 +53,26 @@ PreferredSizeWidget screenAppBar({
   ],
 );
 
-/// Back arrow that pops, or goes to [fallback] when nothing is below.
+/// Back arrow that pops, or goes Home when nothing is below (a screen
+/// opened by a deep link).
 class BackArrow extends StatelessWidget {
   const BackArrow({super.key, this.close = false, this.onPressed});
 
   final bool close;
   final VoidCallback? onPressed;
 
+  static void _back(BuildContext context) {
+    final nav = Navigator.of(context);
+    if (nav.canPop()) {
+      nav.maybePop();
+    } else {
+      GoRouter.of(context).go(Routes.home);
+    }
+  }
+
   @override
   Widget build(BuildContext context) => IconButton(
-    onPressed: onPressed ?? () => Navigator.of(context).maybePop(),
+    onPressed: onPressed ?? () => _back(context),
     tooltip: close ? S.close : S.back,
     icon: Icon(close ? Icons.close_rounded : Icons.arrow_back_rounded),
   );
@@ -83,7 +97,7 @@ class AsyncBody<T> extends StatelessWidget {
     _ => const Center(
       child: SizedBox.square(
         dimension: 24,
-        child: CircularProgressIndicator(strokeWidth: 2.5),
+        child: KitSpinner(strokeWidth: 2.5),
       ),
     ),
   };
@@ -91,6 +105,8 @@ class AsyncBody<T> extends StatelessWidget {
 
 /// Maps ledger and sync errors to copy. Raw exception text is never shown.
 String errorMessage(Object error) => switch (error) {
+  LedgerException(issue: LedgerInputIssue.groupFull) => S.errGroupFull,
+  LedgerException(issue: LedgerInputIssue.tooLong) => S.errTooLong,
   LedgerException(:final code) => switch (code) {
     LedgerErrorCode.notOnboarded => S.errNotOnboarded,
     LedgerErrorCode.groupNotFound => S.errGroupNotFound,
@@ -98,6 +114,7 @@ String errorMessage(Object error) => switch (error) {
     LedgerErrorCode.expenseNotFound => S.errExpenseNotFound,
     LedgerErrorCode.invalidInput => S.errInvalidInput,
     LedgerErrorCode.invalidSplit => S.errInvalidSplit,
+    LedgerErrorCode.storageFailed => S.errStorage,
   },
   SyncException(:final failure) => syncFailureMessage(failure),
   _ => S.errGeneric,
@@ -106,6 +123,7 @@ String errorMessage(Object error) => switch (error) {
 String syncFailureMessage(SyncFailure f) => switch (f) {
   SyncFailure.permissionDenied => S.errPermission,
   SyncFailure.radioOff => S.errRadioOff,
+  SyncFailure.locationOff => S.errLocationOff,
   SyncFailure.peerUnreachable => S.errUnreachable,
   SyncFailure.timeout => S.errTimeout,
   SyncFailure.noSharedGroups => S.errNoShared,
@@ -162,8 +180,28 @@ Future<bool> confirmAction(
   required String title,
   required String body,
   required String confirmLabel,
-}) async {
-  final ok = await showDialog<bool>(
+  String cancelLabel = S.cancel,
+}) async =>
+    await askChoice(
+      context,
+      title: title,
+      body: body,
+      confirmLabel: confirmLabel,
+      cancelLabel: cancelLabel,
+    ) ??
+    false;
+
+/// A question with two answers: true for [confirmLabel], false for
+/// [cancelLabel], and null when it is closed without an answer (Android
+/// back, a tap outside), so a caller can tell "Not me" from "never mind".
+Future<bool?> askChoice(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String confirmLabel,
+  required String cancelLabel,
+}) {
+  return showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
@@ -171,7 +209,7 @@ Future<bool> confirmAction(
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text(S.cancel),
+          child: Text(cancelLabel),
         ),
         FilledButton(
           onPressed: () => Navigator.of(context).pop(true),
@@ -180,7 +218,6 @@ Future<bool> confirmAction(
       ],
     ),
   );
-  return ok ?? false;
 }
 
 /// A single-line text prompt ("Rename", "Your name", "Phone name").
@@ -191,6 +228,7 @@ Future<String?> promptText(
   String? hint,
   String? helper,
   String confirmLabel = S.save,
+  int? maxLength,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -199,6 +237,7 @@ Future<String?> promptText(
     hint: hint,
     helper: helper,
     confirmLabel: confirmLabel,
+    maxLength: maxLength,
   ),
 );
 
@@ -209,6 +248,7 @@ class _TextPrompt extends StatefulWidget {
     required this.confirmLabel,
     this.hint,
     this.helper,
+    this.maxLength,
   });
 
   final String title;
@@ -217,12 +257,19 @@ class _TextPrompt extends StatefulWidget {
   final String? helper;
   final String confirmLabel;
 
+  /// Caps the text (and the initial value) at this many characters.
+  final int? maxLength;
+
   @override
   State<_TextPrompt> createState() => _TextPromptState();
 }
 
 class _TextPromptState extends State<_TextPrompt> {
-  late final _controller = TextEditingController(text: widget.initial);
+  late final _controller = TextEditingController(
+    text: widget.maxLength == null
+        ? widget.initial
+        : widget.initial.characters.take(widget.maxLength!).toString(),
+  );
 
   @override
   void dispose() {
@@ -242,6 +289,7 @@ class _TextPromptState extends State<_TextPrompt> {
     content: TextField(
       controller: _controller,
       autofocus: true,
+      maxLength: widget.maxLength,
       textCapitalization: TextCapitalization.words,
       decoration: InputDecoration(
         hintText: widget.hint,
@@ -369,3 +417,81 @@ String groupCurrency(GroupState g) => g.group?.currency ?? 'INR';
 /// True when the member is [me] after resolving merges.
 bool isMeIn(GroupState g, MemberId member, PersonId me) =>
     g.resolve(member) == myMemberIn(g, me);
+
+final _duplicates = Expando<Set<ExpenseId>>('possibleDuplicatePayments');
+
+/// SPEC 7.2: payments that look like a second record of the same handover:
+/// another live payment with the same from, to, currency and amount within
+/// 24 h. Both are kept; the UI only hints. Cached per [GroupState].
+Set<ExpenseId> possibleDuplicatePayments(GroupState g) =>
+    _duplicates[g] ??= _findDuplicatePayments(g);
+
+Set<ExpenseId> _findDuplicatePayments(GroupState g) {
+  const window = Duration(hours: 24);
+  final byKey = <String, List<Expense>>{};
+  for (final e in g.liveExpenses) {
+    if (!e.isPayment) continue;
+    final key =
+        '${g.resolve(e.payer)}|${g.resolve(e.receiver)}|'
+        '${e.money.currency}|${e.money.total}';
+    (byKey[key] ??= []).add(e);
+  }
+  final out = <ExpenseId>{};
+  for (final list in byKey.values) {
+    if (list.length < 2) continue;
+    list.sort((a, b) => a.date.compareTo(b.date));
+    for (var i = 1; i < list.length; i++) {
+      if (list[i].date.difference(list[i - 1].date).abs() <= window) {
+        out
+          ..add(list[i].id)
+          ..add(list[i - 1].id);
+      }
+    }
+  }
+  return out;
+}
+
+/// SPEC 5.16: member display names are 1..40 characters.
+const int kMemberNameMax = 40;
+
+/// The existing name [candidate] would duplicate (case and spaces
+/// ignored: "priya " is "Priya"), or null. Both sides are compared as the
+/// Ledger saves them (TextClean.clean), so a name carrying an invisible
+/// mark (U+200B, U+200E, ...) is the plain name it will be stored as
+/// (UIFLOW-R4-01). The marks the Ledger keeps inside a name but that draw
+/// nothing after a letter (soft hyphen, ZWJ, variation selectors,
+/// invisible operators; TextClean.isBlankMark) are left out of the
+/// comparison too, never out of what is stored: "Rahul" with a soft hyphen
+/// looks like "Rahul" everywhere (UIFLOW-R5-01).
+String? duplicateName(String candidate, Iterable<String> existing) {
+  String key(String n) => String.fromCharCodes(
+    TextClean.clean(n).runes.where((r) => !TextClean.isBlankMark(r)),
+  ).toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
+  final k = key(candidate);
+  if (k.isEmpty) return null;
+  for (final e in existing) {
+    if (key(e) == k) return TextClean.clean(e);
+  }
+  return null;
+}
+
+/// The date picker the expense, payment and settle-up editors open: from
+/// 2000 to the end of next year, widened to take in [initial] when the
+/// stored date lies outside that range (a phone with a reset clock writes
+/// 1970, and a peer may send any date the remote check accepts), so the
+/// user can always see the date and correct it (SECURITY-R5-01).
+Future<DateTime?> pickEntryDate(
+  BuildContext context, {
+  required DateTime initial,
+  required DateTime now,
+}) {
+  final day = DateTime(initial.year, initial.month, initial.day);
+  final first = DateTime(2000);
+  final last = DateTime(now.year + 1, 12, 31);
+  return showDatePicker(
+    context: context,
+    initialDate: day,
+    firstDate: day.isBefore(first) ? day : first,
+    lastDate: day.isAfter(last) ? day : last,
+  );
+}

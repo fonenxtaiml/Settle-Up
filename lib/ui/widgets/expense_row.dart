@@ -7,6 +7,7 @@ import '../../theme/tokens.dart';
 import '../format/money_format.dart';
 import 'category_glyph.dart';
 import 'kit_strings.dart';
+import 'kit_layout.dart';
 import 'list_row.dart';
 import 'money_text.dart';
 import 'tether.dart';
@@ -24,7 +25,9 @@ class ExpenseRow extends StatelessWidget {
     required this.expense,
     required this.memberNames, // MemberId -> display name ("You" for me)
     required this.myMemberId,
+    this.resolve,
     this.unshared = false,
+    this.possibleDuplicate = false,
     this.deleted = false,
     this.onTap,
     this.onRestore,
@@ -33,21 +36,54 @@ class ExpenseRow extends StatelessWidget {
   final Expense expense;
   final Map<MemberId, String> memberNames;
   final MemberId? myMemberId;
+
+  /// Follows member merges (GroupState.resolve), so a duplicate of me that
+  /// was merged into me counts as me. Null: ids are taken as they are.
+  final MemberId Function(MemberId)? resolve;
   final bool unshared;
+
+  /// SPEC 7.2: a payment that matches another (same from, to and amount
+  /// within 24 h). Both are kept; the subline hints "possible duplicate".
+  final bool possibleDuplicate;
   final bool deleted;
   final VoidCallback? onTap;
   final VoidCallback? onRestore;
 
-  static ExpenseImpact impactOf(Expense e, MemberId? me) {
+  static ExpenseImpact impactOf(
+    Expense e,
+    MemberId? me, {
+    MemberId Function(MemberId)? resolve,
+  }) {
     if (me == null) return ExpenseImpact.notInvolved;
-    final involved =
-        e.money.paid.containsKey(me) || e.money.owed.containsKey(me);
+    bool mine(MemberId m) => (resolve?.call(m) ?? m) == me;
+    final involved = e.money.paid.keys.any(mine) || e.money.owed.keys.any(mine);
     if (!involved) return ExpenseImpact.notInvolved;
-    final v = e.impactFor(me);
+    final v = impactValue(e, me, resolve: resolve);
     if (v > 0) return ExpenseImpact.lent;
     if (v < 0) return ExpenseImpact.borrowed;
     return ExpenseImpact.even;
   }
+
+  /// Paid minus owed for [me], counting members merged into [me].
+  static int impactValue(
+    Expense e,
+    MemberId? me, {
+    MemberId Function(MemberId)? resolve,
+  }) {
+    if (me == null) return 0;
+    if (resolve == null) return e.impactFor(me);
+    var v = 0;
+    e.money.paid.forEach((m, x) {
+      if (resolve(m) == me) v += x;
+    });
+    e.money.owed.forEach((m, x) {
+      if (resolve(m) == me) v -= x;
+    });
+    return v;
+  }
+
+  bool _isMe(MemberId id) =>
+      myMemberId != null && (resolve?.call(id) ?? id) == myMemberId;
 
   static String methodLabel(PaymentMethod m) => switch (m) {
     PaymentMethod.upi => KitStrings.upi,
@@ -60,10 +96,8 @@ class ExpenseRow extends StatelessWidget {
 
   /// "Ravi paid you", "You paid Priya", "Kabir paid Ravi".
   String paymentTitle() {
-    final to = expense.receiver == myMemberId ? 'you' : _name(expense.receiver);
-    final from = expense.payer == myMemberId
-        ? KitStrings.you
-        : _name(expense.payer);
+    final to = _isMe(expense.receiver) ? 'you' : _name(expense.receiver);
+    final from = _isMe(expense.payer) ? KitStrings.you : _name(expense.payer);
     return KitStrings.paymentTitle(from, to);
   }
 
@@ -71,9 +105,11 @@ class ExpenseRow extends StatelessWidget {
   String meta() {
     if (expense.isPayment) {
       final m = expense.paymentMethod;
-      return m == null
-          ? KitStrings.payment
-          : '${KitStrings.payment}, ${methodLabel(m)}';
+      return [
+        KitStrings.payment,
+        if (m != null) methodLabel(m),
+        if (possibleDuplicate) KitStrings.possibleDuplicate,
+      ].join(', ');
     }
     final total = MoneyFormat.format(
       expense.money.total,
@@ -81,9 +117,7 @@ class ExpenseRow extends StatelessWidget {
     );
     final payers = expense.money.paid.keys.toList();
     if (payers.length == 1) {
-      final p = payers.first == myMemberId
-          ? KitStrings.you
-          : _name(payers.first);
+      final p = _isMe(payers.first) ? KitStrings.you : _name(payers.first);
       return KitStrings.paidAmount(p, total);
     }
     return KitStrings.peoplePaid(payers.length, total);
@@ -105,8 +139,8 @@ class ExpenseRow extends StatelessWidget {
     final Widget? trailing;
     final Widget leading;
     if (expense.isPayment) {
-      final toMe = expense.receiver == myMemberId;
-      final fromMe = expense.payer == myMemberId;
+      final toMe = _isMe(expense.receiver);
+      final fromMe = _isMe(expense.payer);
       // The 26 dp glyph overhangs the 24 dp icon column, as in render 2.
       leading = SizedBox(
         width: 24,
@@ -139,8 +173,8 @@ class ExpenseRow extends StatelessWidget {
               child: const Text(KitStrings.restore),
             );
     } else if (expense.isPayment) {
-      final toMe = expense.receiver == myMemberId;
-      final fromMe = expense.payer == myMemberId;
+      final toMe = _isMe(expense.receiver);
+      final fromMe = _isMe(expense.payer);
       final word = toMe
           ? KitStrings.received
           : fromMe
@@ -162,8 +196,8 @@ class ExpenseRow extends StatelessWidget {
               direction: MoneyDirection.neutral,
             );
     } else {
-      final impact = impactOf(expense, myMemberId);
-      final value = myMemberId == null ? 0 : expense.impactFor(myMemberId!);
+      final impact = impactOf(expense, myMemberId, resolve: resolve);
+      final value = impactValue(expense, myMemberId, resolve: resolve);
       final (word, direction) = switch (impact) {
         ExpenseImpact.lent => (KitStrings.youLent, MoneyDirection.owed),
         ExpenseImpact.borrowed => (KitStrings.youBorrowed, MoneyDirection.owe),
@@ -189,32 +223,76 @@ class ExpenseRow extends StatelessWidget {
     if (unshared) semantics.add(KitStrings.notYetShared);
 
     final titleStyle = theme.textTheme.titleMedium!;
+    final subtitleStyle = theme.textTheme.bodySmall!;
+    // The trailing block keeps its natural width, so a direction word is
+    // never broken ("you borrowe/d"). When that leaves the text too little
+    // room, so the subline amount would be cut ("Sam paid KD1,250.7..."),
+    // the row stacks the trailing block under the text, as at large text.
+    final trailingWidth = switch (trailing) {
+      final BalanceTrailing b => b.naturalWidth(context),
+      Text(:final data?) => measureTextWidth(
+        context,
+        data,
+        AppType.amount(context),
+      ),
+      _ => 0.0,
+    };
+    Widget rowFor(bool stack) => KitListRow(
+      title: title,
+      subtitle: metaText,
+      leading: leading,
+      trailing: trailing,
+      onTap: onTap,
+      minHeight: Sizes.rowMinDense,
+      subtitleLines: 2,
+      verticalPadding: 7,
+      stackTrailing: stack,
+      titleStyle: deleted
+          ? titleStyle.copyWith(
+              decoration: TextDecoration.lineThrough,
+              decorationColor: scheme.onSurfaceVariant,
+              color: scheme.onSurfaceVariant,
+            )
+          : titleStyle,
+      subtitleTrailing: unshared ? const _WaitingMark() : null,
+    );
     return Semantics(
       container: true,
       label: semantics.join(', '),
       button: onTap != null,
       onTap: onTap,
       excludeSemantics: onRestore == null || !deleted,
-      child: KitListRow(
-        title: title,
-        subtitle: metaText,
-        leading: leading,
-        trailing: trailing,
-        onTap: onTap,
-        minHeight: Sizes.rowMinDense,
-        verticalPadding: 7,
-        titleStyle: deleted
-            ? titleStyle.copyWith(
-                decoration: TextDecoration.lineThrough,
-                decorationColor: scheme.onSurfaceVariant,
-                color: scheme.onSurfaceVariant,
-              )
-            : titleStyle,
-        subtitleTrailing: unshared ? const _WaitingMark() : null,
-      ),
+      child: trailingWidth == 0 || isLargeText(context)
+          ? rowFor(false)
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final textRoom =
+                    constraints.maxWidth -
+                    Space.rowInset * 2 -
+                    24 - // leading glyph
+                    14 - // gap after it
+                    Space.md - // gap before the trailing block
+                    trailingWidth -
+                    (unshared ? Space.sm + 8 : 0);
+                final fits =
+                    textRoom >= _minTextBeside &&
+                    textFitsWords(
+                      context,
+                      metaText,
+                      subtitleStyle,
+                      textRoom,
+                      maxLines: 2,
+                    );
+                return rowFor(!fits);
+              },
+            ),
     );
   }
 }
+
+/// The least room the title and subline keep beside the trailing block
+/// before the row stacks.
+const double _minTextBeside = 96;
 
 /// "Not yet shared": a small open point, the tether's waiting vocabulary.
 class _WaitingMark extends StatelessWidget {

@@ -205,6 +205,23 @@ final class SqliteOpStore implements OpStore {
   @override
   Future<void> purgeGroup(GroupId groupId) async {
     _transaction((db) {
+      final mark = purgedMark(_kvIn(db, KvKeys.purged(groupId)));
+      for (final row in db.select(
+        'SELECT device_id, MAX(counter) FROM ops WHERE group_id = ? '
+        'GROUP BY device_id',
+        [groupId],
+      )) {
+        final d = row.columnAt(0) as String;
+        final c = row.columnAt(1) as int;
+        if (c > (mark[d] ?? 0)) mark[d] = c;
+      }
+      if (mark.isNotEmpty) {
+        db.execute(
+          'INSERT INTO kv(key, value) VALUES (?, ?) '
+          'ON CONFLICT(key) DO UPDATE SET value = excluded.value',
+          [KvKeys.purged(groupId), jsonEncode(mark)],
+        );
+      }
       db.execute('DELETE FROM ops WHERE group_id = ?', [groupId]);
       db.execute('DELETE FROM vv WHERE group_id = ?', [groupId]);
       db.execute('DELETE FROM peer_vv WHERE group_id = ?', [groupId]);
@@ -247,11 +264,28 @@ final class SqliteOpStore implements OpStore {
     });
   }
 
+  @override
+  Future<bool> capPeerKnowledge(
+    GroupId groupId,
+    DeviceId deviceId,
+    int max,
+  ) async {
+    final db = _open;
+    db.execute(
+      'UPDATE peer_vv SET max_counter = ? '
+      'WHERE group_id = ? AND device_id = ? AND max_counter > ?',
+      [max, groupId, deviceId, max],
+    );
+    return db.updatedRows > 0;
+  }
+
   // ------------------------------------------------------------------- kv --
 
   @override
-  Future<String?> getKv(String key) async {
-    final rows = _open.select('SELECT value FROM kv WHERE key = ?', [key]);
+  Future<String?> getKv(String key) async => _kvIn(_open, key);
+
+  static String? _kvIn(Database db, String key) {
+    final rows = db.select('SELECT value FROM kv WHERE key = ?', [key]);
     return rows.isEmpty ? null : rows.first.columnAt(0) as String;
   }
 

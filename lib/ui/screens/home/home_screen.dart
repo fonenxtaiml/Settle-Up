@@ -48,7 +48,11 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
     final summaries = ref.watch(groupSummariesProvider);
     final people = ref.watch(peopleBalancesProvider);
     final overall = ref.watch(overallBalanceProvider);
-    final hasGroups = summaries.value?.isNotEmpty ?? false;
+    // Any group counts, 1:1 ones too: a balance left only in a direct group
+    // (its shared group deleted) still shows the hero, People and the FAB.
+    final hasGroups =
+        (summaries.value?.isNotEmpty ?? false) ||
+        (snap.value?.state.visibleGroups.isNotEmpty ?? false);
 
     return Scaffold(
       appBar: screenAppBar(
@@ -86,7 +90,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
           final s = snap.value;
           final p = profile;
           if (s == null || p == null) return const SizedBox.shrink();
-          if (groups.isEmpty && s.pendingJoins.isEmpty) {
+          if (groups.isEmpty &&
+              s.state.visibleGroups.isEmpty &&
+              s.pendingJoins.isEmpty) {
             return _Empty(onCreate: () => context.push(Routes.newGroup));
           }
           return _body(

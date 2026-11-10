@@ -68,13 +68,31 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     _simplify = g.simplifyDebts;
   }
 
-  void _addPerson() {
+  /// "Priya is already in this group" when the typed name repeats one.
+  String? _personError;
+
+  /// Adds the typed person; false when the name is already in the list.
+  bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
-    if (n.isEmpty) return;
+    if (n.isEmpty) return true;
+    // You are a member of every new group too (Members refuses your name
+    // for the same reason).
+    final me = ref.read(profileProvider).value?.displayName;
+    final dup = duplicateName(n, [
+      ?me,
+      ..._newNames,
+      for (final p in _existing) ?people[p],
+    ]);
+    if (dup != null) {
+      setState(() => _personError = S.alreadyInGroup(dup));
+      return false;
+    }
     setState(() {
       _newNames.add(n);
       _person.clear();
+      _personError = null;
     });
+    return true;
   }
 
   Future<void> _save(Group? original, Map<PersonId, String> people) async {
@@ -84,6 +102,12 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       Haptics.invalid(context);
       return;
     }
+    // A name still in the field joins the list; one that repeats a name
+    // already there is that person, so it is not added twice.
+    if (_isNew && _person.text.trim().isNotEmpty && !_addPerson(people)) {
+      _person.clear();
+      _personError = null;
+    }
     setState(() => _saving = true);
     final ledger = ref.read(ledgerRepositoryProvider);
     final profile = ref.read(profileProvider).value!;
@@ -92,7 +116,6 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     GroupId? created;
     final ok = await runGuarded(context, () async {
       if (_isNew) {
-        if (_person.text.trim().isNotEmpty) _addPerson();
         created = await ledger.createGroup(
           NewGroup(
             name: name,
@@ -234,19 +257,9 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           ),
           gutter(const SectionHeading(S.groupType)),
           gutter(
-            SegmentedButton<GroupType>(
-              showSelectedIcon: false,
-              segments: [
-                for (final t in [
-                  GroupType.trip,
-                  GroupType.home,
-                  GroupType.couple,
-                  GroupType.other,
-                ])
-                  ButtonSegment(value: t, label: Text(groupTypeLabel(t))),
-              ],
-              selected: {_type},
-              onSelectionChanged: (s) => setState(() => _type = s.first),
+            _GroupTypePicker(
+              value: _type,
+              onChanged: (t) => setState(() => _type = t),
             ),
           ),
           const SizedBox(height: Space.md),
@@ -328,11 +341,15 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
                 label: S.personName,
                 hintText: S.personNameHint,
                 controller: _person,
+                maxLength: kMemberNameMax,
+                errorText: _personError,
                 textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _addPerson(),
-                onChanged: (_) => setState(() {}),
+                onSubmitted: (_) => _addPerson(people),
+                onChanged: (_) => setState(() => _personError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: _person.text.trim().isEmpty ? null : _addPerson,
+                  onPressed: _person.text.trim().isEmpty
+                      ? null
+                      : () => _addPerson(people),
                   style: KitButtonStyles.small(context),
                   child: const Text(S.addPerson),
                 ),
@@ -414,4 +431,64 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       ),
     );
   }
+}
+
+/// Trip, Home, Couple, Other: a segmented control while every word fits
+/// its quarter, and wrapping chips at large text or on a narrow phone, so
+/// a label is never broken mid-word ("Cou/ple").
+class _GroupTypePicker extends StatelessWidget {
+  const _GroupTypePicker({required this.value, required this.onChanged});
+
+  final GroupType value;
+  final ValueChanged<GroupType> onChanged;
+
+  static const _types = [
+    GroupType.trip,
+    GroupType.home,
+    GroupType.couple,
+    GroupType.other,
+  ];
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final fits = segmentsFit(
+        context,
+        _types.map(groupTypeLabel),
+        constraints.maxWidth,
+        count: _types.length,
+        // Text button padding (12 a side) and the segment borders.
+        chrome: 24 + 2,
+      );
+      if (fits) {
+        return SegmentedButton<GroupType>(
+          showSelectedIcon: false,
+          segments: [
+            for (final t in _types)
+              ButtonSegment(value: t, label: SegmentLabel(groupTypeLabel(t))),
+          ],
+          selected: {value},
+          onSelectionChanged: (s) => onChanged(s.first),
+        );
+      }
+      return Semantics(
+        label: S.groupType,
+        container: true,
+        explicitChildNodes: true,
+        child: Wrap(
+          spacing: Space.sm,
+          runSpacing: Space.sm,
+          children: [
+            for (final t in _types)
+              ChoiceChip(
+                label: Text(groupTypeLabel(t)),
+                selected: t == value,
+                showCheckmark: false,
+                onSelected: (_) => onChanged(t),
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }

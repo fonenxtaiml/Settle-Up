@@ -70,6 +70,7 @@ abstract final class S {
   static const joinWithQr = 'Join with a QR code';
 
   // -------------------------------------------------------------- group --
+  static String groupSpent(String spent) => '$spent spent';
   static String groupSubtitle(int people, String spent) =>
       '${S.people(people)}, $spent spent';
   static String groupDetail(String paid, String share) =>
@@ -158,6 +159,15 @@ abstract final class S {
   static const youSub = 'You, on this phone';
   static const renameTitle = 'Rename';
   static const memberAdded = 'Person added';
+  static String alreadyInGroup(String name) => '$name is already in this group';
+  static String alreadyInNamedGroup(String name, String group) =>
+      '$name is already in $group';
+  static String alreadyAFriend(String name) =>
+      'You already have a friend called $name';
+  static String cannotRemoveTitle(String name) => "$name can't be removed yet";
+  static String cannotRemoveBody(String name, String balance) =>
+      '$name has $balance open in this group. Settle up first, then remove.';
+  static const ok = 'OK';
 
   // ------------------------------------------------------------- invite --
   static String inviteTitle(String group) => 'Join $group';
@@ -169,6 +179,10 @@ abstract final class S {
   static const showAgain = 'Show again';
   static const inviteQrLabel = 'QR code to join this group';
   static const shareLink = 'Share link';
+  static const shareLinkTitle = 'Share the invite link?';
+  static String shareLinkWarning(String group) =>
+      'Anyone with this link can see and add to $group. Send it only to '
+      'people in the group.';
   static String inviteShareText(String group, String link) =>
       'Join $group on Settle Up: $link';
 
@@ -179,6 +193,15 @@ abstract final class S {
   static const notOnList = "I'm not on the list";
   static String claimed(String name) => "You're $name in this group";
   static const claimLater = 'Not now';
+  static const claimSameNameTitle = 'Is that you?';
+  static String claimSameNameBody(String name, String group) =>
+      '$name is already in $group. If that is you, pick it so your '
+      'balances follow you.';
+  static const thatsMe = "That's me";
+  static const notMe = 'Not me';
+  static String yourNameIn(String group) => 'Your name in $group';
+  static String nameTakenHelper(String name) =>
+      '$name is already taken here. Use a name people can tell apart.';
 
   // -------------------------------------------------------- add expense --
   static const addExpenseTitle = 'Add expense';
@@ -222,6 +245,17 @@ abstract final class S {
   static const descriptionNeeded = 'Add a short description, like Groceries';
   static String amountNeeded(String zero) => 'Enter an amount above $zero';
   static const splitNotDone = 'Finish the split first';
+  static String payersAddUp(String paid, String total) =>
+      'Paid by adds up to $paid, not $total. Tap Paid by to fix it.';
+  static const splitNobody = 'Pick at least one person';
+  static const splitBelowZero = 'A share would be below zero';
+  static const splitUnreadable = 'Check the amounts in the split';
+  static const discardTitle = 'Discard this expense?';
+  static const discardBody = 'What you typed here will be lost.';
+  static const keepEditing = 'Keep editing';
+  static const sharesTitle = 'Shares';
+  static String sharesHelper(int max) => 'A whole number from 1 to $max';
+  static String setSharesOf(String name) => 'Shares for $name. Tap to type';
   static const youOweShort = 'you owe';
   static String youOweName(String name) => 'you owe $name';
   static String youGetBack(String amount) => 'you get back $amount';
@@ -405,6 +439,9 @@ abstract final class S {
   static const noneNearbyBody =
       'Ask your friend to open Sync and turn on Make this phone visible.';
   static const nearbyOff = 'Not looking';
+
+  /// A phone in more groups than its advert lists, none of them ours.
+  static const mayShareGroups = 'may share a group';
   static String sharesGroups(List<String> names) {
     if (names.isEmpty) return 'no shared groups';
     if (names.length == 1) return 'shares ${names.first}';
@@ -414,6 +451,29 @@ abstract final class S {
 
   static const wifi = 'Wi-Fi';
   static const bluetooth = 'Bluetooth';
+  static const radiosAskTitle = 'Allow Bluetooth sync';
+  static const radiosAskBody =
+      'Settle Up needs permission to find phones near you over Bluetooth, '
+      'without Wi-Fi.';
+  static const allow = 'Allow';
+  static const radiosDeniedTitle = 'Bluetooth sync is not allowed';
+  static const radiosDeniedBody =
+      'Allow the Nearby permission (Location on older phones) in the app '
+      'settings for Settle Up to sync over Bluetooth.';
+  static const openSettings = 'Open settings';
+  static const bluetoothOffTitle = 'Bluetooth is off';
+  static const bluetoothOffBody =
+      'Turn it on to sync with phones that are not on your Wi-Fi.';
+  static const turnOnBluetooth = 'Turn on Bluetooth';
+  static const locationOffTitle = 'Location is off';
+  static const locationOffBody =
+      'On this version of Android, Location must be on to find phones over '
+      'Bluetooth.';
+  static const turnOnLocation = 'Turn on location';
+  static const wifiOffTitle = 'Wi-Fi is off';
+  static const wifiOffBody =
+      'Turn on Wi-Fi, or join a friend\'s hotspot, to sync over Wi-Fi.';
+  static const turnOnWifi = 'Turn on Wi-Fi';
   static const pairHint = 'Scan their QR code to join a group';
   static const recentSyncs = 'Recent syncs';
   static String recentLine(String when, String transport) =>
@@ -510,10 +570,22 @@ abstract final class S {
   static const errExpenseNotFound = 'This expense is no longer on this phone.';
   static const errInvalidInput = 'Check the highlighted fields.';
   static const errInvalidSplit = 'The split does not add up to the total.';
+  static const errGroupFull = 'A group can have up to 50 people.';
+  static const errTooLong = 'That is too long. Make it shorter.';
+  static const missingKeyTitle = "This phone can't sync this group";
+  static const missingKeyBody =
+      'Its key was lost on this phone. Your expenses are still here. Ask a '
+      'friend in the group to show the invite QR again, then scan it.';
+  static const errStorage =
+      'Could not save on this phone. Make sure it has some free storage, '
+      'then try again.';
   static const errPermission =
       "Settle Up needs permission to find friends' phones nearby.";
   static const errRadioOff =
       'Bluetooth or Wi-Fi is off. Turn it on to find nearby phones.';
+  static const errLocationOff =
+      'Location is off. Turn on location to sync over Bluetooth, or use '
+      'Wi-Fi.';
   static const errUnreachable =
       "Couldn't reach that phone. Check you're on the same Wi-Fi or hotspot.";
   static const errTimeout = 'That phone stopped answering. Try again close by.';
@@ -528,4 +600,19 @@ abstract final class S {
   static const errCancelled = 'Sync cancelled.';
   static const errInternal = 'Something went wrong on this phone. Try again.';
   static const errGeneric = 'That did not work. Try again.';
+
+  // Startup error screen (shown when the data on this phone can't be opened).
+  static const startupTitle = "Settle Up couldn't start";
+  static const startupStorage =
+      "This phone didn't give Settle Up a place to keep its data. "
+      'Restart the phone, then try again.';
+  static const startupDatabase =
+      "Settle Up couldn't open the expenses saved on this phone.";
+  static const startupTooNew =
+      'Your expenses were saved by a newer version of Settle Up. '
+      'Install the latest version to open them.';
+  static const startupGeneric = 'Something went wrong while opening the app.';
+  static const startupKept =
+      'Your data stays on this phone as it is. Nothing has been deleted.';
+  static const startupRetry = 'Try again';
 }

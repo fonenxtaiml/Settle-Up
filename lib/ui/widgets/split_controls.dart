@@ -216,6 +216,34 @@ class MemberSplitRow extends StatelessWidget {
       onChanged!(!included);
     }
 
+    final shareStyle = AppType.amountSmall(context)
+        .copyWith(color: money.forDirection(shareDirection));
+    // The tether glyph (26 dp, following the text scale up to 1.5x) and
+    // its gap, when the subline shows one.
+    final tether =
+        6 + 26 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+    final text = ExcludeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(name, style: titleStyle),
+          if (sub != null)
+            Row(
+              children: [
+                if (subtitleDirection != null) ...[
+                  TetherGlyph(direction: subtitleDirection!, color: subColor),
+                  const SizedBox(width: 6),
+                ],
+                // An amount in the subline ("you get back ₹80,000.33") is
+                // set smaller rather than broken (VISUAL-R5-02).
+                Flexible(child: FitWordsText(sub, style: subStyle)),
+              ],
+            ),
+        ],
+      ),
+    );
+
     return MergeSemantics(
       child: Semantics(
         label: spoken,
@@ -239,41 +267,49 @@ class MemberSplitRow extends StatelessWidget {
                   ),
                   const SizedBox(width: Space.md),
                   Expanded(
-                    child: ExcludeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(name, style: titleStyle),
-                          if (sub != null)
-                            Row(
-                              children: [
-                                if (subtitleDirection != null) ...[
-                                  TetherGlyph(
-                                    direction: subtitleDirection!,
-                                    color: subColor,
+                    child: share == null
+                        ? text
+                        : LayoutBuilder(
+                            builder: (context, c) {
+                              // The share goes under the text at large
+                              // text, and whenever the name's longest word
+                              // or an amount in the subline would get less
+                              // room beside it (VISUAL-R5-02), as
+                              // KitListRow does.
+                              final needs = [
+                                longestWordWidth(context, name, titleStyle),
+                                if (sub != null)
+                                  longestWordWidth(context, sub, subStyle) +
+                                      (subtitleDirection != null ? tether : 0),
+                              ].fold(0.0, (a, b) => a > b ? a : b);
+                              final room =
+                                  c.maxWidth -
+                                  Space.sm -
+                                  measureTextWidth(context, share, shareStyle);
+                              final stacked =
+                                  isLargeText(context) || room + 0.5 < needs;
+                              return BesideOrUnder(
+                                text: text,
+                                stacked: stacked,
+                                gap: Space.sm,
+                                stackedAlignment:
+                                    AlignmentDirectional.centerEnd,
+                                trailing: ExcludeSemantics(
+                                  // Under the text, a share wider than
+                                  // the row is set smaller, never cut.
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      share,
+                                      maxLines: 1,
+                                      style: shareStyle,
+                                    ),
                                   ),
-                                  const SizedBox(width: 6),
-                                ],
-                                Flexible(child: Text(sub, style: subStyle)),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
-                  if (share != null) ...[
-                    const SizedBox(width: Space.sm),
-                    ExcludeSemantics(
-                      child: Text(
-                        share,
-                        maxLines: 1,
-                        style: AppType.amountSmall(
-                          context,
-                        ).copyWith(color: money.forDirection(shareDirection)),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
@@ -294,9 +330,14 @@ class SplitSummaryBar extends StatelessWidget {
     required this.summary,
     required this.leftMinor,
     required this.currency,
+    this.problem,
   });
 
   final String summary;
+
+  /// Why Save is off when no amount says it ("Pick at least one person").
+  /// Shown in place of the remainder, in the error colour.
+  final String? problem;
 
   /// Total minus assigned: 0 when done, negative when over-assigned.
   final int leftMinor;
@@ -314,21 +355,30 @@ class SplitSummaryBar extends StatelessWidget {
     final strong = theme.textTheme.titleSmall!
         .copyWith(fontSize: 14, color: over ? scheme.error : scheme.onSurface)
         .tabular;
-    final right = Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: amount, style: strong),
-          TextSpan(
-            text: over ? ' too much' : ' left to split',
-            style: over ? base.copyWith(color: scheme.error) : base,
-          ),
-        ],
-      ),
-      textAlign: TextAlign.end,
-    );
-    final spoken = over
-        ? KitStrings.tooMuch(MoneyFormat.spoken(leftMinor.abs(), currency))
-        : KitStrings.leftToSplit(MoneyFormat.spoken(leftMinor, currency));
+    final problem = this.problem;
+    final right = problem != null
+        ? Text(
+            problem,
+            textAlign: TextAlign.end,
+            style: base.copyWith(color: scheme.error),
+          )
+        : Text.rich(
+            TextSpan(
+              children: [
+                TextSpan(text: amount, style: strong),
+                TextSpan(
+                  text: over ? ' too much' : ' left to split',
+                  style: over ? base.copyWith(color: scheme.error) : base,
+                ),
+              ],
+            ),
+            textAlign: TextAlign.end,
+          );
+    final spoken =
+        problem ??
+        (over
+            ? KitStrings.tooMuch(MoneyFormat.spoken(leftMinor.abs(), currency))
+            : KitStrings.leftToSplit(MoneyFormat.spoken(leftMinor, currency)));
     return Semantics(
       liveRegion: true,
       container: true,
@@ -336,22 +386,62 @@ class SplitSummaryBar extends StatelessWidget {
       excludeSemantics: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: isLargeText(context)
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(summary, style: base),
-                  right,
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(child: Text(summary, style: base)),
-                  const SizedBox(width: Space.sm),
-                  right,
-                ],
-              ),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            // Stacked at large text, and earlier whenever an amount in the
+            // summary would not fit beside the remainder: an amount is
+            // never broken over two lines (VISUAL-R4-03).
+            final stack =
+                isLargeText(context) ||
+                (problem == null &&
+                    _longestWord(context, summary, base) +
+                            Space.sm +
+                            _width(context, right) >
+                        c.maxWidth);
+            return stack
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(summary, style: base),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: right,
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: Text(summary, style: base)),
+                      const SizedBox(width: Space.sm),
+                      if (problem != null) Flexible(child: right) else right,
+                    ],
+                  );
+          },
+        ),
       ),
     );
+  }
+
+  static double _width(BuildContext context, Text text) {
+    final span = text.textSpan ?? TextSpan(text: text.data, style: text.style);
+    final tp = TextPainter(
+      text: span,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final w = tp.width;
+    tp.dispose();
+    return w;
+  }
+
+  static double _longestWord(BuildContext context, String s, TextStyle st) {
+    var widest = 0.0;
+    for (final word in s.split(RegExp(r'\s+'))) {
+      if (word.isEmpty) continue;
+      final w = _width(context, Text(word, style: st));
+      if (w > widest) widest = w;
+    }
+    return widest;
   }
 }

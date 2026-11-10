@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
+import 'kit_layout.dart';
 import 'kit_strings.dart';
 
 /// The extended ink FAB (render 1, 2): 56 dp, 16 dp radius, plus icon and
@@ -115,10 +116,14 @@ class AppNavigationBar extends StatelessWidget {
 /// App bar title with an optional subline (render 2, 4): "Goa trip" over
 /// "6 people, ₹38,400 spent".
 class AppBarTitle extends StatelessWidget {
-  const AppBarTitle(this.title, {super.key, this.subtitle});
+  const AppBarTitle(this.title, {super.key, this.subtitle, this.shortSubtitle});
 
   final String title;
   final String? subtitle;
+
+  /// Shown instead of [subtitle] when that does not fit on one line (at
+  /// large text): the part worth keeping, e.g. "₹1,20,000.50 spent".
+  final String? shortSubtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -136,13 +141,39 @@ class AppBarTitle extends StatelessWidget {
             style: theme.textTheme.titleLarge,
           ),
           if (subtitle != null)
-            Text(
-              subtitle!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall!.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
+            LayoutBuilder(
+              builder: (context, constraints) {
+                final style = theme.textTheme.bodySmall!.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                );
+                final short = shortSubtitle;
+                if (short != null &&
+                    constraints.hasBoundedWidth &&
+                    !textFitsWords(
+                      context,
+                      subtitle!,
+                      style,
+                      constraints.maxWidth,
+                    )) {
+                  // The short form is the part worth keeping: when even it
+                  // does not fit one line ("KD999,999.999 spent" at 320 dp,
+                  // 1.3x) it scales down rather than lose its end.
+                  return Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(short, maxLines: 1, style: style),
+                    ),
+                  );
+                }
+                return Text(
+                  subtitle!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: style,
+                );
+              },
             ),
         ],
       ),

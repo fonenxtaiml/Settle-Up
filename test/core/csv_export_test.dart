@@ -49,9 +49,11 @@ List<List<String>> parseCsv(String s) {
 }
 
 void main() {
-  // 2026-11-09 and 2026-11-10 (UTC).
-  const day1 = kBaseMs;
-  const day2 = kBaseMs + 86400000;
+  // Noon on 9 and 10 Nov 2026 in the zone the tests run in: the Date
+  // column is the local calendar day (MONEY-R1-05), so the expected dates
+  // below hold in every zone.
+  final day1 = DateTime(2026, 11, 9, 12).millisecondsSinceEpoch;
+  final day2 = DateTime(2026, 11, 10, 12).millisecondsSinceEpoch;
 
   test('header, column order, sorting, amounts and payments', () {
     final g = groupOf([
@@ -102,6 +104,21 @@ void main() {
     expect(rows[1][1], 'Dinner, drinks\nand "fun"');
     expect(rows[2][1], 'Line\r\nbreak');
     expect(rows.every((r) => r.length == 7), isTrue);
+  });
+
+  test('Date is the local calendar day, late evening and just after '
+      'midnight included (MONEY-R1-05)', () {
+    final late = DateTime(2026, 11, 9, 23, 30).millisecondsSinceEpoch;
+    final early = DateTime(2026, 11, 10, 0, 30).millisecondsSinceEpoch;
+    final g = groupOf([member('a', name: 'Alex'), member('b', name: 'Bob')], [
+      expense(equalBlock(100, 'a', ['a', 'b']),
+          id: 'e1', date: late, description: 'Late'),
+      expense(equalBlock(100, 'a', ['a', 'b']),
+          id: 'e2', date: early, description: 'Early'),
+    ]);
+    final rows = parseCsv(CsvExport.group(g));
+    expect(rows[1].take(2), ['2026-11-09', 'Late']);
+    expect(rows[2].take(2), ['2026-11-10', 'Early']);
   });
 
   test('formula-looking text is neutralised', () {

@@ -77,8 +77,7 @@ AsyncValue<R> _withMe<R>(
   return AsyncData(build(s, p.personId));
 }
 
-final groupSummariesProvider =
-    Provider<AsyncValue<List<GroupBalanceSummary>>>(
+final groupSummariesProvider = Provider<AsyncValue<List<GroupBalanceSummary>>>(
   (ref) => _withMe(ref, (s, me) => Summaries.groups(s.state, me)),
 );
 
@@ -97,42 +96,53 @@ final groupProvider = Provider.family<AsyncValue<GroupState?>, GroupId>(
 
 final groupTransfersProvider =
     Provider.family<AsyncValue<List<Transfer>>, GroupId>(
-  (ref, groupId) => ref.watch(ledgerProvider).whenData((s) {
-    final g = s.state.groups[groupId];
-    return g == null ? const <Transfer>[] : BalanceCalculator.suggestedTransfers(g);
-  }),
-);
+      (ref, groupId) => ref.watch(ledgerProvider).whenData((s) {
+        final g = s.state.groups[groupId];
+        return g == null
+            ? const <Transfer>[]
+            : BalanceCalculator.suggestedTransfers(g);
+      }),
+    );
 
 final groupNetsProvider = Provider.family<AsyncValue<NetsByCurrency>, GroupId>(
   (ref, groupId) => ref.watch(ledgerProvider).whenData((s) {
     final g = s.state.groups[groupId];
-    return g == null ? const <String, Map<MemberId, int>>{} : BalanceCalculator.groupNets(g);
+    return g == null
+        ? const <String, Map<MemberId, int>>{}
+        : BalanceCalculator.groupNets(g);
   }),
 );
 
 /// null = all groups.
 final activityProvider =
     Provider.family<AsyncValue<List<ActivityEntry>>, GroupId?>(
-  (ref, groupId) => ref.watch(ledgerProvider).whenData(
-        (s) => ActivityBuilder.build(
-          ops: s.ops,
-          state: s.state,
-          localDeviceId: s.localDeviceId,
-          unsharedOpIds: s.unsharedOpIds,
-          groupId: groupId,
-        ),
-      ),
-);
+      (ref, groupId) => ref
+          .watch(ledgerProvider)
+          .whenData(
+            (s) => ActivityBuilder.build(
+              ops: s.ops,
+              state: s.state,
+              localDeviceId: s.localDeviceId,
+              unsharedOpIds: s.unsharedOpIds,
+              groupId: groupId,
+            ),
+          ),
+    );
 
+/// History of one expense, keyed by (group, expense): entity ids are scoped
+/// by group (SPEC 7.2).
 final expenseHistoryProvider =
-    Provider.family<AsyncValue<List<ActivityEntry>>, ExpenseId>(
-  (ref, expenseId) => ref.watch(ledgerProvider).whenData(
-        (s) => ActivityBuilder.historyOf(
-          ops: s.ops,
-          state: s.state,
-          localDeviceId: s.localDeviceId,
-          unsharedOpIds: s.unsharedOpIds,
-          entityId: expenseId,
-        ),
-      ),
-);
+    Provider.family<AsyncValue<List<ActivityEntry>>, (GroupId, ExpenseId)>(
+      (ref, key) => ref
+          .watch(ledgerProvider)
+          .whenData(
+            (s) => ActivityBuilder.historyOf(
+              ops: s.ops,
+              state: s.state,
+              localDeviceId: s.localDeviceId,
+              unsharedOpIds: s.unsharedOpIds,
+              groupId: key.$1,
+              entityId: key.$2,
+            ),
+          ),
+    );

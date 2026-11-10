@@ -11,6 +11,7 @@ enum SyncPhase { connecting, handshaking, comparing, transferring, finishing }
 enum SyncFailure {
   permissionDenied,
   radioOff,
+  locationOff, // Bluetooth on, the location switch off where scans need it
   peerUnreachable,
   timeout,
   noSharedGroups,
@@ -148,7 +149,7 @@ final class SyncStatus {
   static const SyncStatus idle = SyncStatus();
 }
 
-/// A phone seen nearby, merged across transports by device id.
+/// A phone seen nearby, merged across transports by its advert id.
 @immutable
 final class NearbyPeer {
   const NearbyPeer({
@@ -156,16 +157,28 @@ final class NearbyPeer {
     required this.name,
     required this.transports,
     required this.sharedGroupIds,
-    this.deviceIdPrefix,
+    this.advertId,
+    this.moreGroups = false,
   });
 
-  final String key; // stable for the discovery run
+  /// Stable for the discovery run, also when the advert id rotates.
+  final String key;
   final String name;
-  final String? deviceIdPrefix;
+
+  /// The advert id seen most recently (SPEC 8.3), if any.
+  final String? advertId;
   final Set<TransportKind> transports; // preferred: lan > nearby > ble
   final List<GroupId> sharedGroupIds; // from tokens; empty = unknown/none
 
+  /// Its advert left some group tokens out (the phone is in more groups
+  /// than an advert holds), so it may share a group that [sharedGroupIds]
+  /// does not show. Sync may still be tried; the HELLO decides.
+  final bool moreGroups;
+
   bool get sharesGroups => sharedGroupIds.isNotEmpty;
+
+  /// Whether a Sync with this phone may find a shared group.
+  bool get maySync => sharesGroups || moreGroups;
 }
 
 @immutable
@@ -224,6 +237,9 @@ abstract interface class SyncEngine {
   Future<String> inviteLinkFor(GroupId groupId, {bool includeHost = true});
 
   /// Cancels the running session (status -> SessionFailed(cancelled)).
+  /// A Sync still connecting ends at once: the connect attempt under way
+  /// is abandoned (its channel, if it opens later, is closed) and no other
+  /// route is tried (QA SYNC-R4-01).
   Future<void> cancel();
 
   /// Keeps an authenticated session open and pushes new local ops while

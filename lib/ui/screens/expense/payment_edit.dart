@@ -129,11 +129,10 @@ class _PaymentEditScreenState extends ConsumerState<PaymentEditScreen> {
                   label: S.date,
                   value: DateLabels.pickerDate(_date, now: now),
                   onTap: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: _date,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(now.year + 1, 12, 31),
+                    final d = await pickEntryDate(
+                      context,
+                      initial: _date,
+                      now: now,
                     );
                     if (d != null) {
                       setState(

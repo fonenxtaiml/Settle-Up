@@ -1,12 +1,9 @@
 // Settings: your name, home currency, default split, theme, vibration,
 // this phone's name and CSV export.
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:share_plus/share_plus.dart';
 
-import '../../../core/csv_export.dart';
+import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
 import '../../../theme/tokens.dart';
@@ -14,9 +11,12 @@ import '../../providers.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import '../csv_share.dart';
 import '../pickers.dart';
+import '../../app_version.dart';
 
-const String appVersion = '1.0.0 (1)';
+// The version of the running build (pubspec.yaml via the Flutter tool).
+export '../../app_version.dart' show appVersion;
 
 String themeLabel(AppThemeMode m) => switch (m) {
   AppThemeMode.system => S.themeSystem,
@@ -34,6 +34,9 @@ class SettingsScreen extends ConsumerWidget {
     final settings =
         ref.watch(appSettingsProvider).value ?? const AppSettings();
     final device = ref.watch(deviceIdentityProvider).value;
+    // Kept live while Settings is open (CSV export, rename): Riverpod pauses
+    // what only the covered Home screen watches.
+    ref.watch(ledgerProvider);
     final theme = Theme.of(context);
     if (profile == null) {
       return Scaffold(
@@ -87,14 +90,25 @@ class SettingsScreen extends ConsumerWidget {
                       title: S.editName,
                       initial: profile.displayName,
                       helper: S.yourNameHelper,
+                      maxLength: kMemberNameMax,
                     );
                     if (name == null || !context.mounted) return;
-                    await runGuarded(
-                      context,
-                      () => repo.updateProfile(
+                    // Two members with one name cannot be told apart in
+                    // Paid by or the split (the Members rule).
+                    final clash = nameClashForMe(ref, profile.personId, name);
+                    if (clash != null) {
+                      Haptics.invalid(context);
+                      showSnack(context, clash);
+                      return;
+                    }
+                    await runGuarded(context, () async {
+                      await repo.updateProfile(
                         profile.copyWith(displayName: name),
-                      ),
-                    );
+                      );
+                      // "Friends see this when you sync": my member in
+                      // every group takes the new name.
+                      await renameMeEverywhere(ref, profile.personId, name);
+                    });
                   },
                 ),
               ],
@@ -189,6 +203,8 @@ class SettingsScreen extends ConsumerWidget {
                       title: S.phoneName,
                       initial: device?.deviceName ?? '',
                       helper: S.phoneNameHelp,
+                      // SPEC 8.9: the mDNS service name, at most 40.
+                      maxLength: kDeviceNameMax,
                     );
                     if (name == null || !context.mounted) return;
                     await runGuarded(context, () => repo.setDeviceName(name));
@@ -241,6 +257,8 @@ class SettingsScreen extends ConsumerWidget {
   }
 
   Future<void> _export(BuildContext context, WidgetRef ref) async {
+    // The ledger as it is now: Settings watches it, so this is never a
+    // snapshot paused while Settings covered Home.
     final snap = ref.read(ledgerProvider).value;
     final me = ref.read(profileProvider).value?.personId;
     if (snap == null || me == null) return;
@@ -258,19 +276,45 @@ class SettingsScreen extends ConsumerWidget {
     );
     if (id == null) return;
     final g = snap.state.groups[id]!;
-    final title = groupTitle(g, me);
-    await SharePlus.instance.share(
-      ShareParams(
-        subject: S.csvSubject(title),
-        files: [
-          XFile.fromData(
-            utf8.encode(CsvExport.group(g)),
-            mimeType: 'text/csv',
-            name: '${title.replaceAll(RegExp(r'[^\w\- ]'), '')}.csv',
-          ),
-        ],
-      ),
-    );
+    if (!context.mounted) return;
+    await shareGroupCsv(context, g, groupTitle(g, me));
+  }
+}
+
+/// SPEC 8.9: the phone name is the mDNS service name, at most 40.
+const int kDeviceNameMax = 40;
+
+/// The refusal copy when [name] is already someone else's name in a group
+/// I am in ("Rahul is already in Goa trip"; for a 1:1, whose stored name is
+/// the friend's, "You already have a friend called Rahul"), or null when
+/// it is free.
+String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
+  final ledger = ref.read(ledgerRepositoryProvider);
+  for (final g in ledger.current.state.visibleGroups) {
+    final mine = myMemberIn(g, me);
+    if (mine == null) continue;
+    final dup = duplicateName(name, [
+      for (final m in g.activeMembers)
+        if (g.resolve(m.id) != mine) m.displayName,
+    ]);
+    if (dup == null) continue;
+    return g.group!.isDirect
+        ? S.alreadyAFriend(dup)
+        : S.alreadyInNamedGroup(dup, g.group!.name);
+  }
+  return null;
+}
+
+/// Renames my member in every group I am in to [name] (merges followed),
+/// so friends see it after the next sync.
+Future<void> renameMeEverywhere(WidgetRef ref, PersonId me, String name) async {
+  final ledger = ref.read(ledgerRepositoryProvider);
+  final trimmed = name.trim();
+  for (final g in ledger.current.state.visibleGroups) {
+    final mine = myMemberIn(g, me);
+    if (mine == null) continue;
+    if (g.members[mine]?.displayName == trimmed) continue;
+    await ledger.renameMember(g.groupId, mine, trimmed);
   }
 }
 

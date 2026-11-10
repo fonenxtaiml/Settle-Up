@@ -8,6 +8,7 @@ import '../../core/hlc.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
+import '../../core/money.dart';
 import '../../core/ops.dart';
 import '../../core/split.dart';
 import '../../data/repositories.dart';
@@ -273,8 +274,10 @@ final class FakeLedgerRepository implements LedgerRepository {
     return m;
   }
 
-  Expense _expense(ExpenseId id) {
-    final e = _reducer.state.expense(id);
+  Expense _expense(ExpenseId id, {GroupId? groupId}) {
+    final e = groupId == null
+        ? _reducer.state.expense(id)
+        : _reducer.state.expenseIn(groupId, id);
     if (e == null) throw LedgerException(LedgerErrorCode.expenseNotFound, id);
     return e;
   }
@@ -504,7 +507,7 @@ final class FakeLedgerRepository implements LedgerRepository {
     SplitSpec paid,
     SplitSpec owed,
   ) {
-    if (total <= 0 || total > 999999999) {
+    if (total <= 0 || total > Money.maxMinor) {
       throw const LedgerException(LedgerErrorCode.invalidInput, 'total');
     }
     try {
@@ -551,7 +554,9 @@ final class FakeLedgerRepository implements LedgerRepository {
   @override
   Future<void> updateExpense(ExpenseId expenseId, ExpenseDraft draft) async {
     updatedExpenses.add((expenseId, draft));
-    final e = _expense(expenseId);
+    final e =
+        _reducer.state.expenseIn(draft.groupId, expenseId) ??
+        _expense(expenseId);
     final description = draft.description.trim();
     if (description.isEmpty) {
       throw const LedgerException(LedgerErrorCode.invalidInput, 'description');
@@ -582,9 +587,9 @@ final class FakeLedgerRepository implements LedgerRepository {
       a.owedBy == b.owedBy;
 
   @override
-  Future<void> deleteExpense(ExpenseId expenseId) async {
+  Future<void> deleteExpense(ExpenseId expenseId, {GroupId? groupId}) async {
     deletedExpenses.add(expenseId);
-    final e = _expense(expenseId);
+    final e = _expense(expenseId, groupId: groupId);
     _write(e.groupId, EntityType.expense, expenseId, OpKind.delete, {
       ExpenseFields.deletedAt: _nowMs,
     });
@@ -592,9 +597,9 @@ final class FakeLedgerRepository implements LedgerRepository {
   }
 
   @override
-  Future<void> restoreExpense(ExpenseId expenseId) async {
+  Future<void> restoreExpense(ExpenseId expenseId, {GroupId? groupId}) async {
     restoredExpenses.add(expenseId);
-    final e = _expense(expenseId);
+    final e = _expense(expenseId, groupId: groupId);
     _write(e.groupId, EntityType.expense, expenseId, OpKind.restore, {
       ExpenseFields.deletedAt: null,
     });
@@ -628,7 +633,7 @@ final class FakeLedgerRepository implements LedgerRepository {
   }
 
   MoneyBlock _paymentMoney(PaymentDraft d) {
-    if (d.amount <= 0 || d.amount > 999999999) {
+    if (d.amount <= 0 || d.amount > Money.maxMinor) {
       throw const LedgerException(LedgerErrorCode.invalidInput, 'amount');
     }
     return SplitCalculator.paymentBlock(
@@ -641,7 +646,9 @@ final class FakeLedgerRepository implements LedgerRepository {
 
   @override
   Future<void> updatePayment(ExpenseId expenseId, PaymentDraft draft) async {
-    final e = _expense(expenseId);
+    final e =
+        _reducer.state.expenseIn(draft.groupId, expenseId) ??
+        _expense(expenseId);
     final money = _paymentMoney(draft);
     final payload = <String, Object?>{
       if (!_sameMoney(money, e.money)) ExpenseFields.money: money.toJson(),

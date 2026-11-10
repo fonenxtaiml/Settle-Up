@@ -9,7 +9,9 @@ import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/ledger_state.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
+import 'package:settle_up/core/split.dart';
 import 'package:settle_up/core/version_vector.dart';
 import 'package:settle_up/data/kv_settings_repository.dart';
 import 'package:settle_up/data/ledger.dart';
@@ -479,6 +481,22 @@ void main() {
       expect(a.snap.state.expense(e)!.category, Categories.general);
     });
 
+    test('every currency holds amounts up to Money.maxMinor (UIFLOW-R2-04)',
+        () async {
+      final t = await trip();
+      for (final (currency, total) in [
+        ('IDR', 1200000000), // Rp 12,000,000.00, a villa for a week
+        ('COP', 450000000), // COP 4,500,000.00
+        ('INR', Money.maxMinor),
+        ('JPY', Money.maxMinor),
+      ]) {
+        final e = await a.ledger.addExpense(draft(t.g, [t.me, t.sam],
+            currency: currency, total: total));
+        expect(a.snap.state.expense(e)!.money.total, total);
+        expect(a.snap.state.expense(e)!.money.currency, currency);
+      }
+    });
+
     test('validation errors', () async {
       final t = await trip();
       final before = a.snap.ops.length;
@@ -487,7 +505,7 @@ void main() {
       await bad(draft(t.g, [t.me], description: '  '),
           LedgerErrorCode.invalidInput);
       await bad(draft(t.g, [t.me], total: 0), LedgerErrorCode.invalidInput);
-      await bad(draft(t.g, [t.me], total: 1000000000),
+      await bad(draft(t.g, [t.me], total: Money.maxMinor + 1),
           LedgerErrorCode.invalidInput);
       await bad(draft(t.g, [t.me], currency: 'X'), LedgerErrorCode.invalidInput);
       await bad(draft('nope', [t.me]), LedgerErrorCode.groupNotFound);
@@ -738,8 +756,9 @@ void main() {
       addTearDown(p.ledger.close);
       final t = await trip(p);
       flaky.failNext = true;
-      await expectLater(
-          p.ledger.addExpense(draft(t.g, [t.me])), throwsA(isA<StateError>()));
+      // A store error reaches the UI as storageFailed (DATA-R1-07).
+      await expectLater(p.ledger.addExpense(draft(t.g, [t.me])),
+          throwsA(_storageFailed));
       expect(p.opsOf(t.g), hasLength(4));
       await p.ledger.addExpense(draft(t.g, [t.me]));
       expect(p.opsOf(t.g).map((o) => o.counter), [1, 2, 3, 4, 5]);
@@ -753,7 +772,7 @@ void main() {
       await expectLater(
           p.ledger.createGroup(const NewGroup(
               name: 'X', type: GroupType.trip, currency: 'INR')),
-          throwsStateError);
+          throwsA(_storageFailed));
       expect(await p.ledger.groupKeys(), isEmpty);
       expect(await p.keys.all(), isEmpty);
     });
@@ -1014,6 +1033,62 @@ void main() {
           reason: 'the skewed op still sorts last');
     });
 
+    group('a local write after a peer whose clock is ahead (SYNC-R1-01)',
+        () {
+      late ({GroupId g, MemberId me, MemberId sam, MemberId priya}) t;
+      setUp(() async {
+        t = await trip();
+        await b.ledger.registerJoinedGroup(
+            t.g, (await a.ledger.groupKeys())[t.g]!, 'Goa');
+        await b.pull(a, t.g);
+      });
+
+      test('renaming what the ahead phone renamed takes effect', () async {
+        a.clock.advance(2 * 3600 * 1000);
+        await a.ledger.renameMember(t.g, t.sam, 'Sam (A)');
+        await a.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (A)'));
+        await b.pull(a, t.g);
+        expect(b.ledger.clockSkewDetected, isTrue);
+
+        await b.ledger.renameMember(t.g, t.sam, 'Sam (B)');
+        await b.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (B)'));
+        expect(b.group(t.g).members[t.sam]!.displayName, 'Sam (B)');
+        expect(b.group(t.g).group!.name, 'Goa (B)');
+        // Persisted and monotonic: a restart keeps the clock past it.
+        await b.restart();
+        await b.ledger.renameMember(t.g, t.sam, 'Sam (B2)');
+        expect(b.group(t.g).members[t.sam]!.displayName, 'Sam (B2)');
+
+        await a.pull(b, t.g);
+        expect(a.group(t.g).members[t.sam]!.displayName, 'Sam (B2)');
+        expect(a.group(t.g).group!.name, 'Goa (B)');
+      });
+
+      test('restoring an expense the ahead phone deleted takes effect',
+          () async {
+        final e = await b.ledger.addExpense(draft(t.g, [t.me, t.sam]));
+        await a.pull(b, t.g);
+        a.clock.advance(26 * 3600 * 1000); // a day ahead
+        await a.ledger.deleteExpense(e);
+        await b.pull(a, t.g);
+        expect(b.group(t.g).liveExpenses.map((x) => x.id), isNot(contains(e)));
+        await b.ledger.restoreExpense(e);
+        expect(b.group(t.g).liveExpenses.map((x) => x.id), contains(e));
+        await b.ledger.deleteExpense(e);
+        expect(b.group(t.g).liveExpenses.map((x) => x.id), isNot(contains(e)));
+      });
+
+      test('a stamp more than 7 days ahead is not adopted', () async {
+        a.clock.advance(HlcClock.maxAdoptDriftMs + 3600 * 1000);
+        await a.ledger.renameMember(t.g, t.sam, 'Sam (A)');
+        await b.pull(a, t.g);
+        await b.ledger.renameMember(t.g, t.sam, 'Sam (B)');
+        final mine = b.snap.ops.where((o) => o.deviceId == b.deviceId).last;
+        expect(mine.hlc.millis, lessThan(kBaseMs + 3600 * 1000),
+            reason: 'a clock that far off is not followed');
+      });
+    });
+
     group('applyRemote rejects the whole batch on a bad op', () {
       late ({GroupId g, MemberId me, MemberId sam, MemberId priya}) t;
       late List<Operation> good;
@@ -1143,7 +1218,97 @@ void main() {
           ['r2', 'r1']);
     });
   });
+
+  // QA SECURITY-R1-04: entity ids are scoped by group. A peer of Goa trip
+  // reuses a Private expense id; every command on the Private expense must
+  // stay inside Private, and the Goa copy is a separate entity.
+  group('expense ids scoped by group', () {
+    late ({GroupId g, MemberId me, MemberId sam, MemberId priya}) goa;
+    late GroupId private;
+    late MemberId me2;
+    late ExpenseId x;
+
+    setUp(() async {
+      goa = await trip();
+      private = await a.ledger.createGroup(const NewGroup(
+        name: 'Private',
+        type: GroupType.home,
+        currency: 'INR',
+        newMemberNames: ['Ravi'],
+      ));
+      final ps = a.group(private);
+      me2 = ps.members.values.firstWhere((m) => m.deviceId != null).id;
+      final ravi = ps.members.values.firstWhere((m) => m.id != me2).id;
+      x = await a.ledger.addExpense(
+          draft(private, [me2, ravi], description: 'Rent', total: 9000));
+      final create = a.opsOf(private).last;
+      const mallory = 'eeeeeeee-0000-7000-8000-000000000001';
+      final forged = Operation(
+        id: 'forged-create',
+        groupId: goa.g,
+        deviceId: mallory,
+        counter: 1,
+        hlc: const Hlc(1, 0, mallory),
+        entityType: EntityType.expense,
+        entityId: x,
+        kind: OpKind.create,
+        payload: {
+          ...create.payload,
+          ExpenseFields.description: 'Forged',
+          ExpenseFields.money: SplitCalculator.paymentBlock(
+            from: goa.me,
+            to: goa.sam,
+            amount: 100,
+            currency: 'INR',
+          ).toJson(),
+        },
+      );
+      expect(await a.ledger.applyRemote(goa.g, [forged]), hasLength(1));
+    });
+
+    Expense? inGroup(GroupId g) => a.snap.state.expenseIn(g, x);
+
+    test('the Private expense stays in Private', () {
+      expect(inGroup(private)!.description, 'Rent');
+      expect(inGroup(goa.g)!.description, 'Forged');
+    });
+
+    test('delete and restore with a group touch only that group', () async {
+      await a.ledger.deleteExpense(x, groupId: private);
+      expect(inGroup(private)!.isDeleted, isTrue);
+      expect(inGroup(goa.g)!.isDeleted, isFalse);
+      expect(a.opsOf(goa.g).where((o) => o.deviceId == a.deviceId),
+          everyElement(predicate<Operation>((o) => o.entityId != x)));
+      await a.ledger.restoreExpense(x, groupId: private);
+      expect(inGroup(private)!.isDeleted, isFalse);
+      await a.ledger.deleteExpense(x, groupId: goa.g);
+      expect(inGroup(goa.g)!.isDeleted, isTrue);
+      expect(inGroup(private)!.isDeleted, isFalse);
+    });
+
+    test('an edit goes to the group named by the draft', () async {
+      final ps = a.group(private);
+      final members = ps.members.keys.toList();
+      await a.ledger.updateExpense(x,
+          draft(private, [me2, ...members.where((m) => m != me2)],
+              description: 'Rent, March', total: 9000));
+      expect(inGroup(private)!.description, 'Rent, March');
+      expect(inGroup(goa.g)!.description, 'Forged');
+      expect(a.opsOf(private).last.entityId, x);
+      expect(a.opsOf(goa.g).where((o) => o.entityId == x).map((o) => o.id),
+          ['forged-create']);
+    });
+
+    test('a group without that id is not found', () async {
+      final other = await trip();
+      await expectLater(a.ledger.deleteExpense(x, groupId: other.g),
+          throwsLedger(LedgerErrorCode.expenseNotFound));
+    });
+  });
 }
+
+final Matcher _storageFailed = isA<LedgerException>()
+    .having((e) => e.code, 'code', LedgerErrorCode.storageFailed);
 
 /// MemoryOpStore whose next insertAll can be made to fail.
 final class _FlakyStore implements OpStore {
@@ -1179,6 +1344,9 @@ final class _FlakyStore implements OpStore {
   @override
   Future<VersionVector> peerKnowledge(GroupId groupId) =>
       _inner.peerKnowledge(groupId);
+  @override
+  Future<bool> capPeerKnowledge(GroupId groupId, DeviceId deviceId, int max) =>
+      _inner.capPeerKnowledge(groupId, deviceId, max);
   @override
   Future<void> recordPeerKnowledge(
           DeviceId peer, GroupId groupId, VersionVector vv) =>

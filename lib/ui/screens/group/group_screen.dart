@@ -1,14 +1,10 @@
 // Group detail (render 2): your position, Settle up and All balances,
 // suggested payments with the simplify switch, then the expenses by day.
-import 'dart:convert';
-
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:share_plus/share_plus.dart';
 
 import '../../../core/balances.dart';
-import '../../../core/csv_export.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
@@ -21,8 +17,10 @@ import '../../router.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import '../csv_share.dart';
+import 'missing_key_notice.dart';
 
-enum _Menu { edit, members, export }
+enum _Menu { edit, members, activity, export }
 
 class GroupScreen extends ConsumerWidget {
   const GroupScreen({super.key, required this.groupId});
@@ -86,6 +84,9 @@ class GroupScreen extends ConsumerWidget {
                   g.activeMembers.length,
                   MoneyFormat.format(spent, currency),
                 ),
+          shortSubtitle: info.isDirect
+              ? null
+              : S.groupSpent(MoneyFormat.format(spent, currency)),
         ),
         actions: [
           if (!info.isDirect)
@@ -100,7 +101,8 @@ class GroupScreen extends ConsumerWidget {
             onSelected: (m) => switch (m) {
               _Menu.edit => context.push(Routes.editGroup(groupId)),
               _Menu.members => context.push(Routes.members(groupId)),
-              _Menu.export => _exportCsv(g, title),
+              _Menu.activity => context.push(Routes.groupActivity(groupId)),
+              _Menu.export => shareGroupCsv(context, g, title),
             },
             itemBuilder: (context) => [
               if (!info.isDirect)
@@ -109,6 +111,10 @@ class GroupScreen extends ConsumerWidget {
                   child: Text(S.editGroup),
                 ),
               const PopupMenuItem(value: _Menu.members, child: Text(S.members)),
+              const PopupMenuItem(
+                value: _Menu.activity,
+                child: Text(S.activityTitle),
+              ),
               const PopupMenuItem(
                 value: _Menu.export,
                 child: Text(S.exportCsv),
@@ -121,22 +127,6 @@ class GroupScreen extends ConsumerWidget {
         onPressed: () => context.push(Routes.newExpense(groupId: groupId)),
       ),
       body: _GroupBody(group: g, me: me, myId: myId, snapshot: snap),
-    );
-  }
-
-  Future<void> _exportCsv(GroupState g, String title) async {
-    final csv = CsvExport.group(g);
-    await SharePlus.instance.share(
-      ShareParams(
-        subject: S.csvSubject(title),
-        files: [
-          XFile.fromData(
-            utf8.encode(csv),
-            mimeType: 'text/csv',
-            name: '${title.replaceAll(RegExp(r'[^\w\- ]'), '')}.csv',
-          ),
-        ],
-      ),
     );
   }
 }
@@ -169,6 +159,7 @@ class _GroupBody extends ConsumerWidget {
     final fullNames = memberFullNames(g);
     final now = ref.watch(clockProvider)();
     final unshared = snapshot.unsharedEntityIds;
+    final duplicates = possibleDuplicatePayments(g);
 
     final transfers = [...BalanceCalculator.suggestedTransfers(g)]
       ..sort((a, b) {
@@ -199,6 +190,8 @@ class _GroupBody extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 96),
       children: [
+        if (snapshot.groupsWithoutKey.contains(g.groupId))
+          gutter(const MissingKeyNotice()),
         if (myId != null)
           textGutter(
             GroupBalanceHero(
@@ -209,24 +202,16 @@ class _GroupBody extends ConsumerWidget {
           ),
         const SizedBox(height: 14),
         textGutter(
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton(
-                  onPressed: () =>
-                      context.push(Routes.settle(groupId: g.groupId)),
-                  child: const Text(S.settleUp),
-                ),
-              ),
-              const SizedBox(width: Space.sm),
-              Expanded(
-                child: FilledButton.tonal(
-                  onPressed: () =>
-                      _showAllBalances(context, g, myId, fullNames),
-                  child: const Text(S.allBalances),
-                ),
-              ),
-            ],
+          ButtonPair(
+            labels: const [S.settleUp, S.allBalances],
+            first: FilledButton(
+              onPressed: () => context.push(Routes.settle(groupId: g.groupId)),
+              child: const Text(S.settleUp),
+            ),
+            second: FilledButton.tonal(
+              onPressed: () => _showAllBalances(context, g, myId, fullNames),
+              child: const Text(S.allBalances),
+            ),
           ),
         ),
         const SizedBox(height: 14),
@@ -260,7 +245,12 @@ class _GroupBody extends ConsumerWidget {
                   fromIsMe: t.from == myId,
                   toIsMe: t.to == myId,
                   onTap: () => context.push(
-                    Routes.settle(groupId: g.groupId, from: t.from, to: t.to),
+                    Routes.settle(
+                      groupId: g.groupId,
+                      from: t.from,
+                      to: t.to,
+                      currency: t.currency,
+                    ),
                   ),
                 ),
             ],
@@ -287,8 +277,12 @@ class _GroupBody extends ConsumerWidget {
                       expense: e,
                       memberNames: names,
                       myMemberId: myId,
+                      resolve: g.resolve,
                       unshared: unshared.contains(e.id),
-                      onTap: () => context.push(Routes.expense(e.id)),
+                      possibleDuplicate: duplicates.contains(e.id),
+                      onTap: () => context.push(
+                        Routes.expense(e.id, groupId: e.groupId),
+                      ),
                     ),
                 ],
               ],

@@ -105,7 +105,14 @@ class SessionView extends ConsumerWidget {
         const SizedBox(height: Space.lg),
         ..._steps(context, progress),
         const SizedBox(height: Space.lg),
-        LinearProgressIndicator(value: _fraction(progress)),
+        // Before the transfer the bar has no fraction to show and sweeps;
+        // under "Remove animations" it stays still at the start and the
+        // steps above carry the state, as KitSpinner does.
+        LinearProgressIndicator(
+          value:
+              _fraction(progress) ??
+              (MediaQuery.disableAnimationsOf(context) ? 0 : null),
+        ),
         if (progress.verificationCode != null) ...[
           const SizedBox(height: Space.lg),
           Text(
@@ -188,7 +195,7 @@ class SessionView extends ConsumerWidget {
                   : current
                   ? const Padding(
                       padding: EdgeInsets.all(3),
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                      child: KitSpinner(),
                     )
                   : Icon(
                       Icons.circle_outlined,

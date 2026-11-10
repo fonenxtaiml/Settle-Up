@@ -8,7 +8,8 @@ import 'money.dart';
 
 abstract final class CsvExport {
   /// RFC 4180 CSV, CRLF line ends, UTF-8 (caller adds BOM if wanted).
-  /// Columns: Date (yyyy-MM-dd, UTC), Description, Category, Cost (decimal
+  /// Columns: Date (yyyy-MM-dd, the phone's local calendar day, the same
+  /// day the app shows), Description, Category, Cost (decimal
   /// with the currency's minor digits, '.' separator), Currency, then one
   /// column per active member (display name) holding paid - owed for that
   /// row. Payments included with Category "Payment". Deleted rows excluded.
@@ -90,10 +91,14 @@ abstract final class CsvExport {
     return '${name(e.payer)} paid ${name(e.receiver)}';
   }
 
+  /// The calendar day in the phone's time zone: model dates are UTC
+  /// instants and every screen shows them in local time, so a UTC day
+  /// would be off by one for evening expenses west of UTC (and early
+  /// morning ones east of it).
   static String _date(DateTime d) {
-    final u = d.toUtc();
+    final l = d.toLocal();
     String two(int n) => n.toString().padLeft(2, '0');
-    return '${u.year.toString().padLeft(4, '0')}-${two(u.month)}-${two(u.day)}';
+    return '${l.year.toString().padLeft(4, '0')}-${two(l.month)}-${two(l.day)}';
   }
 
   /// Integer minor units to a plain decimal string, no grouping.

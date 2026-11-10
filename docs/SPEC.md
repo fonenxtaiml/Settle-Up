@@ -234,7 +234,7 @@ lib/
     screens/ onboarding/ home/ group/ expense/ settle/ activity/
              sync/ person/ settings/ search/ join/                   [WP-F]
     dev/     fake_ledger.dart fake_sync_engine.dart seed_data.dart   [WP-F]
-assets/google_fonts/            [WP-E]  Atkinson Hyperlegible Next 400/600/700/800 + OFL.txt
+assets/google_fonts/            [WP-E]  Familjen Grotesk 400/500/600/700 + OFL.txt (DESIGN Typography)
 test/
   core/ [WP-A]  data/ [WP-B]  sync/ [WP-C]  sync/lan/ [WP-D1]  sync/bluetooth/ [WP-D2]
   theme/ ui/widgets/ [WP-E]  ui/screens/ [WP-F]  architecture_test.dart [integrator]
@@ -415,8 +415,13 @@ final class Money implements Comparable<Money> {
 
   static Money zero(String currency) => Money(0, currency);
 
-  /// Max absolute amount accepted from user input: 9,999,999.99 (2 digits).
-  static const int maxMinor = 999999999;
+  /// Largest amount the ledger holds, in minor units of any currency:
+  /// 999,999,999.99 with 2 digits (99,999,999,999 JPY, 99,999,999.999 KWD).
+  /// One cap for every currency, set by the overflow budget (SPEC 6.1:
+  /// total x 10,000 basis points stays below 2^53), so low-value currencies
+  /// still hold everyday amounts: Rp 999,999,999.99 is about 60,000 USD
+  /// (QA UIFLOW-R2-04; it was 9,999,999.99, about 630 USD in IDR).
+  static const int maxMinor = 99999999999;
 
   bool get isZero => minor == 0;
   bool get isPositive => minor > 0;
@@ -582,6 +587,14 @@ final class HlcClock {
     final c = l == _last.millis ? _last.counter + 1 : 0;
     return _last = _normalize(l, c);
   }
+
+  /// Remote stamps up to this far ahead are adopted by [tickAfter].
+  static const int maxAdoptDriftMs = 7 * 24 * 60 * 60 * 1000; // 7 days
+
+  /// Timestamp for a local write that replaces state stamped [floor]:
+  /// > floor and >= tick(). Adopts [floor] only within [maxAdoptDriftMs]
+  /// of the wall clock (else a plain tick). See 7.1.
+  Hlc tickAfter(Hlc floor) => throw UnimplementedError();
 
   /// Merge a remote timestamp (call once per received batch with its max).
   Hlc receive(Hlc remote) {
@@ -1219,13 +1232,15 @@ final class LedgerState {
   Iterable<GroupState> get visibleGroups => groups.values
       .where((g) => g.group != null && !g.group!.isDeleted);
 
-  Expense? expense(ExpenseId id) {
-    for (final g in groups.values) {
-      final e = g.expenses[id];
-      if (e != null) return e;
-    }
-    return null;
-  }
+  /// The expense [id] of [groupId]. Prefer this when the group is known:
+  /// entity ids are scoped by group (7.2), so hostile input can put the
+  /// same id in two groups.
+  Expense? expenseIn(GroupId groupId, ExpenseId id) =>
+      groups[groupId]?.expenses[id];
+
+  /// The expense [id] in any group. If hostile input put the id in several
+  /// groups, the one in the lowest group id (the same on every replica).
+  Expense? expense(ExpenseId id) => throw UnimplementedError();
 
   /// Canonical, key-sorted JSON of everything materialized (including
   /// tombstones). Two replicas converge iff these are deeply equal.
@@ -1249,6 +1264,10 @@ final class LedgerReducer {
 
   /// Immutable snapshot of the current state (safe to hand to the UI).
   LedgerState get state => throw UnimplementedError();
+
+  /// Max HLC over the ops applied to one entity (null if none); 7.1.
+  Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
+      throw UnimplementedError();
 }
 ```
 
@@ -1388,7 +1407,11 @@ abstract final class BalanceCalculator {
   /// and currency (SPEC 6.3). Sorted by currency, from, to.
   static List<Transfer> pairwiseDebts(GroupState group) => throw UnimplementedError();
 
-  /// simplifyDebts ? DebtSimplifier over groupNets : pairwiseDebts.
+  /// Removes debts that go round in a circle, per currency (SPEC 6.3).
+  static List<Transfer> cancelCycles(List<Transfer> transfers) => throw UnimplementedError();
+
+  /// simplifyDebts ? DebtSimplifier over groupNets
+  ///               : cancelCycles(pairwiseDebts).
   static List<Transfer> suggestedTransfers(GroupState group) => throw UnimplementedError();
 }
 
@@ -1551,13 +1574,16 @@ abstract final class ActivityBuilder {
   }) =>
       throw UnimplementedError();
 
-  /// Edit history of one entity, oldest first.
+  /// Edit history of one entity, oldest first. Entity ids are scoped by
+  /// group (7.2): pass [groupId] to read one group's entity only;
+  /// null = that id in every group.
   static List<ActivityEntry> historyOf({
     required List<Operation> ops,
     required LedgerState state,
     required DeviceId localDeviceId,
     required Set<OpId> unsharedOpIds,
     required String entityId,
+    GroupId? groupId,
   }) =>
       throw UnimplementedError();
 }
@@ -1627,7 +1653,8 @@ import 'ledger_state.dart';
 
 abstract final class CsvExport {
   /// RFC 4180 CSV, CRLF line ends, UTF-8 (caller adds BOM if wanted).
-  /// Columns: Date (yyyy-MM-dd, UTC), Description, Category, Cost (decimal
+  /// Columns: Date (yyyy-MM-dd, the phone's local calendar day, the same
+  /// day the app shows), Description, Category, Cost (decimal
   /// with the currency's minor digits, '.' separator), Currency, then one
   /// column per active member (display name) holding paid - owed for that
   /// row. Payments included with Category "Payment". Deleted rows excluded.
@@ -1735,6 +1762,7 @@ final class LedgerSnapshot {
     required this.unsharedOpIds,
     required this.unsharedCounts,
     required this.localDeviceId,
+    this.groupsWithoutKey = const {},
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
@@ -1759,6 +1787,11 @@ final class LedgerSnapshot {
   final Set<OpId> unsharedOpIds;
   final Map<GroupId, int> unsharedCounts;
   final DeviceId localDeviceId;
+
+  /// Visible groups this phone holds no key for (the keystore lost it):
+  /// they still work here but cannot sync until an invite is scanned again.
+  /// The group screen says so and offers "Scan a QR".
+  final Set<GroupId> groupsWithoutKey;
 
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
@@ -1865,12 +1898,17 @@ enum LedgerErrorCode {
   expenseNotFound,
   invalidInput,
   invalidSplit,
+  storageFailed, // the store or keystore refused the write; nothing stored
 }
 
+/// Why an invalidInput was refused, when the UI can say more.
+enum LedgerInputIssue { groupFull, tooLong }
+
 final class LedgerException implements Exception {
-  const LedgerException(this.code, [this.message = '']);
+  const LedgerException(this.code, [this.message = '', this.issue]);
   final LedgerErrorCode code;
   final String message;
+  final LedgerInputIssue? issue;
   @override
   String toString() => 'LedgerException(${code.name}: $message)';
 }
@@ -1913,8 +1951,13 @@ abstract interface class LedgerRepository {
 
   /// Writes only fields that differ; money is written as one block.
   Future<void> updateExpense(ExpenseId expenseId, ExpenseDraft draft);
-  Future<void> deleteExpense(ExpenseId expenseId);
-  Future<void> restoreExpense(ExpenseId expenseId);
+
+  /// [groupId] names the group the expense is in. Pass it whenever it is
+  /// known: entity ids are scoped by group (7.2), and with it the call can
+  /// only touch that group's expense. Null = look the id up anywhere.
+  /// updateExpense / updatePayment look the id up in `draft.groupId`.
+  Future<void> deleteExpense(ExpenseId expenseId, {GroupId? groupId});
+  Future<void> restoreExpense(ExpenseId expenseId, {GroupId? groupId});
 
   Future<ExpenseId> recordPayment(PaymentDraft draft);
   Future<void> updatePayment(ExpenseId expenseId, PaymentDraft draft);
@@ -1932,12 +1975,22 @@ abstract interface class SyncStore {
   Future<List<Operation>> opsMissingFor(GroupId groupId, VersionVector peer);
 
   /// Validates (op.groupId == groupId, key held, parseable, counter >= 1,
-  /// hlc.deviceId == deviceId), persists in one transaction, advances the
-  /// HLC with the batch max, applies to the reducer, emits a snapshot.
-  /// Returns the newly stored ops. Throws FormatException on a bad op
-  /// (the whole batch is rejected).
+  /// hlc.deviceId == deviceId, the 5.16 text limits as code units, no bidi
+  /// or control characters, no blank group or member name, ids and enum
+  /// strings <= 64 units, unknown payload fields <= 1 KiB of JSON per op,
+  /// encoded op <= 16 KiB, the whole batch <= 1 Mi units, and an op
+  /// carrying this phone's device id only if this phone already used that
+  /// counter),
+  /// persists in one transaction, advances the HLC with the batch max,
+  /// applies to the reducer, emits a snapshot. Ops stamped more than 7 days
+  /// ahead of this phone's clock are held back (not stored, so the peer
+  /// offers them again) and set clockSkewDetected. Returns the newly stored
+  /// ops. Throws FormatException on a bad op (the whole batch is rejected).
   Future<List<Operation>> applyRemote(GroupId groupId, List<Operation> ops);
 
+  /// Merges what [peer] holds. An entry for this phone's own device above
+  /// the counters this phone wrote is forged and clamped to them, so it
+  /// cannot mark later local changes as shared.
   Future<void> recordPeerKnowledge(
       DeviceId peer, GroupId groupId, VersionVector vv);
 
@@ -1974,6 +2027,9 @@ enum TransportAvailability {
   needsPermission,
   permissionPermanentlyDenied,
   radioOff, // Bluetooth or Wi-Fi switched off
+  // The location switch is off where Bluetooth scans need it (Android API
+  // <= 32 for Nearby, <= 30 for BLE); Bluetooth itself may be on.
+  locationOff,
   unsupported, // platform/hardware cannot do it
 }
 
@@ -1984,15 +2040,27 @@ final class AdvertiseInfo {
     required this.deviceId,
     required this.deviceName,
     required this.groupTokens,
+    this.advertId,
+    this.tokenWindow,
   });
 
+  /// This phone's device id. Never advertised: transports advertise
+  /// [advertId] instead.
   final DeviceId deviceId;
   final String deviceName;
 
-  /// Rotating blinded tokens, one per group we hold (16 hex chars each,
-  /// SPEC 8.3). Transports include as many as fit (LAN: all up to 16,
-  /// Nearby: up to 4, BLE: in the INFO characteristic, up to 16).
+  /// Rotating blinded tokens, one per group we hold (4 base64url chars
+  /// each, SPEC 8.3), most important first. Transports include as many as
+  /// fit from the front (LAN: up to 240, Nearby: up to 24, BLE: in the
+  /// INFO characteristic, up to 96), sort them, and flag the advert when
+  /// they had to leave some out.
   final List<String> groupTokens;
+
+  /// Per-window random id (8 hex chars, SPEC 8.3). Null: none advertised.
+  final String? advertId;
+
+  /// The token window [groupTokens] are for (advertised as its window tag).
+  final int? tokenWindow;
 }
 
 @immutable
@@ -2001,8 +2069,10 @@ final class DiscoveredPeer {
     required this.kind,
     required this.address,
     required this.name,
-    this.deviceIdPrefix,
+    this.advertId,
     this.groupTokens = const {},
+    this.windowTag,
+    this.moreGroups = false,
   });
 
   final TransportKind kind;
@@ -2011,8 +2081,10 @@ final class DiscoveredPeer {
   /// Nearby endpointId (nearby), peripheral UUID string (ble).
   final String address;
   final String name; // device name as advertised ('' if unknown)
-  final String? deviceIdPrefix; // first 8 chars of deviceId, if advertised
+  final String? advertId; // per-window advert id (SPEC 8.3), if advertised
   final Set<String> groupTokens;
+  final int? windowTag; // window mod 4096 of groupTokens, if advertised
+  final bool moreGroups; // the advert left some of its tokens out (SPEC 8.3)
 
   @override
   bool operator ==(Object other) =>
@@ -2218,6 +2290,7 @@ enum SyncPhase { connecting, handshaking, comparing, transferring, finishing }
 enum SyncFailure {
   permissionDenied,
   radioOff,
+  locationOff, // Bluetooth on, the location switch off where scans need it
   peerUnreachable,
   timeout,
   noSharedGroups,
@@ -2355,7 +2428,7 @@ final class SyncStatus {
   static const SyncStatus idle = SyncStatus();
 }
 
-/// A phone seen nearby, merged across transports by device id.
+/// A phone seen nearby, merged across transports by its advert id.
 @immutable
 final class NearbyPeer {
   const NearbyPeer({
@@ -2363,16 +2436,19 @@ final class NearbyPeer {
     required this.name,
     required this.transports,
     required this.sharedGroupIds,
-    this.deviceIdPrefix,
+    this.advertId,
+    this.moreGroups = false,
   });
 
-  final String key; // stable for the discovery run
+  final String key; // stable for the discovery run, across advert id rotation
   final String name;
-  final String? deviceIdPrefix;
+  final String? advertId; // most recently seen advert id (SPEC 8.3)
   final Set<TransportKind> transports; // preferred: lan > nearby > ble
   final List<GroupId> sharedGroupIds; // from tokens; empty = unknown/none
+  final bool moreGroups; // its advert was cut: it may share an unlisted group
 
   bool get sharesGroups => sharedGroupIds.isNotEmpty;
+  bool get maySync => sharesGroups || moreGroups; // Sync, not Pair (SPEC 8.3)
 }
 
 @immutable
@@ -2431,6 +2507,9 @@ abstract interface class SyncEngine {
   Future<String> inviteLinkFor(GroupId groupId, {bool includeHost = true});
 
   /// Cancels the running session (status -> SessionFailed(cancelled)).
+  /// A Sync still connecting ends at once: the connect attempt under way
+  /// is abandoned (its channel, if it opens later, is closed) and no other
+  /// route is tried (QA SYNC-R4-01).
   Future<void> cancel();
 
   /// Keeps an authenticated session open and pushes new local ops while
@@ -2574,15 +2653,17 @@ final activityProvider =
       ),
 );
 
+/// Keyed by (group, expense): entity ids are scoped by group (7.2).
 final expenseHistoryProvider =
-    Provider.family<AsyncValue<List<ActivityEntry>>, ExpenseId>(
-  (ref, expenseId) => ref.watch(ledgerProvider).whenData(
+    Provider.family<AsyncValue<List<ActivityEntry>>, (GroupId, ExpenseId)>(
+  (ref, key) => ref.watch(ledgerProvider).whenData(
         (s) => ActivityBuilder.historyOf(
           ops: s.ops,
           state: s.state,
           localDeviceId: s.localDeviceId,
           unsharedOpIds: s.unsharedOpIds,
-          entityId: expenseId,
+          groupId: key.$1,
+          entityId: key.$2,
         ),
       ),
 );
@@ -2912,7 +2993,9 @@ abstract final class MoneyFormat {
 - `LedgerSnapshot.ops` is the full op list sorted ascending by `hlc` (encoded string order equals `Hlc.compareTo`). It is shared, unmodifiable, and rebuilt only when ops change.
 - `watch()`, `watchProfile()`, `watchSettings()`, `watchDevice()`, `watchStatus()`, `watchNearby()`, `watchHistory()` and `watchSyncRecords()` **emit the current value immediately on listen** (use a `StreamController.broadcast` plus an `async*` wrapper that yields the current value first). Providers rely on this.
 - Ledger commands are serialized through a single async queue, so the counter and HLC never race.
-- Limits enforced by `Ledger` (throw `LedgerException(invalidInput)`): group name 1..60 characters, member display name 1..40, description 1..120, notes ≤ 1000, ≤ 50 active members per group, total 1..`Money.maxMinor`. Text is trimmed. These keep one op well under 8 KiB, so any op fits a BLE frame.
+- Limits enforced by `Ledger` (throw `LedgerException(invalidInput)`): group name 1..60 characters, member display name 1..40, description 1..120, notes ≤ 1000, ≤ 50 active members per group, total 1..`Money.maxMinor`. Text is trimmed. These keep one op under 16 KiB of JSON (the worst case, a 50-person shares split with every text field at its limit in 4-unit characters, is about 15 K units), so any op fits a BLE frame. A failed store or keystore write throws `storageFailed`; once the ops are stored the command succeeds (saving `hlc.last` is best effort). Limits on the member count and lengths carry `LedgerInputIssue.groupFull` / `tooLong` so the UI can say why.
+- Characters are user-perceived characters (grapheme clusters, as the UI's `maxLength` counts them), and a field may hold at most 4 UTF-16 code units per allowed character. Before measuring, text is cleaned (`lib/data/text_rules.dart`): C0/C1 controls, bidi embeddings, overrides, isolates and marks (U+061C, U+200E/F, U+202A-202E, U+2066-2069), zero-width space, word joiner and BOM are removed; ZWJ and ZWNJ stay (emoji, Indic scripts). Names turn tabs and line breaks into spaces; descriptions and notes keep line breaks. A name that shows nothing after cleaning is empty: only spaces, removed characters, or characters that render blank on their own (joiners, variation selectors, Hangul fillers U+115F/U+1160/U+3164/U+FFA0, braille blank U+2800, soft hyphen, U+034F, invisible operators U+2061-2064, U+180B-180F, tag characters U+E0000-E007F and similar; `TextRules.isBlank`). Ops from peers are checked with the same code-point rules (no Unicode tables, so every phone decides alike): over-long text, control or bidi characters, and a blank group or member name reject the batch.
+- Dates and currency codes have one shape on every phone. A date field (`date`, `createdAt`, `deletedAt`) holds UTC epoch milliseconds from 1900-01-01T00:00Z to 9999-12-31T23:59:59.999Z (`TextRules.isModelDate`): near the ends of the `DateTime` range `toLocal()` and local calendar dates cannot represent the value, so a wider date would break the screens that show it outside UTC. A currency code (the group's `currency` and the money block's `currency`) is three upper-case ASCII letters (`TextRules.currencyPattern`, `^[A-Z]{3}$`). `Ledger` refuses a draft date outside the window with `invalidInput` and writes currency codes trimmed and upper-cased; ops from peers that break either rule reject the batch (`bad_op`).
 - Category ids, enum `.name` strings and field names are wire format. Renaming any of them is a protocol change (bump `kSchemaVersion`).
 
 ---
@@ -2934,7 +3017,7 @@ the first `leftover` members get base_i + 1
 drop zero entries
 ```
 
-Overflow is impossible: total ≤ 999,999,999 and weights ≤ 10,000 (percent) or ≤ 1,000 (shares) keep products below 2^53.
+Overflow is impossible: total ≤ `Money.maxMinor` = 99,999,999,999 and weights ≤ 10,000 (percent) or ≤ 1,000 (shares) keep products ≤ 10^15, below 2^53 (about 9.007 × 10^15). That budget is what sets `maxMinor`, one cap for every currency (QA UIFLOW-R2-04: a cap of 999,999,999 minor refused everyday IDR, COP or UZS bills). A group net of 50 × `maxMinor` (5 × 10^12 minor) still prints to the last minor digit: `MoneyFormat` divides it into a double whose error is below 10^-5 of a major unit.
 
 | Method | `values` meaning | Validation (`SplitError`) | Computation |
 |---|---|---|---|
@@ -2982,6 +3065,8 @@ For each live expense and each ower `o` (resolved) with owed amount `w`: split `
 
 Vector: E1 total 9000, paid a 9000, owed equal a,b,c (3000 each); E2 total 3000, paid b 3000, owed a 1500, b 1500 → `[b→a 1500, c→a 3000]`.
 
+The "original" view shown when simplify is off is `cancelCycles(pairwiseDebts(g))`: while the pairwise debts of a currency contain a directed cycle (a→b, b→c, c→a), subtract the smallest debt on it from every debt on it and drop zeros. Cycles are searched depth first from members in id order, following debts in id order, so every phone gets the same result. This changes nobody's net and never adds, reverses or grows a debt; it only removes money that would go round in a circle. A group whose nets are all zero therefore shows no payments in either view (QA MONEY-R1-03). Vector: a→b 100, b→c 100, c→a 100 → `[]`; a→b 300, b→c 100, c→a 100 → `[a→b 200]`.
+
 ### 6.4 Simplify debts (`DebtSimplifier.simplify`), per currency
 
 Greedy min cash flow with two max-heaps (`HeapPriorityQueue` from `package:collection`):
@@ -2997,7 +3082,7 @@ while creditors and debtors are non-empty:
   if d.amount − x > 0: debtors.add((d.amount − x, d.id))
 ```
 
-Output is in emission order. It produces at most n − 1 transfers and never changes anyone's net. Throw `ArgumentError` if the nets do not sum to 0. `BalanceCalculator.suggestedTransfers(g)` = for each currency in ascending code order: `g.group!.simplifyDebts ? simplify(nets[cur], cur) : pairwise transfers of that currency`. It is a view only and is never stored.
+Output is in emission order. It produces at most n − 1 transfers and never changes anyone's net. Throw `ArgumentError` if the nets do not sum to 0. `BalanceCalculator.suggestedTransfers(g)` = for each currency in ascending code order: `g.group!.simplifyDebts ? simplify(nets[cur], cur) : cancelCycles(pairwise transfers of that currency)`. It is a view only and is never stored.
 
 Vectors: `{a:+50, b:−30, c:−20}` → `[b→a 30, c→a 20]`; chain `{A:−10, B:0, C:+10}` → `[A→C 10]`; ties `{a:+10, b:+10, c:−10, d:−10}` → `[c→a 10, d→b 10]`; `{}` → `[]`.
 
@@ -3026,18 +3111,18 @@ Every expense carries its own currency, and balances are computed and shown **pe
 ### 7.1 Creating ops (Ledger)
 
 - `counter` = 1 + `maxCounter(groupId, myDeviceId)` (cached in memory), strictly contiguous per (device, group).
-- `hlc` = `clock.tick()`. One command may produce several ops (create group = 1 group op + N member ops). Each op gets its own tick and counter, and all are inserted in one `insertAll` call.
+- `hlc` = `clock.tick()` for a create, and `clock.tickAfter(reducer.lastHlcOf(groupId, type, entityId))` for an op on an entity that already has ops: a local edit, delete or restore is stamped after every op the user's view of that entity is built from, so it wins last-writer-wins even when the value came from a phone whose clock is ahead (beyond the skew guard, up to `HlcClock.maxAdoptDriftMs` = 7 days; QA SYNC-R1-01). One command may produce several ops (create group = 1 group op + N member ops). Each op gets its own tick and counter, and all are inserted in one `insertAll` call.
 - `create` payloads carry **every** required field (`*Fields.required`) plus optional ones. `update` payloads carry only changed fields. `delete` = `{deletedAt: hlc.millis}`. `restore` = `{deletedAt: null}`.
 - Merge members = `update` on the `from` member with `{mergedInto: into}`. Claim = `update` with `{personId: me, deviceId: myDeviceId}`.
 - `kv['hlc.last']` is written after every commit.
 
 ### 7.2 Reducer rules (`LedgerReducer.apply`)
 
-State per entity key `(entityType, entityId)`: `created: bool`, and `fields: Map<field, (Hlc hlc, Object? value)>`. Also kept: a set of applied op ids.
+State per entity key `(groupId, entityType, entityId)`: `created: bool`, and `fields: Map<field, (Hlc hlc, Object? value)>`. Also kept: a set of applied op ids.
 
 1. If the op id was already applied, return false. Record it.
 2. If `op.isFromNewerSchema`, return false. The op is stored and relayed, but not applied.
-3. For `EntityType.group`, if `entityId != groupId`, ignore the op. Member and expense entities belong to `op.groupId`. An op whose entity id already exists in another group is ignored (ids are UUIDs, so this only happens with malicious input).
+3. For `EntityType.group`, if `entityId != groupId`, ignore the op. Member and expense entities belong to `op.groupId`, and their ids are scoped by group: an op only ever reads and writes the entity `(op.groupId, entityType, entityId)`. When the same member or expense id has ops in several groups (ids are UUIDs, so this only happens with malicious input), each group materializes its own, separate entity from its own ops. Nothing written in one group (whatever its kind or HLC) can hide, move or change the entity of another group (QA SECURITY-R1-04): a member of one group can forge any HLC and op kind, so no cross-group ownership rule over them is safe. Code that looks an entity up by id passes the group whenever it knows it (`LedgerState.expenseIn`, `deleteExpense(groupId:)`, `/expense/:eid?gid=`).
 4. For each `(field, value)` in the payload: if there is no current value, or `op.hlc > current.hlc`, set `(op.hlc, value)`. Equal HLCs from different ops cannot happen (the device id is inside the HLC). If they do, keep the current value.
 5. If `op.kind == create`, set `created = true`.
 6. Rebuild the materialized entity. It is **visible** only if `created`, every required field is present with the right JSON type, and (expenses) `MoneyBlock.fromJson` succeeds with `isConsistent == true` and currency == `money.currency`. Fields with a wrong JSON type are treated as absent. Unknown fields are kept in `fields` (forward compatibility) but ignored by the builders.
@@ -3064,7 +3149,7 @@ Because every visible value is "the max-HLC write per field, over the set of ops
 ### 7.3 HLC usage
 
 - `HlcClock.tick()` for each local op. `HlcClock.receive(maxRemoteHlc)` once per applied remote batch.
-- Skew guard: a remote HLC more than 1 hour ahead of the local wall clock is accepted as data but not adopted by the clock (`skewDetected = true`, logged). Convergence is unaffected (the order is still total), but that phone's edits may win LWW ties surprisingly. The Settings "About" line shows "This phone's clock looks wrong" when the flag is set.
+- Skew guard: a remote HLC more than 1 hour ahead of the local wall clock is accepted as data but not adopted by the clock (`skewDetected = true`, logged). Convergence is unaffected (the order is still total), but that phone's edits may win LWW ties surprisingly. A later local write to an entity that phone wrote still wins: 7.1 stamps it after the entity's newest op (`tickAfter`), which moves this clock forward to that stamp when it is at most 7 days ahead. The Settings "About" line shows "This phone's clock looks wrong" when the flag is set.
 
 ### 7.4 Version vectors and gaps
 
@@ -3096,13 +3181,13 @@ CREATE TABLE kv(key TEXT PRIMARY KEY, value TEXT NOT NULL) STRICT;
 CREATE TABLE sync_records(id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, json TEXT NOT NULL) STRICT;
 ```
 
-`kv` keys: `device` (JSON `{deviceId, deviceName}`), `profile` (JSON), `settings` (JSON), `hlc.last` (encoded HLC), `pending.<groupId>` (name hint for a pending join). Migrations are a `switch (user_version)` ladder in `schema.dart`.
+`kv` keys: `device` (JSON `{deviceId, deviceName}`), `profile` (JSON), `settings` (JSON), `hlc.last` (encoded HLC), `pending.<groupId>` (name hint for a pending join), `purged.<groupId>` (JSON `{deviceId: highest counter}` written by `purgeGroup`, so this phone's own ops coming back after a leave and rejoin are told apart from forged ones). A group key with no ops, no `pending.` and no `purged.` row is a `createGroup` that never committed: `Ledger.open` drops it. All v1 `CREATE` statements use `IF NOT EXISTS`, so a file whose `user_version` reads 0 is adopted with its data. Migrations are a `switch (user_version)` ladder in `schema.dart`.
 
 "Unshared" ops (sync chip "3 changes to share", row dot) = my own ops with `counter > peerKnowledge(group)[myDeviceId]`.
 
 ### 7.6 Schema evolution
 
-`kSchemaVersion = 1`. A newer app writes ops with a higher `schemaVersion`. Older apps parse them with placeholder entity type/kind, keep `Operation.raw`, store and relay them byte for byte, and never apply them. After the user updates, the reducer replays all stored ops on startup and the newer ops take effect. Unknown payload fields in v1 ops are preserved in the same way.
+`kSchemaVersion = 1`. A newer app writes ops with a higher `schemaVersion`. Older apps parse them with placeholder entity type/kind, keep `Operation.raw`, store and relay them byte for byte, and never apply them. After the user updates, the reducer replays all stored ops on startup and the newer ops take effect. Unknown payload fields in v1 ops are preserved in the same way, up to 1 KiB of JSON per op (`TextRules.maxUnknownUnits`); more is refused as `bad_op`, so padding in a field this version does not know cannot store megabytes from one small gzipped frame.
 
 ---
 
@@ -3132,7 +3217,10 @@ Only `HELLO`, `AUTH` and `ERROR` may be plain. Everything after both AUTHs is se
 
 ### 8.3 Discovery tokens and blinded group ids
 
-- **Advertisement token** (lets a scanner see "this phone shares a group with me" without revealing group ids): `token(g, w) = hex(HMAC-SHA256(groupKey_g, utf8("settleup-adv-v1:" + w)))[0..16]`, where `w = unixSeconds ~/ 600`. Advertise tokens for the current window, and refresh them when the window changes. A scanner matches against windows `w` and `w − 1` for all of its group keys. `NearbyPeer.sharedGroupIds` = the matched groups.
+- **Advertisement token** (lets a scanner see "this phone shares a group with me" without revealing group ids): `token(g, w) = base64url(HMAC-SHA256(groupKey_g, utf8("settleup-adv-v2:" + w))[0..3])` (4 characters), where `w = unixSeconds ~/ 600`. Advertise tokens for the current window, and refresh them when the window changes. A phone renamed in Settings while visible re-advertises at once with the new name (the advert id stays), so nearby lists do not show the old name until the next window (QA SYNC-R5-01). Tokens are short so that a phone in many groups (every 1:1 friend balance is a group) fits many of them in an advert: LAN carries up to 240, BLE up to 96, Nearby up to 24. A false match (about 1 in 16 million per token pair) only labels a phone "shares Goa trip" by mistake; the HELLO's blinded ids decide whether a session starts.
+- **More groups than an advert holds** (QA SYNC-R2-01): `DiscoveryTokens.advertised(keys, now, priority:)` lists tokens most important first: groups in Sync history, most recently synced first (outcome not `failed`), then the rest newest first (group ids are UUIDv7). The order is the same in every window, so a transport that keeps only a prefix keeps the same groups each time. Transports keep the first ones that fit (`DiscoveryTokens.forAdvert`), **sort** them (the order must not reveal which group is which), and flag the advert as cut (Nearby: a trailing `+`; BLE: `"m":1`; LAN: TXT `m=1`). A scanner lists a phone with a cut advert and no matching token as "may share a group" with **Sync** (not Pair): the HELLO decides, and a phone with no shared group ends with `noSharedGroups`.
+- **Window tag:** adverts also carry `windowTag(w) = hex(w mod 4096)` (3 characters) for the window their tokens are for. A scanner resolves the tag to the window with that tag nearest to its own, accepts it when it is at most **288 windows (2 days)** away, and matches the tokens against that window for all of its group keys. So a phone whose clock is minutes, hours or a day off still shows its shared groups, while a recorded advert cannot be replayed for longer than that. An advert without a tag is matched against windows `w` and `w − 1`. `NearbyPeer.sharedGroupIds` = the matched groups.
+- **Advert id:** `advertId(s, w) = hex(HMAC-SHA256(s, utf8("settleup-aid-v1:" + w)))[0..8]`, with `s` 32 random bytes made at each app launch that never leave the phone. Scanners merge a phone's transports by it and drop their own adverts (ids for `w − 1`, `w`, `w + 1`). It replaces a device id prefix: a UUIDv7 prefix is the install time, so two phones set up in the same minute looked like "this phone", and it never changed, so a passive scanner could link a phone across places and days. When a known route shows a new id (the next window), the row keeps its key.
 - **Blinded group id in HELLO:** `blind(g, nonce) = base64url(HMAC-SHA256(groupKey_g, utf8("settleup-gid-v1") || nonce)[0..16])`, using the **sender's** HELLO nonce. A replayed HELLO fails, because the receiver recomputes the value with the replayer's own nonce.
 
 ### 8.4 Handshake (Noise-NNpsk-like, per connection)
@@ -3168,10 +3256,12 @@ Properties: confidentiality and integrity from AES-GCM; forward secrecy from the
 | 6 | `DONE` | `{g}` | The sender has sent every op for `g` (`more:false` was sent, or there was nothing to send). |
 | 7 | `PING` | `{t:ms}` | Keepalive. |
 | 8 | `PONG` | `{t:ms}` | Echoes `t`. |
-| 9 | `ERROR` | `{code, msg}` | Codes: `proto_unsupported`, `no_shared_groups`, `auth_failed`, `bad_frame`, `bad_op`, `too_large`, `busy`, `cancelled`, `internal`. |
+| 9 | `ERROR` | `{code, msg, to?}` | Codes: `proto_unsupported`, `no_shared_groups`, `auth_failed`, `bad_frame`, `bad_op`, `too_large`, `busy`, `cancelled`, `internal`. `to` (optional, at most 8): with `busy "Starting its own sync"`, the advert ids (8.3) of the phone the sender is still dialing (8.7.1). A receiver ignores a `to` that is not a list and entries that are not advert ids. |
 | 10 | `BYE` | `{}` | Graceful close. |
 | 11/12 | `BLOB_REQ`/`BLOB` | reserved (receipts, v1.1) | A receiver of an unknown type sends `ERROR bad_frame`. |
 | 20-29 | reserved for pairing (P1, 8.7.3) | | |
+
+**Device names sent** (HELLO at most 100 UTF-16 units; the advert limits in 8.7): cut to the longest prefix of whole characters (grapheme clusters) that fits, so the other phone never shows half a flag or a conjunct without its last letter (QA DATA-R4-03, DATA-R5-01; `cutName` in `lib/sync/name_cut.dart`). A first character longer than the limit is cut by code points (the base letter and the marks that fit), never sent empty, and a HELLO name with nothing to show after cleaning falls back to the advert or link name (QA DATA-R5-02).
 
 **Batching:** add ops to a batch until the encoded JSON would exceed `0.75 × maxFrame` or 500 ops. If a sealed frame still exceeds `maxFrame`, split the batch in half and retry. A single op over `maxFrame` (impossible under the limits in 5.16) gives `ERROR too_large`. At most **4 un-ACKed batches** in flight per session.
 
@@ -3179,6 +3269,7 @@ Properties: confidentiality and integrity from AES-GCM; forward secrecy from the
 
 - **Invite:** `settleup://join?v=1&g=<groupId>&k=<base64url key, no padding>&n=<group name>&c=<currency>&f=<inviter device name>[&h=<ip:port>][&d=<inviter deviceId>]`. The QR shows full screen with a 2-minute auto-hide. The "Share invite link" action is explicit and warns "Anyone with this link can see and add to Goa trip". Accepting stores the key (`registerJoinedGroup`) and creates a pending join. If `h` is present, it syncs immediately. After the first sync that brings the group's `create` op, the UI asks "Which one are you?" (unclaimed members, or "I'm not listed", which adds and claims a member with my name).
 - **Connect (host mode):** `settleup://sync?v=1&h=<ip:port>&h=...&d=<deviceId>&n=<deviceName>`, listing every usable IPv4 interface (hotspot interfaces first: `ap*`, `swlan*`, `wlan1`, `bridge*`). It carries no secrets. Authentication still needs a shared group.
+- **Local hosts only:** links open from any web page or chat, so the engine dials only the `h` values (connect links and invites) that are IP addresses on a local network: `10/8`, `172.16/12`, `192.168/16`, `169.254/16`, `fc00::/7`, `fe80::/10` and loopback (`isLocalNetworkHostPort`, through `HostingDetails.isLinkHost`). Others are skipped before dialing; a connect link with no local host is `invalidCode`. An invite with a non-local `h` still joins, without the first sync.
 - The QR is rendered with `qr_flutter`, error correction M, 220 dp, on a white quiet zone in both themes (DESIGN 6.8).
 
 ### 8.7 Session state machine (`SyncSession`)
@@ -3197,20 +3288,26 @@ EXCHANGING:
   when ∀g∈S: myDone[g] ∧ peerDone[g] ∧ all my batches ACKed:
        liveMode ? → LIVE : send BYE → CLOSING
 LIVE:  store.localOps(g∈S) → send OPS batch; recv OPS → apply + ACK; PING every 10 s; leaving the Sync screen → send BYE → CLOSING
-CLOSING ──recv BYE or 2 s──► CLOSED (success; SyncRecord outcome=completed)
+CLOSING ──recv BYE, 2 s, or the link drops──► CLOSED (success; SyncRecord outcome=completed)
 ```
 
 - Allowed before AUTHENTICATED: `HELLO`, `AUTH`, `ERROR` only. Anything else → `ERROR bad_frame`.
 - Timeouts: open → AUTHENTICATED within **10 s**. While EXCHANGING, **20 s** with no frame received → `timeout`. Send `PING` after 5 s of not sending. LIVE: idle limit 30 s.
 - Cancel: send `ERROR cancelled`, close, outcome `cancelled`.
+- A session that receives the peer's BYE when the exchange is complete answers BYE and ends as completed even if that BYE cannot be sent; in CLOSING a link error counts like the close timeout. Both phones then record `completed` for the same complete exchange.
+- After the peer's AUTH verifies and before sending VV, the session asks the engine for the slot (8.7.1). A refusal ends it with `ERROR busy`.
 - Failure after some ACKs is **partial** (outcome `partial`): everything committed stays, and the UI says "Nothing was lost: 2 of 5 changes arrived, the rest will come next time."
 - Progress (`SyncProgress`) is emitted at most every 100 ms.
 
 #### 8.7.1 Engine orchestration (`DefaultSyncEngine`)
 
-- **One session at a time.** An inbound connection while a session runs gets `ERROR busy`.
+- **One session at a time** exchanges data. Inbound connections handshake in parallel, and a session asks for the slot only once the peer's AUTH verifies, so a silent or keyless connection cannot hold it. Pre-AUTH limits (QA SECURITY-R1-10, R2-03): connections that have not said HELLO yet may number 64, at most 4 from one source (the IP address on LAN); a new connection beyond either limit evicts the oldest silent one (from that source first). Handshakes under way (HELLO received, not authenticated) are at most 4; a fifth HELLO evicts the oldest of them. A new connection never evicts a handshake under way, so a stranger who reconnects in a loop cannot push out a friend. Then:
+  - nothing else runs: it is admitted;
+  - the slot is held by an inbound session from the **same** device id that started earlier: the old one (dead after a half-open link, or abandoned) is cancelled and recorded as such, and the new one is admitted;
+  - this phone's own Sync is for the same phone (both tapped Sync on each other): the phone with the **lower device id** gives way. It cancels its own attempt, serves the other one's connection, and its `syncWith` returns that session's summary. The other phone refuses it with `ERROR busy "Already syncing with you"`. While its own Sync has not learned whom it reaches yet (still connecting, no HELLO), an authenticated inbound session waits up to one handshake timeout (its own handshake timer pauses meanwhile). If the dial is still connecting after that, the inbound session is refused with `ERROR busy "Starting its own sync"` (not "another phone": the dial may be for that very phone). The refused phone then, if it is hosting (only then can the dial be for it), waits up to a connect timeout plus a handshake timeout for that phone's connection and serves it, whichever device id is lower, since its own attempt is over; its `syncWith` returns that session's summary (QA SYNC-R2-02). A dial picked from the Nearby list sends, with `"Starting its own sync"`, the advert ids its target was seen with (`ERROR.to`), whatever the names say; the refused phone waits only if one of them is its own (this launch's advert id for the window before, at or after now), and otherwise ends with `"Starting its own sync with someone else"` without waiting (QA SYNC-R3-02). Names do not decide then: phones keep their model name by default, so friends often share one ("Pixel 8"), and an advert may still carry the name from before a rename (QA SYNC-R5-01). Without advert ids (a connect link or invite, or an advert without one), when the dialing phone can tell its dial is for some other phone (the link's device id differs, or the advertised name is not a prefix of the HELLO name nor the other way round; adverts cut names and mDNS may add " (2)"), it refuses with `ERROR busy "Starting its own sync with someone else"` instead and the refused phone does not wait; if it cannot tell, the refused phone waits as for a mutual Sync (QA SYNC-R3-02). Cancel ends that wait at once: `syncWith` fails with `cancelled` and a cancelled attempt never gives way, so the other phone's connection is then served as an ordinary inbound sync (QA SYNC-R3-01);
+  - otherwise: `ERROR busy "Syncing with another phone"`. Refused sessions are not recorded.
 - `startHosting`: compute tokens → `startAdvertising` on every transport whose availability is `ready` → collect interface addresses → `HostInfo` with a `connectLink`, expiring after `duration` (default 5 min). Inbound channels start responder sessions automatically.
-- `startDiscovery`: subscribe to `discover()` on each requested ready transport, and merge into `NearbyPeer` by `deviceIdPrefix` when known, else by `(kind, address)`. Peers unseen for 15 s are dropped. Shared groups come from tokens (8.3).
+- `startDiscovery`: subscribe to `discover()` on each requested ready transport, and merge into `NearbyPeer` by advert id when known, else by `(kind, address)`. Peers unseen for 15 s are dropped. Shared groups come from tokens (8.3).
 - `syncWith(peer)`: try transports in the order **lan → nearby → ble** among `peer.transports`. On a connect failure, fall back to the next. Report `peerUnreachable` if all fail.
 - `syncWithLink(link)`: parse `ConnectLink` (or an `InviteLink` with `h`) and try each host with a 4 s connect timeout.
 - After each session: `addSyncRecord`, set the status to `SessionCompleted`/`SessionFailed`, then fire one `HapticFeedback` in the UI layer (not in the engine).
@@ -3220,20 +3317,21 @@ CLOSING ──recv BYE or 2 s──► CLOSED (success; SyncRecord outcome=compl
 **LAN (`LanTransport`, kind `lan`, maxFrame 1 MiB)**
 - Server: `ServerSocket.bind(InternetAddress.anyIPv4, 52741)`, falling back to port 0 if busy. The actual port goes into mDNS and the QR. `tcpNoDelay = true`.
 - Framing on the socket: `len:u32be | channel frame`. Reject `len > 1 MiB` or `len == 0` (close). Reassemble across reads (tests must cover split and coalesced reads).
-- mDNS (`bonsoir`): type `_settleup._tcp`, service name = device name (≤ 40 chars). TXT: `v=1`, `d=<deviceId[0..8]>`, `t=<tokens comma-joined, ≤ 16>`. Discovery resolves to `host:port` (prefer IPv4, bracket IPv6).
+- mDNS (`bonsoir`): type `_settleup._tcp`, service name = device name (≤ 40 UTF-16 units and ≤ 63 UTF-8 bytes, one DNS label). TXT: `v=2`, `d=<advertId>`, `w=<windowTag>`, `t`, `t1`, `t2`, `t3` = up to 60 sorted tokens each, back to back (≤ 243 bytes per TXT string, about 1000 bytes for the record, under Android's 1300), and `m=1` when more groups were left out (8.3). Readers also accept comma-separated tokens. Discovery resolves to `host:port` (prefer IPv4, bracket IPv6).
 - Gateway probe (hotspot case, mDNS is unreliable there): while `discover()` is listened to, every 5 s read `NetworkInfo().getWifiGatewayIP()`. If it is non-null and not one of our addresses, try `Socket.connect(gw, 52741, timeout: 1.5 s)`. On success close it immediately and emit `DiscoveredPeer(kind: lan, address: 'gw:52741', name: 'Phone sharing its hotspot')`. The server ignores connections that close before a frame.
 - `HostInfo.addresses` from `NetworkInterface.list(type: IPv4)` without loopback; tethering interfaces first.
 
 **Nearby Connections (`NearbyTransport`, kind `nearby`, Android only, maxFrame 32 KiB)**
 - `serviceId = 'app.settleup.sync'`, `Strategy.P2P_CLUSTER`.
-- Endpoint name (advertised) = `"1|<deviceId[0..8]>|<deviceName ≤ 24>|<up to 4 tokens comma-joined>"`. Parse it on `onEndpointFound`.
+- Endpoint name (advertised) = `"2|<advertId>|<windowTag>|<deviceName ≤ 24>|<up to 24 sorted tokens, back to back>[+]"`, at most 131 UTF-8 bytes (the name is cut further to fit; all 24 tokens and the `+` always fit). The `+` says the phone holds more groups than the name lists (8.3). Parse it on `onEndpointFound`.
 - Accept every connection automatically (`acceptConnection`). Authentication happens in our session layer.
 - One channel frame = one BYTES payload (≤ 32 KiB).
 - `availability()` returns `unsupported` on iOS.
+- Nearby needs Google Play services. When a plugin call fails with API_UNAVAILABLE (status 17: Play services missing, disabled or too old, e.g. Huawei / HarmonyOS, Fire tablets, de-Googled ROMs) the transport remembers it until the app restarts: `availability()` and `requestPermissions()` return `unsupported`, and further calls throw `NearbyUnavailableException` (naming the reason) without calling the plugin. Hosting and discovery then use the other transports only.
 
 **BLE GATT (`BleTransport`, kind `ble`, maxFrame 16 KiB)** using `bluetooth_low_energy` 6.2.1:
 - Service `82101e6c-f454-4ceb-86a8-5375a3b1a414`. Characteristics:
-  - `INFO` `cdc76358-cfae-4208-855b-5d0c5b179f6a` (read): UTF-8 JSON `{"v":1,"d":"<deviceId[0..8]>","n":"<deviceName>","t":[tokens ≤ 16]}`.
+  - `INFO` `cdc76358-cfae-4208-855b-5d0c5b179f6a` (read): UTF-8 JSON `{"v":2,"d":"<advertId>","w":"<windowTag>","n":"<deviceName ≤ 40>","t":"<sorted tokens ≤ 96, back to back>","m":1}` (`m` only when more groups were left out, 8.3), within one 512-byte attribute: the least important tokens are left out if a wide name needs the room (at least 57 always fit). Readers also accept `t` as a JSON list.
   - `RX` `fb7ee064-81d8-47d5-87dc-a89a5e02dbe7` (write with response): central → peripheral chunks.
   - `TX` `33453450-cada-4c25-afb0-ba2115611155` (notify): peripheral → central chunks.
 - Advertising: service UUID only, plus local name `SU` (iOS allows only name and service UUIDs). The scanner filters on the service UUID, connects, reads `INFO` to build the `DiscoveredPeer` (cache by peripheral UUID for 60 s, then disconnect until the user taps Sync).
@@ -3257,11 +3355,16 @@ This is the same session staying in LIVE. The UI sets `liveMode = true` while th
 | Threat | Mitigation |
 |---|---|
 | A stranger nearby injects expenses | No group key, so no valid blinded id or AUTH. Rejected. |
-| Passive sniffing on hotspot/BLE | AES-256-GCM with ephemeral keys. Group ids are blinded. Tokens rotate every 10 min. |
+| Passive sniffing on hotspot/BLE | AES-256-GCM with ephemeral keys. Group ids are blinded. Tokens and the advert id rotate every 10 min and nothing stable (no device id) is advertised. The device name is advertised by design, so people can tell phones apart. |
+| A peer's device name reorders or hides text on screen | Names from a peer (HELLO, adverts, connect and invite links) are cleaned like local names (`TextClean.clean` in `lib/core/text_clean.dart`, which `TextRules.clean` uses: no control, bidi or zero-width characters) before they are shown or stored in a `SyncRecord` (`lib/sync/peer_name.dart`). |
+| A link from a web page makes the phone dial out | Only local-network IP addresses are dialed (8.6). |
+| A stranger on the hotspot holds the host's session slot | Handshakes run in parallel; only an authenticated session takes the slot (8.7.1). |
+| A stranger reconnects in a tight loop to push friends' handshakes out | New connections only evict silent ones (no HELLO yet), oldest first and from the same source first; 64 may wait, so a friend's HELLO has many connections' worth of time to arrive (8.7.1). |
 | Replay of an old session | Fresh nonces in HELLO; strictly sequential frame counters. |
 | QR photographed by someone | The QR is the membership secret. It auto-hides after 2 min and sharing is explicit with a warning. Rotation is Phase 2. |
 | Member forges another member's op | Accepted risk for MVP (friends). Phase 2 adds Ed25519 signatures. |
-| Malformed or hostile ops | `Operation.fromJson` + `SyncStore.applyRemote` validation; the reducer ignores invisible or inconsistent entities; size limits. |
+| Malformed or hostile ops | `Operation.fromJson` + `SyncStore.applyRemote` validation (text limits, no bidi/control characters, 32 KiB per op, no forged own-device counters, far-future stamps held back); the reducer ignores invisible or inconsistent entities; size limits. |
+| Keystore failure wipes group keys | `flutter_secure_storage` with `resetOnError: false`: a failed read is reported, not answered by erasing every key. Groups without a key are listed in `LedgerSnapshot.groupsWithoutKey` and re-scanning an invite restores the key. If the store has lost its own wrapping key (every call fails with the plugin's key-mismatch error), a write fails twice and is then made once with `resetOnError: true`, which drops the already unreadable entries, so that scan (and new groups) can store keys again; keys read earlier in the session are written back. |
 
 ### 8.10 Permissions wrapper (`lib/sync/platform/permissions.dart`, WP-D1, used by D2)
 
@@ -3272,7 +3375,7 @@ class NearbyPermissions {
 }
 ```
 
-Per kind on Android (API level → permissions): `lan`: none (targetSdk 36). `nearby`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≥ 33 also `nearbyWifiDevices`; API ≤ 32 `locationWhenInUse`. `ble`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≤ 30 `locationWhenInUse`. On iOS: `ble` → `bluetooth`; `lan` → no runtime API (the system prompts on the first local-network access; a timeout there maps to `permissionDenied` with the hint "Allow Local Network for Settle Up in Settings"). `radioOff` comes from `CentralManager().state` (BLE) and the Wi-Fi state (LAN: no IPv4 interface).
+Per kind on Android (API level → permissions): `lan`: none (targetSdk 36). `nearby`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≥ 33 also `nearbyWifiDevices`; API ≤ 32 `locationWhenInUse`. `ble`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≤ 30 `locationWhenInUse`. On iOS: `ble` → `bluetooth`; `lan` → no runtime API (the system prompts on the first local-network access; a timeout there maps to `permissionDenied` with the hint "Allow Local Network for Settle Up in Settings"). `radioOff` comes from `CentralManager().state` (BLE) and the Wi-Fi state (LAN: no IPv4 interface). `locationOff` is reported for `nearby`/`ble` when Bluetooth is on but the location service switch is off on an API level that needs `locationWhenInUse` for scanning (the Sync tab offers "Turn on location"). When nothing can advertise, `startHosting` fails with `permissionDenied` if a permission is missing, else `locationOff` if any transport reports it (Bluetooth is then on, so "Bluetooth or Wi-Fi is off" would point at the wrong switch; QA PLATFORM-R3-01), else `radioOff`.
 
 ---
 
@@ -3287,7 +3390,7 @@ android {
     namespace = "app.settleup.settle_up"
     compileSdk = 36
     defaultConfig {
-        applicationId = "app.settleup.settle_up"   // codename; final store id chosen before release
+        applicationId = "app.settleup.settleup"   // final store id, same as the iOS bundle id; never change it after the first upload
         minSdk = 26          // LocalOnlyHotspot (P1); bluetooth_low_energy needs 24
         targetSdk = 36       // NOT 37: Android 17 local-network permission (ACCESS_LOCAL_NETWORK) is unverified
     }
@@ -3323,7 +3426,9 @@ android {
 <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" /> -->
 ```
 
-Add `xmlns:tools="http://schemas.android.com/tools"` on `<manifest>`. The `nearby_connections` plugin manifest declares `BLUETOOTH`, `BLUETOOTH_ADMIN` and `ACCESS_COARSE_LOCATION` without `maxSdkVersion`, so put `tools:node="replace"` on our capped declarations (`BLUETOOTH`, `BLUETOOTH_ADMIN`, both location permissions) to keep the caps after manifest merge. **Verify on a real API 31/32 device and an API 34+ device:** the plugin README (Google's page was unreachable from the sandbox) lists `BLUETOOTH_SCAN` without `neverForLocation` and `ACCESS_FINE_LOCATION` for API 29 to 31. We keep `neverForLocation` so BLE scanning works on API 33+ without location, and request location on API ≤ 32 (8.10). If Nearby discovery returns nothing on API 31+, remove the flag and request `locationWhenInUse` on every API level for `nearby` and `ble` (and lift the location `maxSdkVersion`). Record the result in `docs/QA.md`. On `<application>`: `android:allowBackup="false"` and `android:fullBackupContent="false"` (a restored op log with a cloned device id would fork counters, see 7.4). Add a `<intent-filter>` for the `settleup` scheme (hosts `join`, `sync`) on the main activity, so invite links open the app. `nearby_connections` 4.3.0 pins AGP 7.4.2 in its own buildscript. If the Gradle build rejects it, WP-D2 reports it, and the integrator vendors the plugin under `third_party/nearby_connections` with an updated build file (do not fork the Dart API).
+Add `xmlns:tools="http://schemas.android.com/tools"` on `<manifest>`. The `nearby_connections` plugin manifest declares `BLUETOOTH`, `BLUETOOTH_ADMIN` and `ACCESS_COARSE_LOCATION` without `maxSdkVersion`, so put `tools:node="replace"` on our capped declarations (`BLUETOOTH`, `BLUETOOTH_ADMIN`, both location permissions) to keep the caps after manifest merge. **Verify on a real API 31/32 device and an API 34+ device:** the plugin README (Google's page was unreachable from the sandbox) lists `BLUETOOTH_SCAN` without `neverForLocation` and `ACCESS_FINE_LOCATION` for API 29 to 31. We keep `neverForLocation` so BLE scanning works on API 33+ without location, and request location on API ≤ 32 (8.10). If Nearby discovery returns nothing on API 31+, remove the flag and request `locationWhenInUse` on every API level for `nearby` and `ble` (and lift the location `maxSdkVersion`). Record the result in `docs/QA.md`. On `<application>`: `android:allowBackup="false"` and `android:fullBackupContent="false"` (a restored op log with a cloned device id would fork counters, see 7.4), plus `android:dataExtractionRules="@xml/data_extraction_rules"`. For targetSdk 31+ `allowBackup="false"` no longer stops device-to-device transfer (new phone setup by cable or Wi-Fi), so `res/xml/data_extraction_rules.xml` excludes every domain (`root`, `file`, `database`, `sharedpref`, `external` and the `device_*` domains) in both `<cloud-backup>` and `<device-transfer>`. A new phone joins its groups again with an invite. Add a `<intent-filter>` for the `settleup` scheme (hosts `join`, `sync`) on the main activity, so invite links open the app. `nearby_connections` 4.3.0 pins AGP 7.4.2 in its own buildscript. If the Gradle build rejects it, WP-D2 reports it, and the integrator vendors the plugin under `third_party/nearby_connections` with an updated build file (do not fork the Dart API).
+
+No usage metrics leave the phone (docs/PRIVACY.md): `mobile_scanner` bundles ML Kit barcode scanning, whose Firebase data transport would upload usage events through the `cct` backend. The app manifest declares `com.google.android.datatransport.runtime.backends.TransportBackendDiscovery` with `tools:node="merge"` and removes its `backend:com.google.android.datatransport.cct.CctBackendFactory` meta-data (`tools:node="remove"`), so the transport runtime has no backend and drops every event. Do not remove the transport services themselves (a scheduled job for a missing service throws). Any new dependency that adds analytics or crash reporting must be removed the same way or disclosed in PRIVACY.md and docs/STORE-LISTING.md.
 
 ### 9.2 iOS
 
@@ -3345,7 +3450,7 @@ iOS has no Nearby Connections (BLE and LAN only) and cannot create a hotspot fro
 
 ## 10. UI build notes (WP-E, WP-F)
 
-DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/theme/app_theme.dart` verbatim from DESIGN 8.1 and 8.2 (replace `google_fonts` `^8.2.1` guidance with `^9.0.0`). Bundle the Atkinson Hyperlegible Next static TTFs (Regular, SemiBold, Bold, ExtraBold) plus `OFL.txt` under `assets/google_fonts/` with the file names `google_fonts` expects (`AtkinsonHyperlegibleNext-Regular.ttf` and so on). If the files cannot be downloaded in the build sandbox, ship without them; `google_fonts` falls back to the platform font. Record that in the README, but never enable runtime fetching.
+DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/theme/app_theme.dart` verbatim from DESIGN 8.1 and 8.2 (replace `google_fonts` `^8.2.1` guidance with `^9.0.0`). Bundle the Familjen Grotesk static TTFs (Regular 400, Medium 500, SemiBold 600, Bold 700; the family and weights DESIGN.md specifies) plus `OFL.txt` under `assets/google_fonts/` with the file names `google_fonts` expects (`FamiljenGrotesk-Regular.ttf` and so on). `kFontFamily` in `lib/theme/app_theme.dart` names the family, and no other weight is used. If the files cannot be downloaded in the build sandbox, ship without them; `google_fonts` falls back to the platform font. Record that in the README, but never enable runtime fetching.
 
 ### 10.1 Routes (`lib/ui/router.dart`)
 
@@ -3365,8 +3470,8 @@ DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/t
 | `/groups/:gid/invite` | Full-screen invite QR, 2 min auto-hide | `inviteLinkFor(includeHost: true)` |
 | `/groups/:gid/claim` | "Which one are you?" after joining | `claimMember`, `addMember` |
 | `/expense/new?gid=&pid=` | Add expense (6.4), with the split editor sheet (6.5) | `addExpense`, `directGroupWith` (when started from a person) |
-| `/expense/:eid` | Expense detail + history | `expenseHistoryProvider`, `deleteExpense`, `restoreExpense` |
-| `/expense/:eid/edit` | Edit expense | `updateExpense` / `updatePayment` |
+| `/expense/:eid?gid=` | Expense detail + history. Every in-app link passes `gid` (the expense's group; ids are scoped by group, 7.2); without it the id is looked up in any group | `expenseHistoryProvider`, `deleteExpense`, `restoreExpense` |
+| `/expense/:eid/edit?gid=` | Edit expense | `updateExpense` / `updatePayment` |
 | `/settle?gid=&from=&to=` | Settle up (6.6) with the bubble moment | `groupTransfersProvider`, `recordPayment` |
 | `/people/:pid` | Person: balance per group, settle per group | `peopleBalancesProvider` |
 | `/search` | Local search | `ledgerProvider` (filter in memory) |

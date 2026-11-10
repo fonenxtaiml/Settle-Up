@@ -110,6 +110,11 @@ only sees ciphertext.
 | E4 | A visible, then add a new group on A and invite B while the host screen is open. | B's list shows the new shared group within one refresh (no need to restart hosting). |
 | E5 | Leave A visible over a 10-minute boundary (e.g. 10:09 to 10:11). | B still sees A as sharing "Goa trip" after the boundary (tokens rotate every 10 min and the advert updates in place). |
 | E6 | A visible; B syncs; immediately close the app on A mid-transfer. | B fails cleanly; reopening A and syncing again completes; no duplicates. |
+| E7 | Install the app on two fresh phones within the same minute, create a group on one and invite the other. Then A visible, B "Find nearby". | B lists A, sharing the group, on every transport (the advertised id is random per phone and window, not part of the device id). |
+| E8 | Set B's clock 2 hours ahead (Settings, Date and time, manual). A visible, B "Find nearby"; then the same with B a day behind. | B still lists A as sharing "Goa trip" and syncs by tapping it. |
+| E9 | One phone in 20+ groups (a few trips plus many friends). It is visible; a phone sharing one of those groups scans for an hour. | The shared group is shown the whole time, over LAN, Nearby and BLE. |
+| E10 | During a large LAN sync from B to A, turn B's Wi-Fi off (A keeps a half-open connection). B taps Cancel, then syncs again over Bluetooth at once. | A accepts the retry right away (the stale session is replaced); no "busy". |
+| E11 | Open `settleup://sync?v=1&h=203.0.113.7:52741&d=x&n=X` on a phone (e.g. from a note or a browser). | "That code isn't a Settle Up link."; nothing is dialed (no outgoing connection in a packet capture). |
 
 ---
 
@@ -135,9 +140,10 @@ Also verify (SPEC 9.1):
 | P2 | Deny Nearby devices twice ("Don't ask again"). The Bluetooth row offers "Open settings", not another dialog. | | |
 | P3 | Location services switched **off** on API ≤ 32: the Bluetooth row says the radio needs location on, instead of finding nothing silently. | | n/a |
 | P4 | `BLUETOOTH_SCAN` is declared `neverForLocation`. Nearby Connections discovery finds the other phone. **If it finds nothing on API 31+**, record it here; the fix is to drop the flag and request location for nearby and ble on every API level (SPEC 9.1). | | |
-| P5 | `adb shell dumpsys package app.settleup.settle_up | grep permission`: `BLUETOOTH`, `BLUETOOTH_ADMIN` capped at 30, both location permissions capped at 32 after manifest merge. | | |
+| P5 | `adb shell dumpsys package app.settleup.settleup | grep permission`: `BLUETOOTH`, `BLUETOOTH_ADMIN` capped at 30, both location permissions capped at 32 after manifest merge. | | |
 | P6 | Settings, Apps, Settle Up, Backup: app data is excluded (allowBackup off). | | |
 | P7 | Tap a `settleup://join?...` link in a chat app: Settle Up opens on the join screen. | | |
+| P8 | No usage metrics to Google (docs/PRIVACY.md). Release APK, Wi-Fi with internet, a traffic monitor such as PCAPdroid filtered to Settle Up. Scan an invite QR code, sync once, keep the app open 10 minutes, then lock the screen for an hour. Nothing goes to `firebaselogging-pa.googleapis.com` (or any internet host); only the other phone's LAN address appears. `adb logcat | grep -i transport` may show "Transport backend 'cct' is not registered": that is the expected drop. | | |
 
 ---
 
@@ -153,8 +159,10 @@ under `settle_up.sync.nearby` and `settle_up.sync.ble`.
 
 - **Nearby Connections** (Android only, kind `nearby`): service id
   `app.settleup.sync`, strategy `P2P_CLUSTER`. The advertised endpoint name
-  is `1|<device id prefix>|<device name, 24 max>|<up to 4 tokens>`, so the
-  scanner lists the phone and its shared groups without connecting. Both
+  is `2|<advert id>|<window tag>|<device name, 24 max>|<up to 24 tokens>`
+  (SPEC 8.3: the advert id is random and changes every 10 minutes; no
+  device id is advertised), so the scanner lists the phone and its shared
+  groups without connecting. Both
   sides accept every connection automatically; the session handshake does
   the authentication. One frame is one BYTES payload (32 KiB max). Nearby
   may move the link from Bluetooth to Wi-Fi by itself during a sync; that
@@ -184,8 +192,13 @@ under `settle_up.sync.nearby` and `settle_up.sync.ble`.
 | N5 | A stops being visible (leave the host screen). | A disappears from B's list within about 20 s. |
 | N6 | During a 500-expense sync, walk B out of range (or turn its Bluetooth off). | Session fails with the partial "Nothing was lost" message; the next sync completes; no duplicates. |
 | N7 | A visible over a 10-minute boundary (e.g. 10:09 to 10:11), B scanning. | A still shows as sharing "Goa trip" after the boundary. In logcat, A restarts its Nearby advertisement once (the name carries the new tokens); an open session is not interrupted. |
-| N8 | A and B both visible and both scanning, both tap each other at the same moment. | One session runs, the other side shows "busy" or the same session; nothing is lost; a retry works. |
+| N8 | A and B both visible and both scanning, both tap each other at the same moment. | One session runs and both phones show it as their sync (the phone with the lower device id serves the other one's connection). Neither says "Syncing with another phone"; both phones end equal. |
+| N8b | Like N8, but A's Wi-Fi route hangs (A on a different Wi-Fi than B, so its LAN dial times out before Nearby is tried). | Both syncs end well, or at worst one says "busy: Starting its own sync". Never "Syncing with another phone" (SYNC-R2-02). |
+| N8d | Like N8b; while B's screen shows the Sync waiting, tap Cancel on B. | B shows "Sync cancelled." within a second and is free; A's late connection then syncs as an ordinary sync (SYNC-R3-01). |
+| N8e | A dials B slowly (as in N8b); meanwhile a third phone C taps Sync on A. | C's Sync fails (A is busy) after about 10 s, not after about 30 s of "Comparing" progress (SYNC-R3-02). |
+| N8c | A in more than 24 groups (e.g. 30 friends added), B shares only an old group A has never synced. Wi-Fi off. | B lists A as "may share a group" with Sync, not Pair. Tapping Sync syncs the shared group. After that sync, B lists A as sharing that group in every later window (SYNC-R2-01). |
 | N9 | A phone without Google Play services (or with it disabled), if available. | Hosting and finding still work over BLE; Nearby failures only show in logcat (`settle_up.sync.nearby`). Record what the Sync tab says for Nearby. |
+| N10 | On the N9 phone: make it visible, stop, make it visible again, then "Find nearby". | In logcat (`settle_up.sync.nearby`) exactly one "Nearby is unavailable on this phone" with the API_UNAVAILABLE cause on the first try. After it Nearby reports unsupported and no further Nearby start calls are logged until the app restarts; BLE still works. |
 
 ### 4.2 BLE between two Android phones
 

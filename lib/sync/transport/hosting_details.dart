@@ -13,4 +13,10 @@ abstract interface class HostingDetails {
 
   /// The Wi-Fi network name, if known.
   Future<String?> wifiName();
+
+  /// Whether a connect link (or an invite's `h`) naming [address] may be
+  /// dialed. LAN allows only local-network IP addresses
+  /// (`isLocalNetworkHostPort`), so a link from a web page cannot make the
+  /// phone reach the internet.
+  bool isLinkHost(String address);
 }

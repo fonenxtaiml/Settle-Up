@@ -1,10 +1,12 @@
 // Activity: every change in every group plus the sync sessions, newest
-// first, by day, with filters.
+// first, by day, with filters. With a group id, the same feed for one
+// group (SPEC 1.2 #10), pushed from the group's menu.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/activity.dart';
+import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
 import '../../../theme/tokens.dart';
@@ -19,7 +21,10 @@ import '../common.dart';
 enum ActivityFilter { all, expenses, payments, syncs }
 
 class ActivityScreen extends ConsumerStatefulWidget {
-  const ActivityScreen({super.key});
+  const ActivityScreen({super.key, this.groupId});
+
+  /// Only this group's changes (no sync sessions: those span groups).
+  final GroupId? groupId;
 
   @override
   ConsumerState<ActivityScreen> createState() => _ActivityScreenState();
@@ -61,15 +66,22 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activity = ref.watch(activityProvider(null));
-    final history = ref.watch(syncHistoryProvider).value ?? const [];
+    final groupId = widget.groupId;
+    final activity = ref.watch(activityProvider(groupId));
+    final history = groupId != null
+        ? const <SyncRecord>[]
+        : ref.watch(syncHistoryProvider).value ?? const <SyncRecord>[];
     final snap = ref.watch(ledgerProvider).value;
     final me = ref.watch(profileProvider).value?.personId;
     final now = ref.watch(clockProvider)();
+    final group = groupId == null ? null : snap?.state.groups[groupId];
 
     return Scaffold(
       appBar: screenAppBar(
-        title: const Text(S.activityTitle),
+        leading: groupId == null ? null : const BackArrow(),
+        title: group == null || me == null
+            ? const Text(S.activityTitle)
+            : AppBarTitle(S.activityTitle, subtitle: groupTitle(group, me)),
         actions: [
           IconButton(
             onPressed: () => context.push(Routes.search),
@@ -105,6 +117,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
             children: [
               _Filters(
                 value: _filter,
+                withSyncs: groupId == null,
                 onChanged: (f) => setState(() => _filter = f),
               ),
               if (items.isEmpty)
@@ -144,9 +157,14 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
 }
 
 class _Filters extends StatelessWidget {
-  const _Filters({required this.value, required this.onChanged});
+  const _Filters({
+    required this.value,
+    required this.onChanged,
+    this.withSyncs = true,
+  });
 
   final ActivityFilter value;
+  final bool withSyncs;
   final ValueChanged<ActivityFilter> onChanged;
 
   @override
@@ -162,18 +180,19 @@ class _Filters extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: Space.screen),
       child: Row(
         children: [
-          for (final f in ActivityFilter.values) ...[
-            if (f != ActivityFilter.all) const SizedBox(width: Space.sm),
-            ChoiceChip(
-              label: Text(labels[f]!),
-              selected: f == value,
-              showCheckmark: false,
-              onSelected: (_) {
-                Haptics.selection(context);
-                onChanged(f);
-              },
-            ),
-          ],
+          for (final f in ActivityFilter.values)
+            if (withSyncs || f != ActivityFilter.syncs) ...[
+              if (f != ActivityFilter.all) const SizedBox(width: Space.sm),
+              ChoiceChip(
+                label: Text(labels[f]!),
+                selected: f == value,
+                showCheckmark: false,
+                onSelected: (_) {
+                  Haptics.selection(context);
+                  onChanged(f);
+                },
+              ),
+            ],
         ],
       ),
     );
@@ -253,6 +272,11 @@ class ActivityRow extends ConsumerWidget {
       DateLabels.clock12(entry.at),
       if (!entry.isLocal) S.bySync,
       if (entry.isLocal && !entry.isShared) S.notYetShared,
+      if (expense != null &&
+          expense.isPayment &&
+          g != null &&
+          possibleDuplicatePayments(g).contains(expense.id))
+        KitStrings.possibleDuplicate,
     ].join(', ');
 
     final myId = g == null ? null : myMemberIn(g, me);
@@ -261,8 +285,8 @@ class ActivityRow extends ConsumerWidget {
         !expense.isDeleted &&
         (entry.kind == ActivityKind.expenseAdded ||
             entry.kind == ActivityKind.paymentAdded)) {
-      final impact = ExpenseRow.impactOf(expense, myId);
-      final v = myId == null ? 0 : expense.impactFor(myId);
+      final impact = ExpenseRow.impactOf(expense, myId, resolve: g?.resolve);
+      final v = ExpenseRow.impactValue(expense, myId, resolve: g?.resolve);
       if (impact == ExpenseImpact.lent || impact == ExpenseImpact.borrowed) {
         trailing = BalanceTrailing(
           word: expense.isPayment
@@ -284,7 +308,9 @@ class ActivityRow extends ConsumerWidget {
       trailing = TextButton(
         onPressed: () => runGuarded(
           context,
-          () => ref.read(ledgerRepositoryProvider).restoreExpense(expense.id),
+          () => ref
+              .read(ledgerRepositoryProvider)
+              .restoreExpense(expense.id, groupId: expense.groupId),
         ),
         child: const Text(S.restore),
       );
@@ -298,19 +324,61 @@ class ActivityRow extends ConsumerWidget {
             isMe: g != null && g.resolve(actorId) == myId,
           );
 
-    return KitListRow(
+    Widget rowFor(bool stack) => KitListRow(
       title: sentence,
       subtitle: subtitle,
       leading: leading,
       trailing: trailing,
+      stackTrailing: stack,
       onTap: expense == null
           ? (g?.group == null
                 ? null
                 : () => context.push(Routes.group(entry.groupId)))
-          : () => context.push(Routes.expense(expense.id)),
+          : () => context.push(
+              Routes.expense(expense.id, groupId: expense.groupId),
+            ),
+    );
+
+    // The trailing block keeps its natural width (as on ExpenseRow), so on
+    // a small phone at 1.3x to 1.6x, or with a huge amount, the sentence
+    // beside it could get less room than one word, or none. Then the row
+    // stacks the trailing block under the text, as at large text.
+    final theme = Theme.of(context);
+    final trailingWidth = switch (trailing) {
+      final BalanceTrailing b => b.naturalWidth(context),
+      TextButton() =>
+        measureTextWidth(context, S.restore, theme.textTheme.labelLarge) +
+            _textButtonPadding,
+      _ => 0.0,
+    };
+    if (trailingWidth == 0 || isLargeText(context)) return rowFor(false);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textRoom =
+            constraints.maxWidth -
+            Space.rowInset * 2 -
+            Sizes.avatar -
+            14 - // gap after the avatar
+            Space.md - // gap before the trailing block
+            trailingWidth;
+        bool wordsFit(String text, TextStyle? style) =>
+            textFitsWords(context, text, style, textRoom, maxLines: 1 << 10);
+        final fits =
+            textRoom >= _minTextBeside &&
+            wordsFit(sentence, theme.textTheme.titleMedium) &&
+            wordsFit(subtitle, theme.textTheme.bodySmall);
+        return rowFor(!fits);
+      },
     );
   }
 }
+
+/// The least room the sentence keeps beside the trailing block before the
+/// row stacks (the same as on ExpenseRow).
+const double _minTextBeside = 96;
+
+/// A TextButton's side padding around its label.
+const double _textButtonPadding = 24;
 
 /// A sync session in the feed.
 class SyncRecordRow extends StatelessWidget {

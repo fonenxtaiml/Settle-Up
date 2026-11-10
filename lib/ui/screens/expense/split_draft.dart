@@ -5,6 +5,7 @@ import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
 import '../../../core/split.dart';
+import '../../format/amount_input.dart';
 
 /// Basis points have two decimals: "33.33" % -> 3333.
 const Currency _percentUnits = Currency(
@@ -14,8 +15,13 @@ const Currency _percentUnits = Currency(
   name: 'percent',
 );
 
-/// "12.5" -> 1250 basis points; null for bad input.
-int? parsePercent(String text) => Money.parseMinor(text, _percentUnits);
+/// "12.5" -> 1250 basis points; null for bad input. One percent sign after
+/// the number names the unit of this field ("12.5 %"); anywhere else, the
+/// reader refuses it, as it changes what an amount means (MONEY-R5-01).
+int? parsePercent(String text) => parseAmountInput(
+  text.replaceFirst(RegExp(r'(?<=[0-9.,])\s*[%\u066A\uFE6A\uFF05]\s*$'), ''),
+  _percentUnits,
+);
 
 /// "1250" basis points -> "12.5".
 String formatPercent(int bp) {
@@ -26,19 +32,15 @@ String formatPercent(int bp) {
   return '$whole.${f.endsWith('0') ? f.substring(0, 1) : f}';
 }
 
-/// Signed minor units: "+50", "-50", "−50", "50".
+/// Signed minor units: "+50", "-50", "−50", "–50", "50-", "(50)", "50",
+/// "1,000", "1.234,50". A sign on its own (being typed) is zero.
 int? parseSignedMinor(String text, Currency c) {
-  var t = text.trim();
-  var sign = 1;
-  if (t.startsWith('-') || t.startsWith('−')) {
-    sign = -1;
-    t = t.substring(1);
-  } else if (t.startsWith('+')) {
-    t = t.substring(1);
+  final t = text.trim();
+  if (t.isEmpty ||
+      RegExp(r'^[+\-\u2212\u2013\u2014\u2010\u2011()\s]*$').hasMatch(t)) {
+    return 0;
   }
-  if (t.trim().isEmpty) return 0;
-  final v = Money.parseMinor(t, c);
-  return v == null ? null : sign * v;
+  return parseSignedAmountInput(t, c);
 }
 
 /// Minor units as plain input text: 60000 INR -> "600", 1250 -> "12.50".
@@ -49,6 +51,9 @@ String minorToInput(int minor, Currency c) {
   if (frac == 0) return '$sign$major';
   return '$sign$major.${frac.toString().padLeft(c.minorDigits, '0')}';
 }
+
+/// Why a split is not ready, beyond money left or over.
+enum SplitProblem { nobody, belowZero, unreadable }
 
 final class SplitDraft {
   SplitDraft({
@@ -85,8 +90,8 @@ final class SplitDraft {
       case SplitMethod.exact:
         return SplitSpec(SplitMethod.exact, {
           for (final m in p)
-            if ((Money.parseMinor(exact[m] ?? '', currency) ?? 0) > 0)
-              m: Money.parseMinor(exact[m]!, currency)!,
+            if ((parseAmountInput(exact[m] ?? '', currency) ?? 0) > 0)
+              m: parseAmountInput(exact[m]!, currency)!,
         });
       case SplitMethod.percent:
         return SplitSpec(SplitMethod.percent, {
@@ -106,6 +111,28 @@ final class SplitDraft {
     }
   }
 
+  /// Participants whose typed value cannot be read ("1,2,3", "12.345" in
+  /// rupees). They are not counted as zero silently: Save stays blocked.
+  Set<MemberId> badInput(Currency currency) {
+    final Map<MemberId, String> raw = switch (method) {
+      SplitMethod.exact => exact,
+      SplitMethod.percent => percent,
+      SplitMethod.adjustment => adjust,
+      SplitMethod.equal || SplitMethod.shares => const {},
+    };
+    return {
+      for (final m in participants)
+        if ((raw[m] ?? '').trim().isNotEmpty &&
+            switch (method) {
+                  SplitMethod.percent => parsePercent(raw[m]!),
+                  SplitMethod.adjustment => parseSignedMinor(raw[m]!, currency),
+                  _ => parseAmountInput(raw[m]!, currency),
+                } ==
+                null)
+          m,
+    };
+  }
+
   SplitCheck check(int total, Currency currency) =>
       SplitCalculator.check(total <= 0 ? 0 : total, spec(currency));
 
@@ -122,9 +149,29 @@ final class SplitDraft {
         return rem < 0 ? -money : money;
       case SplitMethod.equal:
       case SplitMethod.shares:
+        // Nobody in the split: all of it is still to split.
+        return participants.isEmpty ? total : 0;
       case SplitMethod.adjustment:
-        return 0;
+        if (participants.isEmpty) return total;
+        if (c.isValid) return 0;
+        // Adjustments larger than the bill: the excess is "too much".
+        final rest = total - c.assignedUnits;
+        return rest < 0 ? rest : 0;
     }
+  }
+
+  /// Why the split cannot be saved when [leftMinor] cannot say it (a share
+  /// below zero, a value that cannot be read), or null.
+  SplitProblem? problem(int total, Currency currency) {
+    if (total <= 0) return null;
+    if (badInput(currency).isNotEmpty) return SplitProblem.unreadable;
+    final c = check(total, currency);
+    if (c.isValid || leftMinor(total, currency) != 0) return null;
+    return switch (c.error) {
+      SplitError.noParticipants || SplitError.zeroWeight => SplitProblem.nobody,
+      SplitError.negativeShare => SplitProblem.belowZero,
+      _ => null,
+    };
   }
 
   /// Fills the values of [next] from an even split of [total], so a new

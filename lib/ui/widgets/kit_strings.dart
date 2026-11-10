@@ -44,6 +44,13 @@ abstract final class KitStrings {
   static String peoplePaid(int n, String amount) => '$n people paid $amount';
   static String paymentTitle(String from, String to) => '$from paid $to';
   static const payment = 'Payment';
+  static const possibleDuplicate = 'possible duplicate';
+  static String amountUpTo(String max) => 'Enter an amount up to $max';
+  static String amountDecimals(int digits) => switch (digits) {
+    0 => 'Enter a whole amount, with no decimals',
+    1 => 'Enter an amount with at most 1 decimal',
+    _ => 'Enter an amount with at most $digits decimals',
+  };
   static const notYetShared = 'Not yet shared';
   static const restore = 'Restore';
   static const deleted = 'deleted';

@@ -89,10 +89,14 @@ void main() {
     });
 
     test('maximum amount', () {
-      expect(Money.parseMinor('9999999.99', gbp), Money.maxMinor);
-      expect(Money.parseMinor('10000000', gbp), isNull);
-      expect(Money.parseMinor('999999999', jpy), Money.maxMinor);
-      expect(Money.parseMinor('1000000000', jpy), isNull);
+      expect(Money.parseMinor('999999999.99', gbp), Money.maxMinor);
+      expect(Money.parseMinor('1000000000', gbp), isNull);
+      expect(Money.parseMinor('99999999999', jpy), Money.maxMinor);
+      expect(Money.parseMinor('100000000000', jpy), isNull);
+      // UIFLOW-R2-04: everyday amounts in low-value currencies fit.
+      final idr = Currencies.of('IDR');
+      expect(Money.parseMinor('12000000', idr), 1200000000);
+      expect(Money.parseMinor('999999999.99', idr), Money.maxMinor);
       expect(Money.parseMinor('9999999999999', gbp), isNull);
     });
   });

@@ -443,14 +443,14 @@ List<NearbyPeer> demoPeers(DemoGroups g) => [
   NearbyPeer(
     key: 'peer-priya',
     name: "Priya's Pixel 8",
-    deviceIdPrefix: DemoIds.priyaPhone.substring(0, 8),
+    advertId: '3f9c2a17',
     transports: const {TransportKind.lan, TransportKind.ble},
     sharedGroupIds: [g.goa],
   ),
   NearbyPeer(
     key: 'peer-ravi',
     name: "Ravi's iPhone",
-    deviceIdPrefix: DemoIds.raviPhone.substring(0, 8),
+    advertId: 'b81e05d4',
     transports: const {TransportKind.ble},
     sharedGroupIds: [g.goa],
   ),

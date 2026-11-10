@@ -1,7 +1,7 @@
 name: settle_up
 description: "Offline-first expense splitting"
 publish_to: 'none'
-version: 0.1.0+1
+version: 1.0.0+2
 
 environment:
   sdk: ^3.13.7
@@ -13,6 +13,7 @@ dependencies:
   app_settings: ^9.0.1
   bluetooth_low_energy: ^6.2.1
   bonsoir: ">=7.1.5 <7.1.6"          # see 2.1: dbus conflict
+  characters: ^1.4.0
   collection: ^1.19.1
   cryptography: ^2.9.0
   cryptography_flutter: ^2.3.4

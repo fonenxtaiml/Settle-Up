@@ -18,6 +18,7 @@ import 'package:meta/meta.dart';
 
 import '../../core/ids.dart';
 import '../../core/models.dart';
+import '../name_cut.dart';
 import '../protocol/codec.dart';
 import '../protocol/messages.dart';
 import 'aead.dart';
@@ -79,9 +80,7 @@ final class Handshake {
     ];
     final hello = HelloMessage(
       deviceId: deviceId,
-      deviceName: deviceName.length > kMaxDeviceNameLength
-          ? deviceName.substring(0, kMaxDeviceNameLength)
-          : deviceName,
+      deviceName: helloDeviceName(deviceName),
       ephemeralPublicKey: Uint8List.fromList(pub.bytes),
       nonce: nonce,
       blindedGroups: blinded,
@@ -250,3 +249,11 @@ final class HandshakeKeys {
   /// Constant-time check of the peer's AUTH mac.
   bool verifyPeerMac(List<int> mac) => constantTimeEquals(mac, _expectedPeerMac);
 }
+
+/// [name] as HELLO carries it: at most [kMaxDeviceNameLength] UTF-16 units
+/// (what the peer accepts), cut on a character boundary so a letter outside
+/// the BMP or a cluster is never split (DATA-R4-03). A split surrogate pair
+/// would reach the peer as U+FFFD. A first character longer than the limit
+/// is cut by code points rather than sent as an empty name (DATA-R5-02).
+String helloDeviceName(String name) =>
+    cutName(name, (s) => s.length <= kMaxDeviceNameLength);

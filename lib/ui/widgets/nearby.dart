@@ -73,10 +73,7 @@ class NearbyPhoneRow extends StatelessWidget {
       ),
       NearbyPhoneAction.busy => const Padding(
         padding: EdgeInsets.symmetric(horizontal: Space.md),
-        child: SizedBox.square(
-          dimension: 20,
-          child: CircularProgressIndicator(strokeWidth: 2),
-        ),
+        child: SizedBox.square(dimension: 20, child: KitSpinner()),
       ),
       NearbyPhoneAction.none => null,
     };

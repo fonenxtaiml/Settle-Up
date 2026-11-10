@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/money_format.dart';
+import 'kit_layout.dart';
 import 'tether.dart';
 
 enum MoneyTextStyle {
@@ -158,6 +159,39 @@ class BalanceTrailing extends StatelessWidget {
 
   MoneyDirection get _direction => direction ?? MoneyDirection.of(minor ?? 0);
 
+  /// The width this block takes when nothing squeezes it: the glyph and
+  /// the direction word on one line, or the amount, whichever is wider.
+  /// Rows use it to decide whether it fits beside their text.
+  double naturalWidth(BuildContext context) {
+    final theme = Theme.of(context);
+    final d = _direction;
+    final wordStyle = compact
+        ? theme.textTheme.labelSmall!.withWeight(FontWeight.w500)
+        : AppType.direction(context);
+    final amountStyle = compact
+        ? AppType.amountTable(context)
+        : AppType.amount(context);
+    final tether = showTether && d != MoneyDirection.neutral && !compact;
+    final glyph = tether
+        ? 26 * MediaQuery.textScalerOf(context).scale(1).clamp(1, 1.5) + 5
+        : 0.0;
+    var width = glyph + measureTextWidth(context, word, wordStyle);
+    if (minor != null) {
+      final signed = d == MoneyDirection.owed || d == MoneyDirection.owe;
+      final value = signed
+          ? (d == MoneyDirection.owe ? -minor!.abs() : minor!.abs())
+          : minor!.abs();
+      final amount = MoneyFormat.format(value, currency, signed: signed);
+      final w = measureTextWidth(context, amount, amountStyle);
+      if (w > width) width = w;
+    }
+    if (footnote != null) {
+      final w = measureTextWidth(context, footnote!, theme.textTheme.bodySmall);
+      if (w > width) width = w;
+    }
+    return width + 1; // rounding of the painted glyphs
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -208,10 +242,16 @@ class BalanceTrailing extends StatelessWidget {
             ],
           ),
           if (value != null)
-            Text(
-              MoneyFormat.format(value, currency, signed: signed),
-              maxLines: 1,
-              style: amountStyle,
+            // Never clipped: in a narrow column (Now / After, a stacked
+            // row at 2x) the amount scales down to fit instead.
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              alignment: AlignmentDirectional.centerEnd,
+              child: Text(
+                MoneyFormat.format(value, currency, signed: signed),
+                maxLines: 1,
+                style: amountStyle,
+              ),
             ),
           if (footnote != null)
             Text(

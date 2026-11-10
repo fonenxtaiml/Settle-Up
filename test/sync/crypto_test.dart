@@ -273,11 +273,12 @@ void main() {
     final t0 = DateTime.utc(2026, 11, 9, 12, 0, 1);
 
     test(
-      '16 hex chars, stable per window, rotating every 10 minutes',
+      '4 base64url chars, stable per window, rotating every 10 minutes',
       () async {
         final w = DiscoveryTokens.windowAt(t0);
         final a = await DiscoveryTokens.token(_key(1), w);
-        expect(a, matches(RegExp(r'^[0-9a-f]{16}$')));
+        expect(a, matches(RegExp(r'^[A-Za-z0-9_-]{4}$')));
+        expect(DiscoveryTokens.isToken(a), isTrue);
         expect(await DiscoveryTokens.token(_key(1), w), a);
         expect(await DiscoveryTokens.token(_key(1), w + 1), isNot(a));
         expect(await DiscoveryTokens.token(_key(2), w), isNot(a));
@@ -299,7 +300,12 @@ void main() {
         final keys = {'g1': _key(1), 'g2': _key(2)};
         final adv = await DiscoveryTokens.advertised(keys, t0);
         expect(adv, hasLength(2));
-        expect([...adv]..sort(), adv);
+        // Newest group first (ids are UUIDv7); transports sort what they
+        // keep.
+        expect(adv, [
+          await DiscoveryTokens.token(_key(2), DiscoveryTokens.windowAt(t0)),
+          await DiscoveryTokens.token(_key(1), DiscoveryTokens.windowAt(t0)),
+        ]);
         final later = await DiscoveryTokens.index(
           keys,
           t0.add(const Duration(minutes: 10)),
@@ -314,6 +320,45 @@ void main() {
         expect(adv.where(stranger.containsKey), isEmpty);
       },
     );
+
+    test('window tags resolve to the nearest window within two days', () {
+      const w = 2950000;
+      int? resolve(int window) => DiscoveryTokens.resolveWindowTag(
+            DiscoveryTokens.parseWindowTag(DiscoveryTokens.windowTag(window))!,
+            w,
+          );
+      expect(DiscoveryTokens.windowTag(w), hasLength(3));
+      for (final d in const [0, 1, -1, 12, -144, 288, -288]) {
+        expect(resolve(w + d), w + d, reason: 'skew of $d windows');
+      }
+      expect(resolve(w + 289), isNull);
+      expect(resolve(w - 600), isNull);
+      expect(DiscoveryTokens.parseWindowTag('xyz'), isNull);
+      expect(DiscoveryTokens.parseWindowTag('1000'), isNull);
+    });
+
+    test('advert ids: 8 hex chars, per secret and window, unlinkable', () async {
+      final s1 = DiscoveryTokens.newAdvertSecret();
+      final s2 = DiscoveryTokens.newAdvertSecret();
+      expect(s1, isNot(s2));
+      final a = await DiscoveryTokens.advertId(s1, 7);
+      expect(DiscoveryTokens.isAdvertId(a), isTrue);
+      expect(await DiscoveryTokens.advertId(s1, 7), a);
+      expect(await DiscoveryTokens.advertId(s1, 8), isNot(a));
+      expect(await DiscoveryTokens.advertId(s2, 7), isNot(a));
+    });
+
+    test('an advertiser that names its window is matched at any skew',
+        () async {
+      final keys = {'g1': _key(1)};
+      final hostClock = t0.add(const Duration(hours: 5));
+      final adv = await DiscoveryTokens.advertised(keys, hostClock);
+      final index = await DiscoveryTokens.indexForWindow(
+        keys,
+        DiscoveryTokens.windowAt(hostClock),
+      );
+      expect(index[adv.single], 'g1');
+    });
 
     test('blinded ids depend on the key and the nonce', () async {
       final n1 = Uint8List(16), n2 = Uint8List(16)..[0] = 1;
@@ -553,4 +598,60 @@ void main() {
       await alex.close();
     },
   );
+
+  group('HELLO device name (DATA-R4-03)', () {
+    bool wellFormed(String s) {
+      for (var i = 0; i < s.length; i++) {
+        final u = s.codeUnitAt(i);
+        if (u >= 0xD800 && u <= 0xDBFF) {
+          if (i + 1 >= s.length) return false;
+          final v = s.codeUnitAt(i + 1);
+          if (v < 0xDC00 || v > 0xDFFF) return false;
+          i++;
+        } else if (u >= 0xDC00 && u <= 0xDFFF) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    test('a name within the limit is sent as it is', () {
+      expect(helloDeviceName("Priya's Pixel"), "Priya's Pixel");
+      final exact = 'x' * kMaxDeviceNameLength;
+      expect(helloDeviceName(exact), exact);
+    });
+
+    test('flags past 100 units are dropped whole', () {
+      final name = 'a${'\u{1F1EE}\u{1F1F3}' * 26}'; // 105 units
+      final cut = helloDeviceName(name);
+      expect(cut.length, lessThanOrEqualTo(kMaxDeviceNameLength));
+      expect(cut, 'a${'\u{1F1EE}\u{1F1F3}' * 24}');
+      expect(wellFormed(cut), isTrue);
+    });
+
+    test('a cluster of BMP units is not split', () {
+      // "kssa" conjunct: 3 units per cluster, 99 units fit in 33 clusters.
+      const kssa = '\u0915\u094D\u0937';
+      final name = kssa * 40;
+      final cut = helloDeviceName(name);
+      expect(cut, kssa * 33);
+    });
+
+    test('the cut name survives the HELLO frame unchanged', () async {
+      final name = 'a${'\u{1F1EE}\u{1F1F3}' * 26}';
+      final hs = await Handshake.start(
+        initiator: true,
+        groupKeys: {'g1': Uint8List(32)},
+        deviceId: 'dev-a',
+        deviceName: name,
+        maxFrame: 16384,
+        transport: TransportKind.lan,
+        random: Random(1),
+      );
+      final frame = FrameCodec.plainFrame(hs.hello);
+      final back = FrameCodec.decodePlainFrame(frame) as HelloMessage;
+      expect(back.deviceName, hs.hello.deviceName);
+      expect(name.startsWith(back.deviceName), isTrue);
+    });
+  });
 }

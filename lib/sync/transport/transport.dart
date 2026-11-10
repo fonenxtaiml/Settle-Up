@@ -13,6 +13,9 @@ enum TransportAvailability {
   needsPermission,
   permissionPermanentlyDenied,
   radioOff, // Bluetooth or Wi-Fi switched off
+  // The location switch is off where Bluetooth scans need it (Android API
+  // <= 32 for Nearby, <= 30 for BLE); Bluetooth itself may be on.
+  locationOff,
   unsupported, // platform/hardware cannot do it
 }
 
@@ -23,15 +26,30 @@ final class AdvertiseInfo {
     required this.deviceId,
     required this.deviceName,
     required this.groupTokens,
+    this.advertId,
+    this.tokenWindow,
   });
 
+  /// This phone's device id. Never advertised: transports advertise
+  /// [advertId] instead.
   final DeviceId deviceId;
   final String deviceName;
 
-  /// Rotating blinded tokens, one per group we hold (16 hex chars each,
-  /// SPEC 8.3). Transports include as many as fit (LAN: all up to 16,
-  /// Nearby: up to 4, BLE: in the INFO characteristic, up to 16).
+  /// Rotating blinded tokens, one per group we hold (4 base64url chars
+  /// each, SPEC 8.3), most important first. Transports include as many as
+  /// fit from the front (LAN: up to 240, Nearby: up to 24, BLE: in the
+  /// INFO characteristic, up to 96), sort them, and flag the advert when
+  /// they had to leave some out.
   final List<String> groupTokens;
+
+  /// Per-window random id (8 hex chars, SPEC 8.3) that lets scanners merge
+  /// this phone's transports and recognise their own adverts. Null: none
+  /// advertised.
+  final String? advertId;
+
+  /// The token window [groupTokens] are for (advertised as its window tag,
+  /// so scanners with a skewed clock still match). Null: not advertised.
+  final int? tokenWindow;
 }
 
 @immutable
@@ -40,8 +58,10 @@ final class DiscoveredPeer {
     required this.kind,
     required this.address,
     required this.name,
-    this.deviceIdPrefix,
+    this.advertId,
     this.groupTokens = const {},
+    this.windowTag,
+    this.moreGroups = false,
   });
 
   final TransportKind kind;
@@ -50,8 +70,16 @@ final class DiscoveredPeer {
   /// Nearby endpointId (nearby), peripheral UUID string (ble).
   final String address;
   final String name; // device name as advertised ('' if unknown)
-  final String? deviceIdPrefix; // first 8 chars of deviceId, if advertised
+  final String? advertId; // per-window advert id (SPEC 8.3), if advertised
   final Set<String> groupTokens;
+
+  /// The advertised window tag of [groupTokens] (window mod 4096), if any.
+  final int? windowTag;
+
+  /// The advert left some of the phone's group tokens out (it is in more
+  /// groups than the advert holds), so it may share a group with us even
+  /// when no token matches.
+  final bool moreGroups;
 
   @override
   bool operator ==(Object other) =>

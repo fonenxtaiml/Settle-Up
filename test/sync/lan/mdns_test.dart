@@ -9,35 +9,78 @@ import 'package:settle_up/sync/transport/lan/lan_network.dart';
 import 'package:settle_up/sync/transport/lan/mdns.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
-String token(int i) => i.toRadixString(16).padLeft(16, '0');
+String token(int i) => 'T${i.toRadixString(36).padLeft(3, '0')}';
 
 AdvertiseInfo infoWith(int tokens, {String name = "Priya's Pixel"}) =>
     AdvertiseInfo(
       deviceId: 'abcdef12-0000-7000-8000-000000000001',
+      advertId: '5e1f00d2',
+      tokenWindow: 2950000,
       deviceName: name,
       groupTokens: [for (var i = 0; i < tokens; i++) token(i)],
     );
 
 void main() {
   group('MdnsAdvert', () {
-    test('TXT carries v, d and the tokens', () {
+    test('TXT carries v, the advert id, the window tag and the tokens', () {
       final a = MdnsAdvert.of(infoWith(2), 52741);
       expect(a.port, 52741);
       expect(a.name, "Priya's Pixel");
       expect(a.attributes, {
-        'v': '1',
-        'd': 'abcdef12',
-        't': '${token(0)},${token(1)}',
+        'v': '2',
+        'd': '5e1f00d2',
+        'w': (2950000 % 4096).toRadixString(16).padLeft(3, '0'),
+        't': '${token(0)}${token(1)}',
       });
     });
 
-    test('16 tokens split over t and t2, each TXT string <= 255 bytes', () {
-      final a = MdnsAdvert.of(infoWith(20), 1);
-      expect(a.attributes['t']!.split(','), hasLength(14));
-      expect(a.attributes['t2']!.split(','), [token(14), token(15)]);
+    test('never advertises the device id', () {
+      final a = MdnsAdvert.of(infoWith(1), 1);
+      expect(a.attributes.values.join(' '), isNot(contains('abcdef12')));
+      const noId = AdvertiseInfo(
+        deviceId: 'abcdef12-0000-7000-8000-000000000001',
+        deviceName: 'x',
+        groupTokens: [],
+      );
+      expect(MdnsAdvert.of(noId, 1).attributes.containsKey('d'), isFalse);
+    });
+
+    test('240 tokens fit four TXT strings (<= 255 bytes each, the record '
+        'under 1300)', () {
+      final a = MdnsAdvert.of(infoWith(300), 1);
+      expect(a.attributes.keys, containsAll(kLanTokenKeys));
+      expect(a.attributes['m'], '1');
+      var record = 0;
       for (final e in a.attributes.entries) {
-        expect(utf8.encode('${e.key}=${e.value}').length, lessThanOrEqualTo(255));
+        final entry = utf8.encode('${e.key}=${e.value}').length;
+        expect(entry, lessThanOrEqualTo(255));
+        record += entry + 1;
       }
+      expect(record, lessThan(1300));
+      final peer = MdnsSighting(
+        name: 'x',
+        addresses: const ['10.0.0.2'],
+        port: 1,
+        attributes: a.attributes,
+      ).toPeer()!;
+      expect(peer.groupTokens, hasLength(kLanMaxTokens));
+      expect(peer.moreGroups, isTrue);
+      // The first 240 in priority order are the ones kept.
+      expect(peer.groupTokens,
+          {for (var i = 0; i < kLanMaxTokens; i++) token(i)});
+    });
+
+    test('no m flag when every token fits; commas are still read', () {
+      final a = MdnsAdvert.of(infoWith(kLanMaxTokens), 1);
+      expect(a.attributes.containsKey('m'), isFalse);
+      final peer = MdnsSighting(
+        name: 'x',
+        addresses: const ['10.0.0.2'],
+        port: 1,
+        attributes: {'v': '2', 't': '${token(1)},${token(2)}${token(3)}'},
+      ).toPeer()!;
+      expect(peer.groupTokens, {token(1), token(2), token(3)});
+      expect(peer.moreGroups, isFalse);
     });
 
     test('invalid tokens are not advertised', () {
@@ -45,11 +88,11 @@ void main() {
         const AdvertiseInfo(
           deviceId: 'abcdef12',
           deviceName: 'x',
-          groupTokens: ['short', 'ABCDEF0123456789', '0123456789abcdef'],
+          groupTokens: ['short', 'ABCDEF0123456789', 'a,bc', 'Qz_-'],
         ),
         1,
       );
-      expect(a.attributes['t'], '0123456789abcdef');
+      expect(a.attributes['t'], 'Qz_-');
     });
 
     test('service name: <= 40 chars, never splits an emoji, never empty', () {
@@ -78,12 +121,13 @@ void main() {
           attributes: attrs ?? MdnsAdvert.of(infoWith(16), port).attributes,
         );
 
-    test('round trips the advert, joining t and t2', () {
+    test('round trips the advert', () {
       final p = sighting(['192.168.1.7']).toPeer()!;
       expect(p.kind, TransportKind.lan);
       expect(p.address, '192.168.1.7:52741');
       expect(p.name, "Priya's Pixel");
-      expect(p.deviceIdPrefix, 'abcdef12');
+      expect(p.advertId, '5e1f00d2');
+      expect(p.windowTag, 2950000 % 4096);
       expect(p.groupTokens, {for (var i = 0; i < 16; i++) token(i)});
     });
 
@@ -97,7 +141,7 @@ void main() {
     });
 
     test('rejects foreign services, bad ports and missing addresses', () {
-      expect(sighting(['10.0.0.2'], attrs: {'v': '2'}).toPeer(), isNull);
+      expect(sighting(['10.0.0.2'], attrs: {'v': '1'}).toPeer(), isNull);
       expect(sighting(['10.0.0.2'], attrs: {}).toPeer(), isNull);
       expect(sighting([]).toPeer(), isNull);
       expect(sighting(['nonsense']).toPeer(), isNull);
@@ -106,9 +150,14 @@ void main() {
 
     test('missing d means unknown device; junk tokens are dropped', () {
       final p = sighting(['10.0.0.2'],
-          attrs: {'v': '1', 't': 'zz,${token(3)},'}).toPeer()!;
-      expect(p.deviceIdPrefix, isNull);
+          attrs: {'v': '2', 't': 'zz,${token(3)},', 'w': 'xyz'}).toPeer()!;
+      expect(p.advertId, isNull);
+      expect(p.windowTag, isNull);
       expect(p.groupTokens, {token(3)});
+    });
+
+    test('a later version with the same keys still parses', () {
+      expect(sighting(['10.0.0.2'], attrs: {'v': '3'}).toPeer(), isNotNull);
     });
   });
 

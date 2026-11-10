@@ -21,11 +21,12 @@ import 'support/fake_permissions.dart';
 
 const Duration _tick = Duration(milliseconds: 100);
 
-String token(int n) => n.toRadixString(16).padLeft(16, '0');
+String token(int n) => 'T${n.toRadixString(36).padLeft(3, '0')}';
 
 AdvertiseInfo info(String letter, String name, [List<String>? tokens]) =>
     AdvertiseInfo(
       deviceId: '${letter * 8}-0000-7000-8000-000000000001',
+      advertId: letter * 8,
       deviceName: name,
       groupTokens: tokens ?? [token(1)],
     );
@@ -106,7 +107,7 @@ void main() {
       expect(peer.kind, TransportKind.ble);
       expect(peer.address, 'B');
       expect(peer.name, 'Sam iPhone');
-      expect(peer.deviceIdPrefix, 'bbbbbbbb');
+      expect(peer.advertId, 'bbbbbbbb');
       expect(peer.groupTokens, {token(1), token(2)});
 
       final central = air.central('A');
@@ -489,7 +490,7 @@ void main() {
           [for (var i = 0; i < 20; i++) token(i)]));
       final a = transport('A');
       final peer = await a.discover().first;
-      expect(peer.groupTokens.length, lessThanOrEqualTo(16));
+      expect(peer.groupTokens.length, lessThanOrEqualTo(48));
       expect(peer.name.runes.length, 40);
       // Read it the way a scanner does.
       final central = air.central('A');
@@ -498,7 +499,7 @@ void main() {
       expect(raw.length, lessThanOrEqualTo(512));
       final json = jsonDecode(utf8.decode(raw)) as Map<String, Object?>;
       expect(json.keys, containsAll(['v', 'd', 'n', 't']));
-      expect(json['v'], 1);
+      expect(json['v'], 2);
     });
   });
 

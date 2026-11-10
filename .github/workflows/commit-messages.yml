@@ -1,0 +1,44 @@
+# Enforces the commit message policy (CONTRIBUTING.md, "Commit messages"):
+# no co-author, session or tool attribution lines. It checks every commit
+# a pull request into dev or main would bring in, and every commit pushed
+# to dev or main. Make "Commit messages" a required status check in the
+# branch protection rules of dev and main so a failing branch cannot be
+# merged with a merge commit; squash merge it with tool/squash_merge.sh.
+name: Commit messages
+
+on:
+  pull_request:
+    branches: [dev, main]
+    types: [opened, synchronize, reopened, edited]
+  push:
+    branches: [dev, main]
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Commit messages
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+
+      - name: Check the commits that would land
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT" = "pull_request" ]; then
+            git fetch --no-tags origin "$BASE_REF"
+            range="origin/$BASE_REF..$HEAD_SHA"
+          elif [ -z "$BEFORE" ] || [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+            range="$HEAD_SHA^!"
+          else
+            range="$BEFORE..$HEAD_SHA"
+          fi
+          bash tool/check_commit_messages.sh "$range"

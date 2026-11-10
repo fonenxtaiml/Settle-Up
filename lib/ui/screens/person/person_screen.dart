@@ -49,16 +49,7 @@ class PersonScreen extends ConsumerWidget {
         : S.settledWith(first);
 
     // Per group: my pair balance with them, from the suggested payments.
-    final rows =
-        <
-          ({
-            String groupId,
-            String name,
-            Map<String, int> net,
-            String? from,
-            String? to,
-          })
-        >[];
+    final rows = <_PairRow>[];
     for (final gid in person.groupIds) {
       final g = snap.state.groups[gid];
       if (g == null || g.group == null) continue;
@@ -67,26 +58,27 @@ class PersonScreen extends ConsumerWidget {
       if (mine == null || theirs == null) continue;
       final other = g.resolve(theirs.id);
       final net = <String, int>{};
-      String? from;
-      String? to;
       for (final t in BalanceCalculator.suggestedTransfers(g)) {
         if (t.from == mine && t.to == other) {
           net[t.currency] = (net[t.currency] ?? 0) - t.amount;
-          (from, to) = (mine, other);
         } else if (t.from == other && t.to == mine) {
           net[t.currency] = (net[t.currency] ?? 0) + t.amount;
-          (from, to) = (other, mine);
         }
       }
-      rows.add((
-        groupId: gid,
-        name: g.group!.isDirect ? S.justYouTwo : g.group!.name,
-        net: net.isEmpty ? {g.group!.currency: 0} : net,
-        from: from,
-        to: to,
-      ));
+      net.removeWhere((_, v) => v == 0);
+      rows.add(
+        _PairRow(
+          groupId: gid,
+          name: g.group!.isDirect ? S.justYouTwo : g.group!.name,
+          net: net.isEmpty ? {g.group!.currency: 0} : net,
+          mine: net.isEmpty ? null : mine,
+          other: net.isEmpty ? null : other,
+        ),
+      );
     }
-    final settleTarget = rows.where((r) => r.from != null).toList();
+    final settleTarget = rows.where((r) => r.mine != null).toList();
+    // Prefer the group carrying the hero's currency.
+    final heroTarget = settleTarget.where((r) => (r.net[currency] ?? 0) != 0);
 
     return Scaffold(
       appBar: screenAppBar(
@@ -104,31 +96,23 @@ class PersonScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           textGutter(
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: settleTarget.isEmpty
-                        ? null
-                        : () => context.push(
-                            Routes.settle(
-                              groupId: settleTarget.first.groupId,
-                              from: settleTarget.first.from,
-                              to: settleTarget.first.to,
-                            ),
-                          ),
-                    child: const Text(S.settleUp),
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: () =>
-                        context.push(Routes.newExpense(personId: personId)),
-                    child: const Text(S.addExpense),
-                  ),
-                ),
-              ],
+            ButtonPair(
+              labels: const [S.settleUp, S.addExpense],
+              first: FilledButton(
+                onPressed: settleTarget.isEmpty
+                    ? null
+                    : () => context.push(
+                        heroTarget.isNotEmpty
+                            ? heroTarget.first.settleRoute(currency)
+                            : settleTarget.first.settleRoute(),
+                      ),
+                child: const Text(S.settleUp),
+              ),
+              second: FilledButton.tonal(
+                onPressed: () =>
+                    context.push(Routes.newExpense(personId: personId)),
+                child: const Text(S.addExpense),
+              ),
             ),
           ),
           gutter(
@@ -139,15 +123,12 @@ class PersonScreen extends ConsumerWidget {
                   KitListRow(
                     title: r.name,
                     trailing: _trailing(r.net),
-                    onTap: () => r.from == null
+                    // Stack the balance before the group name loses its
+                    // longest word (VISUAL-R4-05).
+                    trailingWidth: _trailing(r.net).naturalWidth(context),
+                    onTap: () => r.mine == null
                         ? context.push(Routes.group(r.groupId))
-                        : context.push(
-                            Routes.settle(
-                              groupId: r.groupId,
-                              from: r.from,
-                              to: r.to,
-                            ),
-                          ),
+                        : context.push(r.settleRoute()),
                   ),
               ],
             ),
@@ -181,7 +162,7 @@ class PersonScreen extends ConsumerWidget {
     );
   }
 
-  static Widget _trailing(Map<String, int> net) {
+  static BalanceTrailing _trailing(Map<String, int> net) {
     final main = BalanceRow.mainEntry(net);
     final currency = main?.key ?? net.keys.first;
     final v = main?.value ?? 0;
@@ -189,6 +170,37 @@ class PersonScreen extends ConsumerWidget {
       word: BalanceRow.wordFor(BalanceRowKind.person, v),
       minor: v,
       currency: currency,
+    );
+  }
+}
+
+/// My pair balance with the person in one group, per currency.
+class _PairRow {
+  const _PairRow({
+    required this.groupId,
+    required this.name,
+    required this.net,
+    required this.mine,
+    required this.other,
+  });
+
+  final GroupId groupId;
+  final String name;
+  final Map<String, int> net;
+  final MemberId? mine;
+  final MemberId? other;
+
+  /// Settle up in [currency] (or the only one), in that currency's
+  /// direction. With several currencies and no pick, the settle screen asks.
+  String settleRoute([String? currency]) {
+    final cur = currency ?? (net.length == 1 ? net.keys.first : null);
+    final v = cur == null ? null : net[cur];
+    final iPay = v == null || v < 0;
+    return Routes.settle(
+      groupId: groupId,
+      from: iPay ? mine : other,
+      to: iPay ? other : mine,
+      currency: cur,
     );
   }
 }

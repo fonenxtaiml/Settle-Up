@@ -8,7 +8,7 @@ void main() {
   late NearbyRegistry r;
 
   setUp(() {
-    r = NearbyRegistry(localDeviceIdPrefix: 'mememe00')
+    r = NearbyRegistry(selfAdvertIds: {'mememe00'})
       ..tokenIndex = {'tok-g1': 'g1', 'tok-g2': 'g2'};
   });
 
@@ -23,11 +23,11 @@ void main() {
         kind: kind,
         address: address,
         name: name,
-        deviceIdPrefix: prefix,
+        advertId: prefix,
         groupTokens: tokens,
       );
 
-  test('merges transports by device id prefix, best transport first', () {
+  test('merges transports by advert id, best transport first', () {
     expect(r.update(peer(TransportKind.ble, 'uuid-1', prefix: 'aaaa0000',
         tokens: {'tok-g2'}), t0), isTrue);
     expect(r.update(peer(TransportKind.lan, '10.0.0.2:52741',
@@ -41,7 +41,7 @@ void main() {
         [TransportKind.lan, TransportKind.ble]);
   });
 
-  test('peers without a prefix are keyed by kind and address', () {
+  test('peers without an advert id are keyed by kind and address', () {
     r.update(peer(TransportKind.lan, '192.168.43.1:52741',
         name: 'Phone sharing its hotspot'), t0);
     r.update(peer(TransportKind.lan, '10.0.0.9:52741', name: 'Other'), t0);
@@ -50,7 +50,7 @@ void main() {
     expect(r.peers.every((p) => !p.sharesGroups), isTrue);
   });
 
-  test('a route that later learns its prefix moves to that peer', () {
+  test('a route that later learns its advert id moves to that peer', () {
     r.update(peer(TransportKind.lan, '10.0.0.2:1'), t0);
     r.update(peer(TransportKind.ble, 'u', prefix: 'aaaa0000'), t0);
     r.update(peer(TransportKind.lan, '10.0.0.2:1', prefix: 'aaaa0000'), t0);
@@ -95,5 +95,102 @@ void main() {
     expect(r.peers.single.sharesGroups, isFalse);
     r.tokenIndex = {'t-new': 'g9'};
     expect(r.peers.single.sharedGroupIds, ['g9']);
+  });
+
+  test('a new advert id on a known route keeps the row and its transports',
+      () {
+    r.update(peer(TransportKind.lan, '10.0.0.2:1', prefix: 'aaaa0000'), t0);
+    r.update(peer(TransportKind.ble, 'u', prefix: 'aaaa0000'), t0);
+    // The next token window: LAN shows the new id first, then BLE.
+    final t1 = t0.add(const Duration(seconds: 1));
+    r.update(peer(TransportKind.lan, '10.0.0.2:1', prefix: 'bbbb1111'), t1);
+    r.update(peer(TransportKind.ble, 'u', prefix: 'bbbb1111'), t1);
+    final p = r.peers.single;
+    expect(p.key, 'aaaa0000');
+    expect(p.advertId, 'bbbb1111');
+    expect(p.transports, {TransportKind.lan, TransportKind.ble});
+  });
+
+  test('self advert ids can change; our own rows disappear', () {
+    r.update(peer(TransportKind.lan, 'x', prefix: 'cccc2222'), t0);
+    expect(r.peers, hasLength(1));
+    r.selfAdvertIds = {'cccc2222'};
+    expect(r.peers, isEmpty);
+  });
+
+  group('window tags', () {
+    test('tokens match the window the advertiser names', () {
+      r
+        ..currentWindow = 5000
+        ..setWindowIndex(5012, {'tok-later': 'g3'});
+      r.update(
+        const DiscoveredPeer(
+          kind: TransportKind.nearby,
+          address: 'ep',
+          name: 'Priya',
+          advertId: 'dddd3333',
+          groupTokens: {'tok-later', 'tok-g1'},
+          windowTag: 5012 % 4096,
+        ),
+        t0,
+      );
+      // Only the named window counts, not the scanner's own.
+      expect(r.peers.single.sharedGroupIds, ['g3']);
+      expect(r.windowsInUse, {5012});
+    });
+
+    test('a window more than two days away matches nothing', () {
+      r.currentWindow = 5000;
+      const far = DiscoveredPeer(
+        kind: TransportKind.nearby,
+        address: 'ep',
+        name: 'Priya',
+        groupTokens: {'tok-g1'},
+        windowTag: (5000 + 400) % 4096,
+      );
+      expect(r.windowOf(far), isNull);
+      r.update(far, t0);
+      expect(r.peers.single.sharesGroups, isFalse);
+    });
+
+    test('adverts without a tag use the current-window index', () {
+      r.currentWindow = 5000;
+      r.update(peer(TransportKind.ble, 'u', tokens: {'tok-g1'}), t0);
+      expect(r.peers.single.sharedGroupIds, ['g1']);
+    });
+  });
+
+  test('advertised names are cleaned before they are listed', () {
+    // SECURITY-R2-04.
+    r.update(
+      peer(TransportKind.lan, '10.0.0.2:1', name: 'Alex\u202E5000 diap'),
+      t0,
+    );
+    expect(r.peers.single.name, 'Alex5000 diap');
+  });
+
+  test('a cut advert makes a phone worth trying; it sorts after sharers',
+      () {
+    // SYNC-R2-01.
+    r.update(
+      DiscoveredPeer(
+        kind: TransportKind.nearby,
+        address: 'E1',
+        name: 'Busy phone',
+        advertId: 'bbbb0000',
+        moreGroups: true,
+      ),
+      t0,
+    );
+    r.update(peer(TransportKind.ble, 'u2', prefix: 'cccc0000', name: 'A'),
+        t0);
+    r.update(peer(TransportKind.lan, '10.0.0.3:1', prefix: 'dddd0000',
+        name: 'Z', tokens: {'tok-g1'}), t0);
+    expect(r.peers.map((p) => p.name), ['Z', 'Busy phone', 'A']);
+    final busy = r.peers[1];
+    expect(busy.sharesGroups, isFalse);
+    expect(busy.moreGroups, isTrue);
+    expect(busy.maySync, isTrue);
+    expect(r.peers[2].maySync, isFalse);
   });
 }

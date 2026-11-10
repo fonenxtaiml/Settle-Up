@@ -42,6 +42,12 @@ abstract interface class OpStore {
   Future<void> recordPeerKnowledge(
       DeviceId peer, GroupId groupId, VersionVector vv);
 
+  /// Lowers every stored report of [deviceId]'s ops in [groupId] to at most
+  /// [max]. The one exception to "knowledge only grows": a report of more
+  /// ops than [deviceId] wrote is forged and must not stay on disk
+  /// (DATA-R3-01). Returns true if a row changed.
+  Future<bool> capPeerKnowledge(GroupId groupId, DeviceId deviceId, int max);
+
   Future<String?> getKv(String key);
   Future<void> setKv(String key, String? value); // null deletes
 
@@ -92,6 +98,7 @@ final class LedgerSnapshot {
     required this.unsharedOpIds,
     required this.unsharedCounts,
     required this.localDeviceId,
+    this.groupsWithoutKey = const {},
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
@@ -117,13 +124,23 @@ final class LedgerSnapshot {
   final Map<GroupId, int> unsharedCounts;
   final DeviceId localDeviceId;
 
+  /// Visible groups this phone holds no key for (the keystore lost it):
+  /// they still work here but cannot sync until an invite is scanned again.
+  final Set<GroupId> groupsWithoutKey;
+
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
   /// Entity ids touched by an unshared op (for the "not yet shared" dot).
-  Set<String> get unsharedEntityIds => {
-        for (final op in ops)
-          if (unsharedOpIds.contains(op.id)) op.entityId,
-      };
+  /// Computed once per snapshot (the snapshot never changes): screens ask
+  /// for it per row, and a scan of every op per row is O(rows x ops).
+  Set<String> get unsharedEntityIds =>
+      _unsharedEntityIds[this] ??= Set.unmodifiable(<String>{
+        if (unsharedOpIds.isNotEmpty)
+          for (final op in ops)
+            if (unsharedOpIds.contains(op.id)) op.entityId,
+      });
+
+  static final _unsharedEntityIds = Expando<Set<String>>('unsharedEntityIds');
 }
 
 @immutable
@@ -222,12 +239,27 @@ enum LedgerErrorCode {
   expenseNotFound,
   invalidInput,
   invalidSplit,
+
+  /// The phone could not save (storage full, I/O error, keystore error).
+  /// Nothing was written; the command can be tried again.
+  storageFailed,
+}
+
+/// Why an [LedgerErrorCode.invalidInput] was refused, when the UI can say
+/// something more useful than "check the fields".
+enum LedgerInputIssue {
+  /// SPEC 5.16: a group holds at most 50 active members.
+  groupFull,
+
+  /// A name, description or note over its SPEC 5.16 length.
+  tooLong,
 }
 
 final class LedgerException implements Exception {
-  const LedgerException(this.code, [this.message = '']);
+  const LedgerException(this.code, [this.message = '', this.issue]);
   final LedgerErrorCode code;
   final String message;
+  final LedgerInputIssue? issue;
   @override
   String toString() => 'LedgerException(${code.name}: $message)';
 }
@@ -270,8 +302,12 @@ abstract interface class LedgerRepository {
 
   /// Writes only fields that differ; money is written as one block.
   Future<void> updateExpense(ExpenseId expenseId, ExpenseDraft draft);
-  Future<void> deleteExpense(ExpenseId expenseId);
-  Future<void> restoreExpense(ExpenseId expenseId);
+
+  /// [groupId] names the group the expense is in. Pass it whenever it is
+  /// known: entity ids are scoped by group (SPEC 7.2), and with it the call
+  /// can only touch that group's expense. Null = look the id up anywhere.
+  Future<void> deleteExpense(ExpenseId expenseId, {GroupId? groupId});
+  Future<void> restoreExpense(ExpenseId expenseId, {GroupId? groupId});
 
   Future<ExpenseId> recordPayment(PaymentDraft draft);
   Future<void> updatePayment(ExpenseId expenseId, PaymentDraft draft);
@@ -281,6 +317,11 @@ abstract interface class LedgerRepository {
 abstract interface class SyncStore {
   DeviceId get localDeviceId;
   String get localDeviceName;
+
+  /// [localDeviceName] now and after every rename (Settings), so a phone
+  /// that is visible re-advertises the new name at once (QA SYNC-R5-01).
+  /// Emits the current value first.
+  Stream<String> watchLocalDeviceName();
 
   /// Groups we hold a key for (pending joins included) -> key.
   Future<Map<GroupId, Uint8List>> groupKeys();

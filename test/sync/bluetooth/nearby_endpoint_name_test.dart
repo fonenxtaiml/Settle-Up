@@ -1,5 +1,5 @@
-// NearbyEndpointName (SPEC 11.3): encode/parse of the advertised endpoint
-// name "1|<deviceId[0..8]>|<deviceName <= 24>|<up to 4 tokens>".
+// NearbyEndpointName (SPEC 8.7.2): encode/parse of the advertised endpoint
+// name "2|<advertId>|<windowTag>|<deviceName <= 24>|<up to 24 tokens>".
 import 'dart:convert';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -9,28 +9,42 @@ import 'package:settle_up/sync/transport/transport.dart';
 
 const String deviceId = '0190f2a4-1111-7000-8000-000000000001';
 
-String token(int n) => n.toRadixString(16).padLeft(16, '0');
+String token(int n) => 'T${n.toRadixString(36).padLeft(3, '0')}';
 
 void main() {
   test('encodes the spec layout', () {
     final name = NearbyEndpointName.of(AdvertiseInfo(
       deviceId: deviceId,
+      advertId: '5e1f00d2',
+      tokenWindow: 4096 * 700 + 0xa3c,
       deviceName: "Alex's Pixel",
       groupTokens: [token(1), token(2)],
     ));
-    expect(name.encode(),
-        "1|0190f2a4|Alex's Pixel|${token(1)},${token(2)}");
+    expect(name.encode(), "2|5e1f00d2|a3c|Alex's Pixel|${token(1)}${token(2)}");
+  });
+
+  test('never carries the device id', () {
+    final encoded = NearbyEndpointName.of(const AdvertiseInfo(
+      deviceId: deviceId,
+      deviceName: 'X',
+      groupTokens: [],
+    )).encode();
+    expect(encoded, '2|||X|');
+    expect(encoded, isNot(contains('0190f2a4')));
   });
 
   test('round trips and turns into a DiscoveredPeer', () {
     final encoded = NearbyEndpointName.of(AdvertiseInfo(
       deviceId: deviceId,
+      advertId: '5e1f00d2',
+      tokenWindow: 17,
       deviceName: 'Priya',
       groupTokens: [token(10)],
     )).encode();
     final parsed = NearbyEndpointName.tryParse(encoded)!;
-    expect(parsed.version, 1);
-    expect(parsed.deviceIdPrefix, '0190f2a4');
+    expect(parsed.version, 2);
+    expect(parsed.advertId, '5e1f00d2');
+    expect(parsed.windowTag, 17);
     expect(parsed.deviceName, 'Priya');
     expect(parsed.groupTokens, [token(10)]);
 
@@ -38,38 +52,40 @@ void main() {
     expect(peer.kind, TransportKind.nearby);
     expect(peer.address, 'ABCD');
     expect(peer.name, 'Priya');
-    expect(peer.deviceIdPrefix, '0190f2a4');
+    expect(peer.advertId, '5e1f00d2');
+    expect(peer.windowTag, 17);
     expect(peer.groupTokens, {token(10)});
   });
 
-  test('keeps at most 4 tokens and drops malformed ones', () {
+  test('keeps at most 24 tokens and drops malformed ones', () {
     final encoded = NearbyEndpointName(
-      deviceIdPrefix: '0190f2a4',
+      advertId: '5e1f00d2',
       deviceName: 'A',
       groupTokens: [
         'not-a-token',
-        for (var i = 0; i < 6; i++) token(i),
-        'ABCDEF0123456789', // upper case is not a token
+        for (var i = 0; i < 30; i++) token(i),
+        'a|b,', // separators are not token characters
       ],
     ).encode();
     expect(NearbyEndpointName.tryParse(encoded)!.groupTokens,
-        [token(0), token(1), token(2), token(3)]);
+        [for (var i = 0; i < 24; i++) token(i)]);
   });
 
   test('no tokens leaves the last field empty', () {
     const n = NearbyEndpointName(
-      deviceIdPrefix: '0190f2a4',
+      advertId: '5e1f00d2',
       deviceName: 'Sam',
       groupTokens: [],
+      windowTag: 1,
     );
-    expect(n.encode(), '1|0190f2a4|Sam|');
+    expect(n.encode(), '2|5e1f00d2|001|Sam|');
     expect(NearbyEndpointName.tryParse(n.encode()), n);
   });
 
   test('cuts the device name to 24 code points without splitting emoji', () {
     final long = '${'x' * 22}😀😀😀';
     final encoded = NearbyEndpointName(
-      deviceIdPrefix: '0190f2a4',
+      advertId: '5e1f00d2',
       deviceName: long,
       groupTokens: const [],
     ).encode();
@@ -78,22 +94,23 @@ void main() {
     expect(parsed.deviceName.runes.length, 24);
   });
 
-  test('stays within the endpoint info byte limit for wide names', () {
+  test('24 tokens and a wide name stay within the endpoint info limit', () {
     final encoded = NearbyEndpointName(
-      deviceIdPrefix: '0190f2a4',
+      advertId: '5e1f00d2',
+      windowTag: 4095,
       deviceName: '😀' * 24,
-      groupTokens: [for (var i = 0; i < 4; i++) token(i)],
+      groupTokens: [for (var i = 0; i < 24; i++) token(i)],
     ).encode();
     expect(utf8.encode(encoded).length,
         lessThanOrEqualTo(NearbyEndpointName.maxBytes));
     final parsed = NearbyEndpointName.tryParse(encoded)!;
-    expect(parsed.groupTokens, hasLength(4), reason: 'tokens are kept');
+    expect(parsed.groupTokens, hasLength(24), reason: 'tokens are kept');
     expect(parsed.deviceName, startsWith('😀'));
   });
 
   test("a '|' in the device name still parses", () {
     final encoded = NearbyEndpointName(
-      deviceIdPrefix: '0190f2a4',
+      advertId: '5e1f00d2',
       deviceName: 'Home | Kitchen',
       groupTokens: [token(5)],
     ).encode();
@@ -102,35 +119,64 @@ void main() {
     expect(parsed.groupTokens, [token(5)]);
   });
 
-  test('a short device id is used as is; an empty one means unknown', () {
-    final short = NearbyEndpointName.of(const AdvertiseInfo(
-      deviceId: 'abc',
-      deviceName: 'X',
-      groupTokens: [],
-    ));
-    expect(short.deviceIdPrefix, 'abc');
-    expect(NearbyEndpointName.tryParse('1||Someone|')!.toPeer('E1')
-        .deviceIdPrefix, isNull);
+  test('a bad advert id or window tag means unknown', () {
+    final parsed = NearbyEndpointName.tryParse('2|xyz|zz|Someone|')!;
+    expect(parsed.toPeer('E1').advertId, isNull);
+    expect(parsed.toPeer('E1').windowTag, isNull);
   });
 
   test('a later version with the same leading fields still parses', () {
-    final parsed =
-        NearbyEndpointName.tryParse('2|0190f2a4|Newer phone|${token(1)}')!;
-    expect(parsed.version, 2);
+    final parsed = NearbyEndpointName.tryParse(
+        '3|5e1f00d2|001|Newer phone|${token(1)}')!;
+    expect(parsed.version, 3);
     expect(parsed.deviceName, 'Newer phone');
+    expect(parsed.groupTokens, [token(1)]);
   });
 
   test('rejects names that are not ours', () {
     for (final bad in [
       '',
       'Pixel 8',
-      '1|abc',
-      '1|abc|name',
-      'x|abc|name|',
-      '0|abc|name|',
-      '-1|abc|name|',
+      '2|abc',
+      '2|abc|001|name',
+      'x|abc|001|name|',
+      '0|abc|001|name|',
+      '-1|abc|001|name|',
+      // The old layout (16-hex tokens) cannot be matched any more.
+      '1|0190f2a4|Old phone|0123456789abcdef',
     ]) {
       expect(NearbyEndpointName.tryParse(bad), isNull, reason: bad);
     }
+  });
+
+  test('a cut token list ends with + and still fits 131 bytes', () {
+    // SYNC-R2-01: the first 24 in priority order are kept, sorted.
+    final name = NearbyEndpointName.of(AdvertiseInfo(
+      deviceId: deviceId,
+      advertId: '5e1f00d2',
+      tokenWindow: 7,
+      deviceName: '😀' * 30,
+      groupTokens: [for (var i = 40; i > 0; i--) token(i)],
+    ));
+    expect(name.moreGroups, isTrue);
+    final encoded = name.encode();
+    expect(encoded, endsWith('+'));
+    expect(utf8.encode(encoded).length, lessThanOrEqualTo(131));
+    final parsed = NearbyEndpointName.tryParse(encoded)!;
+    expect(parsed.moreGroups, isTrue);
+    expect(parsed.toPeer('E1').moreGroups, isTrue);
+    expect(parsed.groupTokens,
+        [for (var i = 40; i > 16; i--) token(i)]..sort());
+    expect(parsed.deviceName, isNotEmpty);
+  });
+
+  test('no + when every token fits', () {
+    final encoded = NearbyEndpointName.of(AdvertiseInfo(
+      deviceId: deviceId,
+      deviceName: 'Alex',
+      groupTokens: [for (var i = 0; i < 24; i++) token(i)],
+    )).encode();
+    expect(encoded, isNot(endsWith('+')));
+    expect(NearbyEndpointName.tryParse(encoded)!.moreGroups, isFalse);
   });
 }

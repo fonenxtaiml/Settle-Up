@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../../core/ids.dart';
+import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
@@ -20,6 +21,82 @@ class ClaimScreen extends ConsumerWidget {
 
   void _finish(BuildContext context) =>
       context.pushReplacement(Routes.group(groupId));
+
+  /// "I'm not on the list": adds me under my profile name, unless the
+  /// group already lists that name (case and spaces aside). Two members
+  /// with one name cannot be told apart in Paid by or the split, so a
+  /// placeholder with my name is offered first ("Is that you?"), and
+  /// otherwise I pick a name the group can tell apart.
+  Future<void> _addMe(
+    BuildContext context,
+    WidgetRef ref,
+    GroupState g,
+    Profile profile,
+  ) async {
+    final ledger = ref.read(ledgerRepositoryProvider);
+    final groupName = g.group!.name;
+    var name = profile.displayName.trim();
+    String? sameName() =>
+        duplicateName(name, [for (final m in g.activeMembers) m.displayName]);
+    final dup = sameName();
+    if (dup != null) {
+      final placeholder = [
+        for (final m in g.activeMembers)
+          if (m.isPlaceholder && duplicateName(name, [m.displayName]) != null)
+            m,
+      ].firstOrNull;
+      if (placeholder != null) {
+        final mine = await askChoice(
+          context,
+          title: S.claimSameNameTitle,
+          body: S.claimSameNameBody(placeholder.displayName, groupName),
+          confirmLabel: S.thatsMe,
+          cancelLabel: S.notMe,
+        );
+        // Back or a tap outside closes the question and nothing else
+        // (UIFLOW-R4-02); only "Not me" goes on to the name prompt.
+        if (mine == null || !context.mounted) return;
+        if (mine) {
+          final ok = await runGuarded(
+            context,
+            () => ledger.claimMember(groupId, placeholder.id),
+          );
+          if (ok && context.mounted) {
+            Haptics.medium(context);
+            showSnack(context, S.claimed(placeholder.displayName));
+            _finish(context);
+          }
+          return;
+        }
+      }
+      final other = await promptText(
+        context,
+        title: S.yourNameIn(groupName),
+        initial: name,
+        helper: S.nameTakenHelper(dup),
+        confirmLabel: S.addPerson,
+        maxLength: kMemberNameMax,
+      );
+      if (other == null || !context.mounted) return;
+      name = other.trim();
+      if (name.isEmpty) return;
+      final still = sameName();
+      if (still != null) {
+        Haptics.invalid(context);
+        showSnack(context, S.alreadyInNamedGroup(still, groupName));
+        return;
+      }
+    }
+    final ok = await runGuarded(context, () async {
+      final id = await ledger.addMember(
+        groupId,
+        displayName: name,
+        personId: profile.personId,
+      );
+      await ledger.claimMember(groupId, id);
+    });
+    if (ok && context.mounted) _finish(context);
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -90,17 +167,7 @@ class ClaimScreen extends ConsumerWidget {
           if (g?.group != null && profile != null && !alreadyMe)
             gutter(
               FilledButton.tonal(
-                onPressed: () async {
-                  final ok = await runGuarded(context, () async {
-                    final id = await ledger.addMember(
-                      groupId,
-                      displayName: profile.displayName,
-                      personId: profile.personId,
-                    );
-                    await ledger.claimMember(groupId, id);
-                  });
-                  if (ok && context.mounted) _finish(context);
-                },
+                onPressed: () => _addMe(context, ref, g!, profile),
                 style: KitButtonStyles.block,
                 child: const Text(S.notOnList),
               ),

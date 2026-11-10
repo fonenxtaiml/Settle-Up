@@ -23,15 +23,22 @@ import '../common.dart';
 enum _Menu { delete, restore }
 
 class ExpenseDetailScreen extends ConsumerWidget {
-  const ExpenseDetailScreen({super.key, required this.expenseId});
+  const ExpenseDetailScreen({super.key, required this.expenseId, this.groupId});
 
   final ExpenseId expenseId;
+
+  /// The expense's group, when the caller knows it (ids are scoped by
+  /// group, SPEC 7.2). Null = look the id up in any group.
+  final GroupId? groupId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snap = ref.watch(ledgerProvider).value;
     final profile = ref.watch(profileProvider).value;
-    final e = snap?.state.expense(expenseId);
+    final gid = groupId;
+    final e = gid == null
+        ? snap?.state.expense(expenseId)
+        : snap?.state.expenseIn(gid, expenseId);
     if (snap == null || profile == null || e == null) {
       return Scaffold(
         appBar: screenAppBar(
@@ -63,20 +70,26 @@ class ExpenseDetailScreen extends ConsumerWidget {
         confirmLabel: S.delete,
       );
       if (!ok || !context.mounted) return;
-      final done = await runGuarded(context, () => ledger.deleteExpense(e.id));
+      final done = await runGuarded(
+        context,
+        () => ledger.deleteExpense(e.id, groupId: e.groupId),
+      );
       if (!done || !context.mounted) return;
       Haptics.medium(context);
       showSnack(
         context,
         S.expenseDeleted,
         actionLabel: S.undo,
-        onAction: () => ledger.restoreExpense(e.id),
+        onAction: () => ledger.restoreExpense(e.id, groupId: e.groupId),
       );
       if (context.canPop()) context.pop();
     }
 
     Future<void> restore() async {
-      final done = await runGuarded(context, () => ledger.restoreExpense(e.id));
+      final done = await runGuarded(
+        context,
+        () => ledger.restoreExpense(e.id, groupId: e.groupId),
+      );
       if (done && context.mounted) showSnack(context, S.expenseRestored);
     }
 
@@ -116,7 +129,8 @@ class ExpenseDetailScreen extends ConsumerWidget {
         actions: [
           if (!e.isDeleted)
             IconButton(
-              onPressed: () => context.push(Routes.editExpense(e.id)),
+              onPressed: () =>
+                  context.push(Routes.editExpense(e.id, groupId: e.groupId)),
               tooltip: S.edit,
               icon: const Icon(Icons.edit_outlined),
             ),
@@ -211,28 +225,44 @@ class ExpenseDetailScreen extends ConsumerWidget {
           ),
           const SizedBox(height: Space.lg),
           textGutter(
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Expanded(
-                  child: MoneyText(
-                    minor: e.money.total,
-                    currency: currency,
-                    style: MoneyTextStyle.headline,
-                    signed: false,
-                    colored: false,
+            // The 46 dp total scales down to fit beside "you lent ...",
+            // as the balance heroes do; it is never cut.
+            LayoutBuilder(
+              builder: (context, constraints) => Row(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                children: [
+                  Expanded(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.bottomStart,
+                      child: MoneyText(
+                        minor: e.money.total,
+                        currency: currency,
+                        style: MoneyTextStyle.headline,
+                        signed: false,
+                        colored: false,
+                      ),
+                    ),
                   ),
-                ),
-                if (myId != null)
-                  BalanceTrailing(
-                    word: word,
-                    minor: impact,
-                    currency: currency,
-                    direction: e.isPayment
-                        ? MoneyDirection.neutral
-                        : MoneyDirection.of(impact),
-                  ),
-              ],
+                  if (myId != null) ...[
+                    const SizedBox(width: Space.sm),
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: constraints.maxWidth * 0.45,
+                      ),
+                      child: BalanceTrailing(
+                        word: word,
+                        // "not involved" alone, as in the rows: no ₹0.
+                        minor: word == KitStrings.notInvolved ? null : impact,
+                        currency: currency,
+                        direction: e.isPayment
+                            ? MoneyDirection.neutral
+                            : MoneyDirection.of(impact),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
           ),
           if (!e.isPayment) ...[
@@ -334,15 +364,29 @@ class _PersonAmountRow extends StatelessWidget {
   Widget build(BuildContext context) => KitListRow(
     title: name,
     minHeight: Sizes.rowMinDense,
+    // The amount keeps its natural width beside the name; when that leaves
+    // the name less than its longest word, it goes under the name, where
+    // it scales down if it is still too wide (VISUAL-R4-04).
+    trailingWidth: measureTextWidth(
+      context,
+      MoneyFormat.format(minor, currency),
+      AppType.amount(context),
+    ),
+    leadingWidth: Sizes.avatarSmall,
     leading: PersonAvatar(
       id: id,
       name: fullName,
       size: Sizes.avatarSmall,
       isMe: isMe,
     ),
-    trailing: Text(
-      MoneyFormat.format(minor, currency),
-      style: AppType.amount(context),
+    trailing: FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: AlignmentDirectional.centerEnd,
+      child: Text(
+        MoneyFormat.format(minor, currency),
+        maxLines: 1,
+        style: AppType.amount(context),
+      ),
     ),
   );
 }
@@ -388,7 +432,9 @@ class _History extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entries = ref.watch(expenseHistoryProvider(expense.id)).value;
+    final entries = ref
+        .watch(expenseHistoryProvider((expense.groupId, expense.id)))
+        .value;
     if (entries == null || entries.isEmpty) return const SizedBox.shrink();
     final names = memberNames(group, me);
     final now = ref.watch(clockProvider)();
