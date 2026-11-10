@@ -15,6 +15,7 @@ import 'dart:convert';
 import 'package:characters/characters.dart';
 
 import '../core/ops.dart';
+import '../core/text_clean.dart';
 
 abstract final class TextRules {
   /// SPEC 5.16.
@@ -48,48 +49,16 @@ abstract final class TextRules {
   static const int maxCounter = (1 << 53) - 1;
 
   /// Removes characters that are invisible or reorder the text around
-  /// them: C0/C1 controls, bidi embeddings, overrides, isolates and marks,
-  /// zero-width space, word joiner, BOM and interlinear annotations. ZWJ
-  /// and ZWNJ stay (emoji sequences and Indic scripts need them).
-  ///
-  /// In a one-line field ([multiline] false) tabs and line breaks become
-  /// spaces; in notes, `\r\n` and `\r` become `\n` and tabs stay.
-  static String clean(String value, {bool multiline = false}) {
-    final out = StringBuffer();
-    final text = multiline ? value.replaceAll('\r\n', '\n') : value;
-    for (final r in text.runes) {
-      if (_isBreak(r)) {
-        out.writeCharCode(multiline ? (r == 0x09 ? 0x09 : 0x0A) : 0x20);
-      } else if (!isHidden(r)) {
-        out.writeCharCode(r);
-      }
-    }
-    return out.toString().trim();
-  }
-
-  /// Tab, line feed, vertical tab, form feed, carriage return, NEL, line
-  /// and paragraph separators.
-  static bool _isBreak(int r) =>
-      (r >= 0x09 && r <= 0x0D) || r == 0x85 || r == 0x2028 || r == 0x2029;
+  /// them ([TextClean.clean]).
+  static String clean(String value, {bool multiline = false}) =>
+      TextClean.clean(value, multiline: multiline);
 
   /// True for a code point [clean] drops.
-  static bool isHidden(int r) =>
-      (r < 0x20 && !_isBreak(r)) ||
-      (r >= 0x7F && r <= 0x9F && r != 0x85) ||
-      isReordering(r) ||
-      r == 0x200B || // zero-width space
-      r == 0x2060 || // word joiner
-      r == 0xFEFF || // BOM / zero-width no-break space
-      (r >= 0xFFF9 && r <= 0xFFFB); // interlinear annotations
+  static bool isHidden(int r) => TextClean.isHidden(r);
 
   /// Bidi controls: embeddings, overrides, isolates and the directional
-  /// marks. One of these in a name can flip "Bob paid Alex" on screen.
-  static bool isReordering(int r) =>
-      r == 0x061C ||
-      r == 0x200E ||
-      r == 0x200F ||
-      (r >= 0x202A && r <= 0x202E) ||
-      (r >= 0x2066 && r <= 0x2069);
+  /// marks.
+  static bool isReordering(int r) => TextClean.isReordering(r);
 
   /// True when [value] shows nothing: every character is a space, one
   /// [clean] drops, or one that renders as blank on its own (joiners,
@@ -253,7 +222,7 @@ abstract final class TextRules {
   static bool _hasControl(String value) {
     for (final r in value.runes) {
       if (isReordering(r) ||
-          (r < 0x20 && !_isBreak(r)) ||
+          (r < 0x20 && !TextClean.isBreak(r)) ||
           (r >= 0x7F && r <= 0x9F && r != 0x85)) {
         return true;
       }

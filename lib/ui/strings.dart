@@ -429,6 +429,8 @@ abstract final class S {
   static const noneNearbyBody =
       'Ask your friend to open Sync and turn on Make this phone visible.';
   static const nearbyOff = 'Not looking';
+  /// A phone in more groups than its advert lists, none of them ours.
+  static const mayShareGroups = 'may share a group';
   static String sharesGroups(List<String> names) {
     if (names.isEmpty) return 'no shared groups';
     if (names.length == 1) return 'shares ${names.first}';

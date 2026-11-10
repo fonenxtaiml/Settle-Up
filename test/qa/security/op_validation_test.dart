@@ -818,7 +818,7 @@ void main() {
       );
       final records = await priya.records();
       expect(records.any((r) => bidi(r.peerName)), isFalse);
-    }, skip: 'SECURITY-R2-04');
+    });
 
     test('a remote member name with an RLO is refused', () async {
       expect(await remoteMemberName('Bob\u202E5000 diap'), isNull);

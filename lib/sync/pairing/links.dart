@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../../core/ids.dart';
+import '../peer_name.dart';
 
 String _b64(Uint8List bytes) => base64Url.encode(bytes).replaceAll('=', '');
 
@@ -66,9 +67,10 @@ final class InviteLink {
       return InviteLink(
         groupId: g,
         groupKey: key,
-        groupName: n,
+        // Names come from whoever made the link: shown, so cleaned.
+        groupName: cleanPeerName(n),
         currency: c,
-        fromName: q['f'] ?? '',
+        fromName: cleanPeerName(q['f'] ?? ''),
         host: q['h'],
         deviceId: q['d'],
       );
@@ -121,7 +123,7 @@ final class ConnectLink {
     return ConnectLink(
       hosts: hosts,
       deviceId: d,
-      deviceName: q['n']?.first ?? '',
+      deviceName: cleanPeerName(q['n']?.first ?? ''),
     );
   }
 }
