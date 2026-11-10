@@ -264,6 +264,21 @@ final class SqliteOpStore implements OpStore {
     });
   }
 
+  @override
+  Future<bool> capPeerKnowledge(
+    GroupId groupId,
+    DeviceId deviceId,
+    int max,
+  ) async {
+    final db = _open;
+    db.execute(
+      'UPDATE peer_vv SET max_counter = ? '
+      'WHERE group_id = ? AND device_id = ? AND max_counter > ?',
+      [max, groupId, deviceId, max],
+    );
+    return db.updatedRows > 0;
+  }
+
   // ------------------------------------------------------------------- kv --
 
   @override
