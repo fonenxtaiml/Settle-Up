@@ -11,7 +11,12 @@ import 'package:settle_up/ui/format/amount_input.dart';
 import 'package:settle_up/ui/format/unit_input_formatter.dart';
 import 'package:settle_up/ui/screens/expense/split_draft.dart';
 import 'package:settle_up/ui/widgets/amount_field.dart';
+import 'package:settle_up/ui/strings.dart';
 import 'package:settle_up/ui/widgets/kit_strings.dart';
+
+import '../../qa/uiflow/expense_flow_test.dart'
+    show openAddExpense, saveEnabled, splitInput, typeAmountAndDescription;
+import '../../qa/uiflow/real_harness.dart';
 
 final class _Field {
   _Field(this.t);
@@ -126,6 +131,74 @@ void main() {
       expect(f.reported, isNull);
       expect(f.text, isEmpty);
     });
+  });
+
+  group('MONEY-R3-05: a pasted line break reaches the reader', () {
+    testWidgets('the amount field refuses two lines and keeps one', (t) async {
+      final f = _Field(t);
+      for (final s in ['500\n210', '500\r\n210', '1\n250']) {
+        await f.pump('INR');
+        await f.set(s);
+        expect((f.text, f.reported), ('', null), reason: s);
+      }
+      // A copied cell often ends with a line break: it is only white space.
+      await f.pump('INR');
+      await f.set('500\n');
+      expect((f.text, f.reported), ('500', 50000));
+      // Enter typed at the end adds nothing.
+      await f.keys('\n');
+      expect((f.text, f.reported), ('500', 50000));
+    });
+
+    testWidgets('a split field shows two pasted lines on one line, unread', (
+      t,
+    ) async {
+      final inr = cur('INR');
+      final c = TextEditingController();
+      await t.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TextField(
+              controller: c,
+              minLines: 1,
+              maxLines: 2,
+              inputFormatters: [
+                UnitInputFormatter(
+                  read: (s) => parseAmountInput(s, inr),
+                  write: (v) => minorToInput(v, inr),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await t.enterText(find.byType(TextField), '500\n210');
+      expect(c.text, '500\t210');
+      expect(parseAmountInput(c.text, inr), isNull);
+      await t.enterText(find.byType(TextField), '');
+      await t.enterText(find.byType(TextField), '500\n');
+      expect(c.text, '500');
+    });
+  });
+
+  testWidgets('on Add expense, two pasted lines never become a total or a '
+      'share', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await openAddExpense(tester, w);
+    await typeAmountAndDescription(tester, '500\n310', 'Dinner');
+    expect(saveEnabled(tester), isFalse);
+    await typeAmountAndDescription(tester, '810', 'Dinner');
+    await qaTap(tester, find.text(KitStrings.splitExact));
+    final priya = splitInput(S.amountOf('Priya'));
+    await tester.enterText(priya, '500\n310');
+    await tester.pump();
+    final text = tester.widget<TextField>(priya).controller!.text;
+    expect(text, '500\t310');
+    expect(parseAmountInput(text, cur('INR')), isNull);
+    expect(saveEnabled(tester), isFalse);
+    expect(w.group(gid).liveExpenses, isEmpty);
+    await w.shutdown(tester);
   });
 
   group('MONEY-R4-01: a separator that cannot group in a no-decimal '

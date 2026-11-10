@@ -318,6 +318,13 @@ class _AmountFieldState extends State<AmountField> {
                           decimal: true,
                         ),
                         textInputAction: TextInputAction.next,
+                        // Two lines allowed so a pasted line break reaches
+                        // the reader: a one-line field drops it first and
+                        // "500" and "210" on two lines would read 500210
+                        // (MONEY-R3-05). The text never wraps: the reader
+                        // refuses a break, and the amount is scaled to fit.
+                        minLines: 1,
+                        maxLines: 2,
                         style: amountStyle,
                         cursorColor: scheme.onSurface,
                         cursorWidth: caret,
