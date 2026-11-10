@@ -104,7 +104,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   Future<void> _save(Group? original, Map<PersonId, String> people) async {
     setState(() => _tried = true);
     final name = _name.text.trim();
-    if (!NameText.isValid(name) || _saving) {
+    if (!NameText.isValid(name, NameText.maxGroupLength) || _saving) {
       Haptics.invalid(context);
       return;
     }
@@ -254,10 +254,10 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               label: S.groupName,
               hintText: S.groupNameHint,
               controller: _name,
-              maxLength: 60,
+              maxLength: NameText.maxGroupLength,
               errorText: _name.text.trim().isEmpty
                   ? (_tried ? S.nameNeeded : null)
-                  : nameInputError(_name.text),
+                  : nameInputError(_name.text, NameText.maxGroupLength),
               onChanged: (_) => setState(() {}),
             ),
           ),
