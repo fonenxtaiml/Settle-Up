@@ -49,6 +49,19 @@ double measureTextWidth(BuildContext context, String text, TextStyle? style) {
   return w;
 }
 
+/// The width of the widest word of [text] (split at white space) in
+/// [style] at the current text scale: the least room a label needs so no
+/// word is cut or broken.
+double longestWordWidth(BuildContext context, String text, TextStyle? style) {
+  var widest = 0.0;
+  for (final word in text.split(RegExp(r'\s+'))) {
+    if (word.isEmpty) continue;
+    final w = measureTextWidth(context, word, style);
+    if (w > widest) widest = w;
+  }
+  return widest;
+}
+
 /// Whether [text] in [style] fits [maxWidth] in at most [maxLines] lines
 /// at the current text scale, with no word broken or cut. Layouts use it to
 /// stack (or give way) before a label turns into "Cas" or "borrowe/d".

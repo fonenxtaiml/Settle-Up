@@ -364,6 +364,15 @@ class _PersonAmountRow extends StatelessWidget {
   Widget build(BuildContext context) => KitListRow(
     title: name,
     minHeight: Sizes.rowMinDense,
+    // The amount keeps its natural width beside the name; when that leaves
+    // the name less than its longest word, it goes under the name, where
+    // it scales down if it is still too wide (VISUAL-R4-04).
+    trailingWidth: measureTextWidth(
+      context,
+      MoneyFormat.format(minor, currency),
+      AppType.amount(context),
+    ),
+    leadingWidth: Sizes.avatarSmall,
     leading: PersonAvatar(
       id: id,
       name: fullName,

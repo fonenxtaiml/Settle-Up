@@ -234,7 +234,6 @@ void main() {
       expect(_members(ledger), hasLength(3));
       await done();
     },
-    skip: true, // QA UIFLOW-R4-02
   );
 
   testWidgets(
@@ -254,7 +253,6 @@ void main() {
       expect(names.where((n) => n == 'arjun'), hasLength(1), reason: '$names');
       await done();
     },
-    skip: true, // QA UIFLOW-R4-01
   );
 
   // ------------------------------------------------- UIFLOW-R3-02 --
@@ -340,7 +338,6 @@ void main() {
       expect(names.where((n) => n == 'rahul'), hasLength(1), reason: '$names');
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R4-01
   );
 
   testWidgets(
@@ -358,7 +355,6 @@ void main() {
       expect(names.where((n) => n == 'rahul'), hasLength(1), reason: '$names');
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R4-01
   );
 
   testWidgets('R4 probe: Members > Add person " RAHUL " (case and spaces) is '

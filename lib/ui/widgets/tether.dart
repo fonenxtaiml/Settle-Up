@@ -796,6 +796,46 @@ class _SyncTetherState extends State<SyncTether>
       ),
     );
 
+    // Stacked at large text, and earlier whenever the labels do not fit on
+    // the line beside the ends and a short wire (VISUAL-R4-01: 320 dp at
+    // 1.4x-1.59x).
+    double width(String text) {
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: labelStyle),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      final w = tp.width;
+      tp.dispose();
+      return w;
+    }
+
+    return LayoutBuilder(
+      builder: (context, c) {
+        const minWire = 32.0 + 2 * Space.sm;
+        final inline =
+            32 * 2 +
+            Space.sm * 2 +
+            minWire +
+            width(widget.thisPhoneLabel) +
+            width(widget.otherLabel);
+        return _layout(
+          stacked: stacked || inline > c.maxWidth,
+          end: end,
+          wire: wire,
+          labelStyle: labelStyle,
+        );
+      },
+    );
+  }
+
+  Widget _layout({
+    required bool stacked,
+    required Widget Function(IconData icon, bool me) end,
+    required Widget wire,
+    required TextStyle labelStyle,
+  }) {
     final row = stacked
         ? Column(
             children: [

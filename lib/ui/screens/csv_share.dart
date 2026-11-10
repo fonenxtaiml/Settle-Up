@@ -22,9 +22,13 @@ String csvFileName(String title) {
       .replaceAll(RegExp(r'\s+'), ' ')
       .trim()
       .replaceAll(RegExp(r'^\.+'), '');
-  final hasWord = RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(kept);
-  final base = hasWord ? kept : kCsvFallbackName;
-  return '${_cut(base, 80).trim()}.csv';
+  final word = RegExp(r'[\p{L}\p{N}]', unicode: true);
+  // The fallback is chosen after the cut: a first character longer than
+  // the budget (a letter with a hundred combining marks) leaves nothing,
+  // and the file must never be the hidden, nameless ".csv" (DATA-R4-02).
+  final cut = _cut(kept, 80).trim();
+  final base = word.hasMatch(cut) ? cut : kCsvFallbackName;
+  return '$base.csv';
 }
 
 /// [s] cut to at most [units] UTF-16 units on a character boundary, so a

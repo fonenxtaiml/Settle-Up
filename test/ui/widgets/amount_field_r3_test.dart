@@ -145,7 +145,11 @@ void main() {
       final f = _Field(t);
       for (final (cur, keys, shown, minor) in [
         ('TND', '1,250,', '1.250', 1250),
-        ('BHD', '1,250.', '1.250', 1250),
+        // BHD writes a dot: "1,250" is 1,250 BD there, as the reader reads
+        // it (MONEY-R3-03 reopened), and the point after it is its decimal
+        // point.
+        ('BHD', '1,250.', '1,250.', 1250000),
+        ('BHD', '1,250,', '1,250', 1250000),
         ('USD', '1,23,', '1.23', 123),
         ('EUR', '12,5.', '12.5', 1250),
         ('KWD', '1.250,', '1.250', 1250),
@@ -190,7 +194,8 @@ void main() {
       await f.switchTo('TND');
       expect(f.reported, 1250000);
       await f.keys('5');
-      expect((f.text, f.reported), ('12,505', 12505000));
+      // TND thousands are grouped with a thin space (MONEY-R4-02).
+      expect((f.text, f.reported), ('12\u2009505', 12505000));
     });
   });
 

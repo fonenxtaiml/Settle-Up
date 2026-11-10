@@ -350,22 +350,62 @@ class SplitSummaryBar extends StatelessWidget {
       excludeSemantics: true,
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 4),
-        child: isLargeText(context)
-            ? Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(summary, style: base),
-                  right,
-                ],
-              )
-            : Row(
-                children: [
-                  Expanded(child: Text(summary, style: base)),
-                  const SizedBox(width: Space.sm),
-                  if (problem != null) Flexible(child: right) else right,
-                ],
-              ),
+        child: LayoutBuilder(
+          builder: (context, c) {
+            // Stacked at large text, and earlier whenever an amount in the
+            // summary would not fit beside the remainder: an amount is
+            // never broken over two lines (VISUAL-R4-03).
+            final stack =
+                isLargeText(context) ||
+                (problem == null &&
+                    _longestWord(context, summary, base) +
+                            Space.sm +
+                            _width(context, right) >
+                        c.maxWidth);
+            return stack
+                ? Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(summary, style: base),
+                      Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: right,
+                      ),
+                    ],
+                  )
+                : Row(
+                    children: [
+                      Expanded(child: Text(summary, style: base)),
+                      const SizedBox(width: Space.sm),
+                      if (problem != null) Flexible(child: right) else right,
+                    ],
+                  );
+          },
+        ),
       ),
     );
+  }
+
+  static double _width(BuildContext context, Text text) {
+    final span = text.textSpan ?? TextSpan(text: text.data, style: text.style);
+    final tp = TextPainter(
+      text: span,
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    final w = tp.width;
+    tp.dispose();
+    return w;
+  }
+
+  static double _longestWord(BuildContext context, String s, TextStyle st) {
+    var widest = 0.0;
+    for (final word in s.split(RegExp(r'\s+'))) {
+      if (word.isEmpty) continue;
+      final w = _width(context, Text(word, style: st));
+      if (w > widest) widest = w;
+    }
+    return widest;
   }
 }
