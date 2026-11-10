@@ -254,10 +254,27 @@ final class DefaultSyncEngine implements SyncEngine {
       groupTokens: await DiscoveryTokens.advertised(
         await _store.groupKeys(),
         now,
+        priority: await _recentlySyncedGroups(),
       ),
       advertId: await DiscoveryTokens.advertId(_advertSecret, w),
       tokenWindow: w,
     );
+  }
+
+  /// Groups in Sync history, most recently synced first: when an advert
+  /// cannot hold every token, these are the ones a nearby phone most
+  /// likely shares (SPEC 8.3).
+  Future<List<GroupId>> _recentlySyncedGroups() async {
+    try {
+      final records = await _store.watchSyncRecords().first;
+      return {
+        for (final r in records)
+          if (r.outcome != SyncOutcome.failed) ...r.groupIds,
+      }.toList();
+    } catch (e, st) {
+      _log('reading sync history for advert priority failed', e, st);
+      return const [];
+    }
   }
 
   @override
