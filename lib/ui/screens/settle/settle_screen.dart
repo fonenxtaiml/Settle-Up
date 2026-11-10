@@ -439,11 +439,10 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                   label: S.date,
                   value: DateLabels.pickerDate(date, now: now),
                   onTap: () async {
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: date,
-                      firstDate: DateTime(2000),
-                      lastDate: DateTime(now.year + 1, 12, 31),
+                    final d = await pickEntryDate(
+                      context,
+                      initial: date,
+                      now: now,
                     );
                     if (d != null) {
                       setState(
