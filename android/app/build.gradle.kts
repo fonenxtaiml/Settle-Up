@@ -72,21 +72,40 @@ android {
 
 // Warn (or fail with -PrequireReleaseKey) only when a release variant is
 // actually built, so debug builds and tests stay quiet.
+//
+// The warning uses logger.quiet, not logger.warn: `flutter build apk` and
+// `flutter build appbundle` run Gradle with -q, which hides WARN and
+// below. QUIET still reaches the terminal. It is printed once when the task
+// graph is ready and again after the APK/AAB is packaged, so it also sits
+// next to flutter's final "Built ..." line instead of scrolling away.
+val debugKeyFallbackMessage =
+    "android/key.properties not found: this RELEASE build is signed " +
+        "with the DEBUG key. It cannot be uploaded to Play, and a " +
+        "build signed with the real key cannot update it. See " +
+        "README.md \"Release signing\"."
+val debugKeyFallbackBanner =
+    "!".repeat(72).let { rule ->
+        "\n$rule\nWARNING: $debugKeyFallbackMessage\n$rule\n"
+    }
+
 gradle.taskGraph.whenReady {
     val buildsRelease = allTasks.any {
         it.project == project && it.name.contains("Release")
     }
     if (buildsRelease && !hasReleaseKey) {
-        val message =
-            "android/key.properties not found: this RELEASE build is signed " +
-                "with the DEBUG key. It cannot be uploaded to Play, and a " +
-                "build signed with the real key cannot update it. See " +
-                "README.md \"Release signing\"."
+        val message = debugKeyFallbackMessage
         if (project.hasProperty("requireReleaseKey")) {
             throw GradleException(message)
         }
-        logger.warn("WARNING: $message")
+        logger.quiet(debugKeyFallbackBanner)
     }
+}
+
+if (!hasReleaseKey) {
+    tasks.matching { it.name == "assembleRelease" || it.name == "bundleRelease" }
+        .configureEach {
+            doLast { logger.quiet(debugKeyFallbackBanner) }
+        }
 }
 
 kotlin {

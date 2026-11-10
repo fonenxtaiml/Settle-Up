@@ -130,10 +130,13 @@ The printed certificate must be yours, not `CN=Android Debug`.
 ### Without key.properties
 
 A release build still works for local testing: it falls back to the debug
-key and Gradle prints `WARNING: android/key.properties not found: this
-RELEASE build is signed with the DEBUG key`. Such an APK must not be
-published. For CI or store builds pass `-PrequireReleaseKey`, which turns
-the warning into an error:
+key and prints `WARNING: android/key.properties not found: this RELEASE
+build is signed with the DEBUG key` between two rows of `!`, once before
+compiling and again just above flutter's `✓ Built ...` line. It is shown by
+`flutter build apk|appbundle --release` as well as by `./gradlew` (it is
+logged at Gradle's QUIET level, which survives the `-q` that flutter passes).
+Such an APK must not be published. For CI or store builds pass
+`-PrequireReleaseKey`, which turns the warning into an error:
 
 ```sh
 flutter build appbundle --release -PrequireReleaseKey
