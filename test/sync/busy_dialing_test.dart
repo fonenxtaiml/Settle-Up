@@ -1,6 +1,7 @@
 // Regression tests around a phone whose own Sync is still dialing when
 // another phone asks (SYNC-R3-01, SYNC-R3-02): Cancel during the wait for
 // the other phone's dial, and a third phone that is not the one dialed.
+// Also Cancel while the own dial is still connecting (SYNC-R4-01).
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -52,10 +53,14 @@ final class _SlowTransport implements SyncTransport, HostingDetails {
     DiscoveredPeer peer, {
     Duration timeout = const Duration(seconds: 10),
   }) async {
+    connects++;
     final d = delay;
     if (d != null) await Future<void>.delayed(d);
     return inner.connect(peer, timeout: timeout);
   }
+
+  /// Connect attempts so far.
+  int connects = 0;
 
   @override
   Future<void> dispose() => inner.dispose();
@@ -164,15 +169,19 @@ void main() {
   });
 
   group('SYNC-R3-02: a third phone asks a phone that is dialing', () {
+    /// [beforeTap] runs once both phones found whom they tap (Carol starts
+    /// hosting there when she shares Alex's name, so Priya finds Alex).
     Future<(Object, Duration, SessionStatus)> carolTaps(
       QaPhone carol,
       QaPhone priya,
-      QaPhone alex,
-    ) async {
+      QaPhone alex, {
+      Future<void> Function()? beforeTap,
+    }) async {
       await alex.engine.startHosting();
       await priya.engine.startHosting();
       final toAlex = await priya.find(alex);
       final toPriya = await carol.find(priya);
+      await beforeTap?.call();
       final fp = tap(priya, toAlex);
       await Future<void>.delayed(const Duration(milliseconds: 5));
       final watch = Stopwatch()..start();
@@ -229,6 +238,101 @@ void main() {
       expect(during, isNot(isA<SessionActive>()));
     });
 
+    test('Carol has the same (default model) name as the phone being '
+        'dialed: Priya\'s answer carries that phone\'s advert id, which is '
+        'not Carol\'s, so she is told at once', () async {
+      final (alex, priya, carol, _) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        alexName: 'Pixel 8',
+        carolName: 'Pixel 8',
+      );
+      final (c, took, during) = await carolTaps(
+        carol!,
+        priya,
+        alex,
+        beforeTap: () => carol.engine.startHosting(),
+      );
+      expect(
+        c,
+        isA<SyncException>()
+            .having((e) => e.failure, 'failure', SyncFailure.peerUnreachable)
+            .having((e) => e.message, 'message', endsWith('its own sync')),
+      );
+      expect(took, lessThan(const Duration(milliseconds: 2800)));
+      expect(during, isNot(isA<SessionActive>()));
+      expect(carol.engine.status.session, isNot(isA<SessionActive>()));
+    });
+
+    test('a prefix name ("Pixel 8" and "Pixel 8 Pro"): told at once too',
+        () async {
+      final (alex, priya, carol, _) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        alexName: 'Pixel 8 Pro',
+        carolName: 'Pixel 8',
+      );
+      final (c, took, _) = await carolTaps(
+        carol!,
+        priya,
+        alex,
+        beforeTap: () => carol.engine.startHosting(),
+      );
+      expect(c, isA<SyncException>());
+      expect(took, lessThan(const Duration(milliseconds: 2800)));
+    });
+
+    test('mutual Sync where the dialed phone keeps its model name: the '
+        'advert id is the asking phone\'s own, so it waits and serves the '
+        'slow dial', () async {
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        alexName: 'Pixel 8',
+      );
+      await alex.engine.startHosting();
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      final toAlex = await priya.find(alex);
+      expect(toAlex.advertId, isNotNull);
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final fa = tap(alex, toPriya);
+      final results = await Future.wait([fa, fp])
+          .timeout(const Duration(seconds: 20));
+      expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+      expect(priya.opCount(g), alex.opCount(g));
+    });
+
+    test('mutual Sync where the advert has no advert id: unknown counts as '
+        'maybe, so the slow dial is still waited for and served', () async {
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        onPriya: (t) => t.rewrite = (p) => DiscoveredPeer(
+          kind: p.kind,
+          address: p.address,
+          name: p.name,
+          groupTokens: p.groupTokens,
+          windowTag: p.windowTag,
+          moreGroups: p.moreGroups,
+        ),
+      );
+      await alex.engine.startHosting();
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      await priya.engine.startDiscovery();
+      final toAlex = await priya.engine
+          .watchNearby()
+          .firstWhere((l) => l.isNotEmpty)
+          .timeout(const Duration(seconds: 3))
+          .then((l) => l.first);
+      expect(toAlex.advertId, isNull);
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final fa = tap(alex, toPriya);
+      final results = await Future.wait([fa, fp])
+          .timeout(const Duration(seconds: 20));
+      expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+      expect(priya.opCount(g), alex.opCount(g));
+    });
+
     test('a mutual Sync whose advert cut the dialed phone\'s long name '
         'still serves the slow dial', () async {
       const longName = 'Alexander Fernandes-Iyer Pixel 8 Pro';
@@ -262,6 +366,104 @@ void main() {
       final results = await Future.wait([fa, fp])
           .timeout(const Duration(seconds: 20));
       expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+      expect(priya.opCount(g), alex.opCount(g));
+    });
+  });
+
+  group('SYNC-R4-01: Cancel while a connect attempt hangs', () {
+    test('the engine is free at once: the other phone can then sync with '
+        'it, and the late channel is closed unused', () async {
+      final priyaTs = <_SlowTransport>[];
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        onPriya: priyaTs.add,
+      );
+      await alex.engine.startHosting();
+      await priya.engine.startHosting();
+      final toAlex = await priya.find(alex);
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 300));
+      await priya.engine.cancel();
+      expect(
+        await fp.timeout(const Duration(milliseconds: 500)),
+        isA<SyncException>().having(
+          (e) => e.failure,
+          'failure',
+          SyncFailure.cancelled,
+        ),
+      );
+      expect(
+        priya.engine.status.session,
+        isA<SessionFailed>().having(
+          (s) => s.failure,
+          'failure',
+          SyncFailure.cancelled,
+        ),
+      );
+      // Alex's Sync on Priya now runs at once, not "Syncing with another
+      // phone".
+      final s = await alex.engine
+          .syncWith(await alex.find(priya))
+          .timeout(const Duration(seconds: 2));
+      expect(s, isA<SyncSummary>());
+      expect(priya.opCount(g), alex.opCount(g));
+      // The abandoned attempt connects at ~3 s: closed, never a sync.
+      await Future<void>.delayed(const Duration(seconds: 3));
+      expect(alex.engine.status.session, isNot(isA<SessionActive>()));
+      expect(priya.engine.status.session, isNot(isA<SessionActive>()));
+      final alexRecords = await alex.records();
+      expect(
+        alexRecords.where((r) => r.outcome == SyncOutcome.completed),
+        hasLength(1),
+      );
+      final priyaRecords = await priya.records();
+      expect(
+        priyaRecords.map((r) => r.outcome),
+        unorderedEquals([SyncOutcome.cancelled, SyncOutcome.completed]),
+      );
+      expect(priyaTs.fold(0, (n, t) => n + t.connects), 1);
+    });
+
+    test('Cancel before the next route: no route after it is tried',
+        () async {
+      final priyaTs = <_SlowTransport>[];
+      final (alex, priya, _, _) = await phonesFor(
+        priyaDelay: const Duration(seconds: 2),
+        onPriya: priyaTs.add,
+      );
+      await alex.engine.startHosting();
+      final toAlex = await priya.find(alex, transports: 2);
+      expect(toAlex.transports, hasLength(2));
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+      await priya.engine.cancel();
+      expect(
+        await fp.timeout(const Duration(milliseconds: 500)),
+        isA<SyncException>().having(
+          (e) => e.failure,
+          'failure',
+          SyncFailure.cancelled,
+        ),
+      );
+      await Future<void>.delayed(const Duration(milliseconds: 2500));
+      expect(priyaTs.fold(0, (n, t) => n + t.connects), 1);
+      expect(alex.engine.status.session, isNot(isA<SessionActive>()));
+    });
+
+    test('a Sync right after the Cancel runs normally', () async {
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(milliseconds: 1500),
+      );
+      await alex.engine.startHosting();
+      final toAlex = await priya.find(alex);
+      final first = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      await priya.engine.cancel();
+      await first;
+      final s = await priya.engine
+          .syncWith(toAlex)
+          .timeout(const Duration(seconds: 5));
+      expect(s, isA<SyncSummary>());
       expect(priya.opCount(g), alex.opCount(g));
     });
   });
