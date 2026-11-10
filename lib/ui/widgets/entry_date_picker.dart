@@ -22,6 +22,9 @@
 //   header style is sized here from the widest date the header can show,
 //   measured in the real font, so it never wraps, is never cut and never
 //   leaves the header, at any text size.
+// * Dates are written and read day first, as everywhere else in the app,
+//   and the date field's label names the format (VISUAL-R11-01): the
+//   picker runs with [AppMaterialLocalizations] whatever app hosts it.
 //
 // Every decision is taken from the room the dialog really has (the safe
 // area it is laid out in) and the phone's text size, never from a list of
@@ -29,6 +32,8 @@
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
+
+import '../format/app_material_localizations.dart';
 
 /// The text size the stock picker reads its scale factor from.
 const double _scaleProbe = 14;
@@ -239,7 +244,13 @@ class EntryDatePicker extends StatelessWidget {
   final DateTime lastDate;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Localizations.override(
+    context: context,
+    delegates: const [AppMaterialLocalizations.delegate],
+    child: Builder(builder: _build),
+  );
+
+  Widget _build(BuildContext context) {
     final theme = Theme.of(context);
     final headline = theme.textTheme.headlineSmall ?? const TextStyle();
     final help = theme.textTheme.labelLarge ?? const TextStyle();
