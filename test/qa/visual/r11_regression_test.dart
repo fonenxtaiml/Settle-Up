@@ -330,7 +330,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R11-02: in the dark theme the date picker secondary text '
     '(year list, "Select date", "Enter Date") is 4.28:1 on its surface',
-    skip: true, // QA VISUAL-R11-02
     (tester) async {
       await tester.runAsync(loadRealFonts);
       late VisualWorld w;
@@ -396,7 +395,12 @@ void main() {
           await tester.tap(_inDialog(find.byIcon(Icons.edit_outlined)));
           await tester.pumpAndSettle();
         }
-        textCheck(where, 'Enter Date');
+        // The field label ("Enter Date", "Date (dd/mm/yyyy)" since
+        // VISUAL-R11-01), read from the picker's localizations.
+        textCheck(
+          where,
+          MaterialLocalizations.of(tester.element(_dialog)).dateInputLabel,
+        );
         await tester.pumpWidget(const SizedBox.shrink());
       }
       handle.dispose();

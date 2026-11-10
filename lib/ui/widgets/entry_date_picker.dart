@@ -284,6 +284,11 @@ class EntryDatePicker extends StatelessWidget {
             ),
             // The stock landscape input header takes headlineSmall.
             textTheme: theme.textTheme.copyWith(headlineSmall: style),
+            // The stock field lets the app's field theme override the
+            // picker's; the picker's is the one meant for its surface.
+            inputDecorationTheme:
+                theme.datePickerTheme.inputDecorationTheme ??
+                theme.inputDecorationTheme,
           ),
           child: DatePickerDialog(
             initialDate: initialDate,
