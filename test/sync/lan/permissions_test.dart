@@ -158,12 +158,15 @@ void main() {
           TransportAvailability.unsupported);
     });
 
-    test('old Android: location service off -> radioOff', () async {
+    test('old Android: location service off -> locationOff', () async {
       final p = FakePlatform(PermissionOs.android, sdk: 29)
         ..statuses[Permission.locationWhenInUse] = PermissionStatus.granted
         ..locationOn = false;
       final perms = NearbyPermissions(platform: p);
-      expect(await perms.check(TransportKind.ble), TransportAvailability.radioOff);
+      expect(
+        await perms.check(TransportKind.ble),
+        TransportAvailability.locationOff,
+      );
       p.locationOn = true;
       expect(await perms.check(TransportKind.ble), TransportAvailability.ready);
     });

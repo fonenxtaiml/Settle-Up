@@ -310,8 +310,10 @@ void main() {
               : sdk <= 30;
           expect(
             await t.requestPermissions(),
+            // PLATFORM-R2-01: a distinct reason, so the Sync tab offers the
+            // location switch rather than Bluetooth settings.
             needsLocation
-                ? TransportAvailability.radioOff
+                ? TransportAvailability.locationOff
                 : TransportAvailability.ready,
           );
         });
@@ -639,7 +641,7 @@ void round2() {
               'Bluetooth is on; the fix is the location switch. '
               'Issues were $issues',
         );
-      }, skip: 'PLATFORM-R2-01: location off is shown as "Bluetooth is off"');
+      });
     }
 
     test('Bluetooth really off on API 34: the Sync tab says so', () async {

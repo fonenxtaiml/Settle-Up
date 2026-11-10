@@ -102,4 +102,24 @@ void main() {
     expect(find.text(S.openSettings), findsNothing);
     expect(find.text(S.allow), findsNothing);
   });
+
+  testWidgets('PLATFORM-R2-01: location switch off says so and offers Turn '
+      'on location, not Bluetooth', (tester) async {
+    expect(
+      radioIssues({
+        TransportKind.lan: TransportAvailability.ready,
+        TransportKind.nearby: TransportAvailability.locationOff,
+        TransportKind.ble: TransportAvailability.ready,
+      }),
+      [RadioIssue.locationOff],
+    );
+    await pumpSync(tester, {
+      TransportKind.lan: TransportAvailability.ready,
+      TransportKind.nearby: TransportAvailability.locationOff,
+      TransportKind.ble: TransportAvailability.locationOff,
+    });
+    expect(find.text(S.locationOffTitle), findsOneWidget);
+    expect(find.text(S.turnOnLocation), findsOneWidget);
+    expect(find.text(S.turnOnBluetooth), findsNothing);
+  });
 }
