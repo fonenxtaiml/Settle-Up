@@ -530,7 +530,15 @@ final class Ledger implements LedgerRepository, SyncStore {
     return t;
   }
 
-  static int _ms(DateTime date) => date.toUtc().millisecondsSinceEpoch;
+  /// [date] as stored: UTC milliseconds within the window peers accept
+  /// (TextRules.isModelDate), so every phone can show it in local time.
+  static int _ms(DateTime date) {
+    final ms = date.toUtc().millisecondsSinceEpoch;
+    if (!TextRules.isModelDate(ms)) {
+      _fail(LedgerErrorCode.invalidInput, 'date $date is out of range');
+    }
+    return ms;
+  }
 
   static MoneyBlock _money(
     GroupState gs, {
