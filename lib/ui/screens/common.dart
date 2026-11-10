@@ -122,6 +122,7 @@ String errorMessage(Object error) => switch (error) {
 String syncFailureMessage(SyncFailure f) => switch (f) {
   SyncFailure.permissionDenied => S.errPermission,
   SyncFailure.radioOff => S.errRadioOff,
+  SyncFailure.locationOff => S.errLocationOff,
   SyncFailure.peerUnreachable => S.errUnreachable,
   SyncFailure.timeout => S.errTimeout,
   SyncFailure.noSharedGroups => S.errNoShared,

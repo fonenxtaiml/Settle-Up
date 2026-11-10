@@ -243,9 +243,6 @@ void main() {
         );
         expect(settledAfter, lessThan(const Duration(seconds: 1)));
       },
-      skip:
-          'SYNC-R3-01: Cancel is ignored while a refused Sync waits for '
-          "the other phone's slow dial",
     );
 
     test(
@@ -268,11 +265,17 @@ void main() {
         final fp = tap(priya, toAlex);
         await Future<void>.delayed(const Duration(milliseconds: 5));
         final watch = Stopwatch()..start();
-        final fc = tap(carol, toPriya);
+        // When Carol's call settles (not when the test reads it below,
+        // which is after the 4 s look at her status).
+        Duration? settledAt;
+        final fc = tap(
+          carol,
+          toPriya,
+        ).whenComplete(() => settledAt = watch.elapsed);
         await Future<void>.delayed(const Duration(milliseconds: 4000));
         final during = carol.engine.status.session;
         final c = await fc.timeout(const Duration(seconds: 20));
-        final took = watch.elapsed;
+        final took = settledAt!;
         expect(
           during,
           isNot(isA<SessionActive>()),
@@ -299,9 +302,6 @@ void main() {
               'that is ~30 s with the Sync screen still showing progress',
         );
       },
-      skip:
-          'SYNC-R3-02: a third phone refused with "Starting its own '
-          'sync" waits a connect plus a handshake timeout more',
     );
   });
 

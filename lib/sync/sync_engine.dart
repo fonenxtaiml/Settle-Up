@@ -11,6 +11,7 @@ enum SyncPhase { connecting, handshaking, comparing, transferring, finishing }
 enum SyncFailure {
   permissionDenied,
   radioOff,
+  locationOff, // Bluetooth on, the location switch off where scans need it
   peerUnreachable,
   timeout,
   noSharedGroups,
