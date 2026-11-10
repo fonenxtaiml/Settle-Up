@@ -143,6 +143,23 @@ final class MemoryOpStore implements OpStore {
   }
 
   @override
+  Future<bool> capPeerKnowledge(
+    GroupId groupId,
+    DeviceId deviceId,
+    int max,
+  ) async {
+    var changed = false;
+    for (final known in (_peers[groupId] ?? const {}).values) {
+      final c = known[deviceId];
+      if (c != null && c > max) {
+        known[deviceId] = max;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
+  @override
   Future<String?> getKv(String key) async => _kv[key];
 
   @override

@@ -491,7 +491,7 @@ void main() {
           phone.ledger.addMember(s.g, displayName: name),
           invalidInput,
         );
-      }, skip: 'SECURITY-R3-02');
+      });
     }
 
     test('visible look-alikes of blank stay allowed', () async {

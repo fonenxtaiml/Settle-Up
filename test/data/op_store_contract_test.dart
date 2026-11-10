@@ -184,6 +184,25 @@ void runOpStoreContract(String name, OpStore Function() create) {
       expect(await store.peerKnowledge(gB), VersionVector({dA: 9}));
     });
 
+    test('capPeerKnowledge lowers only that device in that group, in every '
+        'peer row (DATA-R3-01)', () async {
+      await store.recordPeerKnowledge(dB, gA, VersionVector({dA: 90, dB: 5}));
+      await store.recordPeerKnowledge(dC, gA, VersionVector({dA: 70, dC: 4}));
+      await store.recordPeerKnowledge(dB, gB, VersionVector({dA: 80}));
+      expect(await store.capPeerKnowledge(gA, dA, 6), isTrue);
+      expect(await store.peerKnowledge(gA),
+          VersionVector({dA: 6, dB: 5, dC: 4}));
+      expect(await store.peerKnowledge(gB), VersionVector({dA: 80}));
+      // Never raises, and reports no change when nothing is above the cap.
+      expect(await store.capPeerKnowledge(gA, dA, 50), isFalse);
+      expect((await store.peerKnowledge(gA))[dA], 6);
+      expect(await store.capPeerKnowledge(gA, dC, 1), isTrue);
+      expect((await store.peerKnowledge(gA))[dC], 1);
+      // Later honest reports merge as before.
+      await store.recordPeerKnowledge(dC, gA, VersionVector({dA: 7}));
+      expect((await store.peerKnowledge(gA))[dA], 7);
+    });
+
     test('kv: get, overwrite, null deletes', () async {
       expect(await store.getKv('k'), isNull);
       await store.setKv('k', 'v1');
