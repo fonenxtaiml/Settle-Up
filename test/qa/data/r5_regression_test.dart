@@ -505,8 +505,9 @@ void main() {
       // 40-character limit, so Settings accepts it.
       final name = 'a${'\u0301' * 100}';
       await a.settings.setDeviceName(name);
-      // Stored in the one form names take (UIFLOW-R6-01).
+      // Stored normalised: NFC composes the base letter and its first mark.
       expect(a.settings.device.deviceName, NameText.normalize(name));
+      expect(a.settings.device.deviceName, '\u00E1${'\u0301' * 99}');
       final sent = await helloOf(a.settings.device.deviceName);
       // Expected: a non-empty, well-formed name (the base letter, a
       // code-point cut, or a fallback such as "Phone"). Actual: '' - the

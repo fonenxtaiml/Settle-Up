@@ -53,14 +53,17 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Future<void> _start() async {
-    final name = _name.text.trim();
-    if (!NameText.isValid(name) || _saving) return;
+    // The name Settings saves: a letter or number is needed (DATA-R6-02).
+    if (!NameText.isValid(_name.text) || _saving) return;
     setState(() => _saving = true);
     await runGuarded(
       context,
       () => ref
           .read(settingsRepositoryProvider)
-          .completeOnboarding(displayName: name, homeCurrency: _currency),
+          .completeOnboarding(
+            displayName: _name.text,
+            homeCurrency: _currency,
+          ),
     );
     if (mounted) setState(() => _saving = false);
   }
@@ -71,7 +74,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final ink2 = theme.colorScheme.onSurfaceVariant;
     final c = Currencies.of(_currency);
     final helper = theme.textTheme.bodySmall!.copyWith(color: ink2);
-    final name = _name.text.trim();
+    final valid = NameText.isValid(_name.text);
+    final name = valid ? NameText.normalize(_name.text) : '';
     return Scaffold(
       bottomNavigationBar: SafeArea(
         top: false,
@@ -82,7 +86,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               FilledButton(
-                onPressed: !NameText.isValid(name) || _saving ? null : _start,
+                onPressed: !valid || _saving ? null : _start,
                 style: KitButtonStyles.block,
                 child: const Text(S.getStarted),
               ),
@@ -138,6 +142,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 hintText: S.yourNameHint,
                 controller: _name,
                 maxLength: 40,
+                errorText: nameInputError(_name.text),
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _start(),

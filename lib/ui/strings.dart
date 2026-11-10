@@ -135,6 +135,9 @@ abstract final class S {
   static const groupDeleted = 'Group deleted';
   static const groupArchived = 'Group archived';
   static const nameNeeded = 'Add a name, like Goa trip';
+  /// A name typed with no letter or number (only spaces, symbols or
+  /// characters that show nothing).
+  static const nameNeedsLetter = 'Use at least one letter or number';
   static const emoji = 'Emoji';
   static const noEmoji = 'None';
   static const youAreIncluded = "You're in this group";
