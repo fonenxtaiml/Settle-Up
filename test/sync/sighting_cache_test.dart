@@ -5,7 +5,7 @@ import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
-import 'package:settle_up/sync/transport/lan/sighting_cache.dart';
+import 'package:settle_up/sync/transport/sighting_cache.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
 DiscoveredPeer _peer(String name, String address, String? id) => DiscoveredPeer(
