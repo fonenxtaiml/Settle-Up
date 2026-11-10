@@ -452,6 +452,11 @@ abstract final class S {
   static const bluetoothOffBody =
       'Turn it on to sync with phones that are not on your Wi-Fi.';
   static const turnOnBluetooth = 'Turn on Bluetooth';
+  static const locationOffTitle = 'Location is off';
+  static const locationOffBody =
+      'On this version of Android, Location must be on to find phones over '
+      'Bluetooth.';
+  static const turnOnLocation = 'Turn on location';
   static const wifiOffTitle = 'Wi-Fi is off';
   static const wifiOffBody =
       'Turn on Wi-Fi, or join a friend\'s hotspot, to sync over Wi-Fi.';

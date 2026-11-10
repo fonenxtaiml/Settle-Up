@@ -38,7 +38,13 @@ Future<Map<TransportKind, TransportAvailability>> prepareRadios(
 }
 
 /// What the Sync tab shows about the radios, most urgent first.
-enum RadioIssue { permissionDenied, needsPermission, bluetoothOff, wifiOff }
+enum RadioIssue {
+  permissionDenied,
+  needsPermission,
+  bluetoothOff,
+  locationOff,
+  wifiOff,
+}
 
 List<RadioIssue> radioIssues(Map<TransportKind, TransportAvailability> a) {
   bool any(TransportAvailability v) =>
@@ -50,6 +56,9 @@ List<RadioIssue> radioIssues(Map<TransportKind, TransportAvailability> a) {
       RadioIssue.needsPermission,
     if (a[TransportKind.ble] == TransportAvailability.radioOff)
       RadioIssue.bluetoothOff,
+    // Bluetooth is on, but scans on Android <= 12L need the location
+    // switch (BLE up to API 30, Nearby up to API 32).
+    if (any(TransportAvailability.locationOff)) RadioIssue.locationOff,
     if (a[TransportKind.lan] == TransportAvailability.radioOff)
       RadioIssue.wifiOff,
   ];
@@ -79,17 +88,20 @@ class RadioIssuesCard extends StatelessWidget {
               RadioIssue.permissionDenied => S.radiosDeniedTitle,
               RadioIssue.needsPermission => S.radiosAskTitle,
               RadioIssue.bluetoothOff => S.bluetoothOffTitle,
+              RadioIssue.locationOff => S.locationOffTitle,
               RadioIssue.wifiOff => S.wifiOffTitle,
             },
             subtitle: switch (i) {
               RadioIssue.permissionDenied => S.radiosDeniedBody,
               RadioIssue.needsPermission => S.radiosAskBody,
               RadioIssue.bluetoothOff => S.bluetoothOffBody,
+              RadioIssue.locationOff => S.locationOffBody,
               RadioIssue.wifiOff => S.wifiOffBody,
             },
             subtitleLines: 3,
             leading: Icon(switch (i) {
               RadioIssue.wifiOff => Icons.wifi_off_rounded,
+              RadioIssue.locationOff => Icons.location_off_rounded,
               _ => Icons.bluetooth_disabled_rounded,
             }),
             keepTrailingBeside: true,
@@ -102,6 +114,9 @@ class RadioIssuesCard extends StatelessWidget {
                 RadioIssue.bluetoothOff => () => AppSettings.openAppSettings(
                   type: AppSettingsType.bluetooth,
                 ),
+                RadioIssue.locationOff => () => AppSettings.openAppSettings(
+                  type: AppSettingsType.location,
+                ),
                 RadioIssue.wifiOff => () => AppSettings.openAppSettings(
                   type: AppSettingsType.wifi,
                 ),
@@ -110,6 +125,7 @@ class RadioIssuesCard extends StatelessWidget {
                 RadioIssue.permissionDenied => S.openSettings,
                 RadioIssue.needsPermission => S.allow,
                 RadioIssue.bluetoothOff => S.turnOnBluetooth,
+                RadioIssue.locationOff => S.turnOnLocation,
                 RadioIssue.wifiOff => S.turnOnWifi,
               }),
             ),

@@ -2006,6 +2006,9 @@ enum TransportAvailability {
   needsPermission,
   permissionPermanentlyDenied,
   radioOff, // Bluetooth or Wi-Fi switched off
+  // The location switch is off where Bluetooth scans need it (Android API
+  // <= 32 for Nearby, <= 30 for BLE); Bluetooth itself may be on.
+  locationOff,
   unsupported, // platform/hardware cannot do it
 }
 
@@ -3332,7 +3335,7 @@ class NearbyPermissions {
 }
 ```
 
-Per kind on Android (API level → permissions): `lan`: none (targetSdk 36). `nearby`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≥ 33 also `nearbyWifiDevices`; API ≤ 32 `locationWhenInUse`. `ble`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≤ 30 `locationWhenInUse`. On iOS: `ble` → `bluetooth`; `lan` → no runtime API (the system prompts on the first local-network access; a timeout there maps to `permissionDenied` with the hint "Allow Local Network for Settle Up in Settings"). `radioOff` comes from `CentralManager().state` (BLE) and the Wi-Fi state (LAN: no IPv4 interface).
+Per kind on Android (API level → permissions): `lan`: none (targetSdk 36). `nearby`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≥ 33 also `nearbyWifiDevices`; API ≤ 32 `locationWhenInUse`. `ble`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≤ 30 `locationWhenInUse`. On iOS: `ble` → `bluetooth`; `lan` → no runtime API (the system prompts on the first local-network access; a timeout there maps to `permissionDenied` with the hint "Allow Local Network for Settle Up in Settings"). `radioOff` comes from `CentralManager().state` (BLE) and the Wi-Fi state (LAN: no IPv4 interface). `locationOff` is reported for `nearby`/`ble` when Bluetooth is on but the location service switch is off on an API level that needs `locationWhenInUse` for scanning (the Sync tab offers "Turn on location").
 
 ---
 

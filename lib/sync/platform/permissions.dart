@@ -168,11 +168,7 @@ class NearbyPermissions {
       if (denied != null) return PermissionCheck(denied, needed);
     }
 
-    final radioOff = await _radioOff(kind, needed);
-    return PermissionCheck(
-      radioOff ? TransportAvailability.radioOff : TransportAvailability.ready,
-      needed,
-    );
+    return PermissionCheck(await _radioState(kind, needed), needed);
   }
 
   Future<Map<Permission, PermissionStatus>> _statuses(
@@ -204,27 +200,39 @@ class NearbyPermissions {
     return worst;
   }
 
-  Future<bool> _radioOff(TransportKind kind, List<Permission> needed) async {
+  /// ready, or why the radios stop [kind]: Bluetooth or Wi-Fi off
+  /// (radioOff), or Bluetooth on but the location switch off where scans
+  /// need it (locationOff, a different fix).
+  Future<TransportAvailability> _radioState(
+    TransportKind kind,
+    List<Permission> needed,
+  ) async {
     switch (kind) {
       case TransportKind.lan:
         try {
-          return !await _platform.hasLanInterface();
+          return await _platform.hasLanInterface()
+              ? TransportAvailability.ready
+              : TransportAvailability.radioOff;
         } catch (e, st) {
           _log('hasLanInterface failed', e, st);
-          return false;
+          return TransportAvailability.ready;
         }
       case TransportKind.nearby:
       case TransportKind.ble:
-        if (await _bluetooth() == RadioState.off) return true;
+        if (await _bluetooth() == RadioState.off) {
+          return TransportAvailability.radioOff;
+        }
         if (needed.contains(Permission.locationWhenInUse)) {
           try {
             // Scanning on old APIs returns nothing with location off.
-            return !await _platform.locationServiceOn();
+            if (!await _platform.locationServiceOn()) {
+              return TransportAvailability.locationOff;
+            }
           } catch (e, st) {
             _log('locationServiceOn failed', e, st);
           }
         }
-        return false;
+        return TransportAvailability.ready;
     }
   }
 
