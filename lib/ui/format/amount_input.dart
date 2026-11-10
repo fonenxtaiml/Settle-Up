@@ -10,8 +10,13 @@ import '../../core/money.dart';
 /// Rules:
 /// - spaces, NBSP, apostrophes and other non-digit marks are grouping or
 ///   decoration and are dropped; so is a '.' or ',' that belongs to a word
-///   ("Rs. 500", "approx. 300"): one right after a letter, or anywhere in
-///   a lead-in with letters before the first digit;
+///   ("Rs. 500", "approx. 300"): one right after a letter, or one in a
+///   lead-in with letters before the first digit, unless it sits right
+///   before that digit ("USD .50" is half a dollar);
+/// - text with more than one number in it ("Rs 500 paid at Cafe 21",
+///   "Dinner for 4: 1,200", "1e3") or with a multiplier after the number
+///   ("2.5k", "1.5 lakh", "$1.2M") is refused: it is never joined or
+///   shortened into a different amount;
 /// - with both '.' and ',', the last one is the decimal separator and the
 ///   other may only group digits before it ("1.234,50", "1,234.50");
 /// - commas only: several commas group ("1,20,000"); a single comma groups
@@ -23,14 +28,34 @@ import '../../core/money.dart';
 /// - a first group of 0 ("0,500", "00,123") or with a leading zero never
 ///   groups thousands: "0,500" is a decimal comma.
 ///
+/// With [currency], the text is read the way that currency is written, the
+/// same in every amount input (the big field, split fields, the payer
+/// sheet, a paste):
+/// - a single comma followed by no more digits than the currency has is
+///   its decimal comma where people write one: TND "1,250" is 1.250, as
+///   the amount field shows it when typed (KWD writes a dot, and "1,250"
+///   there is a thousand two hundred and fifty);
+/// - in a currency with no decimals, a single dot followed by three digits
+///   groups: VND "50.000" is fifty thousand (a dot cannot be a decimal
+///   point there);
+/// - lakh grouping ("1,00,000") is read only for currencies written that
+///   way; "1,23," in USD is not a number.
+///
 /// With [typing], the text is still being typed at its end, so the last
 /// comma group may be short too ("1,234," and "1,234,5" on the way to
 /// "1,234,567").
 ///
 /// The fraction is not cut to the currency here; callers decide.
-String? normalizeAmountInput(String raw, {bool typing = false}) {
+String? normalizeAmountInput(
+  String raw, {
+  bool typing = false,
+  Currency? currency,
+}) {
+  if (_joinsNumbers(raw) || _hasMultiplier(raw)) return null;
   final kept = _dropWordMarks(raw).replaceAll(RegExp(r'[^0-9.,]'), '');
   if (kept.isEmpty) return '';
+  final lakh = currency == null || lakhCurrencies.contains(currency.code);
+  final digits = currency?.minorDigits;
   final lastDot = kept.lastIndexOf('.');
   final lastComma = kept.lastIndexOf(',');
 
@@ -42,25 +67,38 @@ String? normalizeAmountInput(String raw, {bool typing = false}) {
     final frac = kept.substring(at + 1);
     // One decimal separator, grouping only before it.
     if (whole.contains(decimal) || frac.contains(group)) return null;
-    if (!_validGroups(whole.split(group), allowLakh: true)) return null;
+    if (!_validGroups(whole.split(group), allowLakh: lakh)) return null;
     return '${whole.replaceAll(group, '')}.$frac';
   }
 
   if (lastComma >= 0) {
     final parts = kept.split(',');
     if (parts.length > 2) {
-      return _validGroups(parts, allowLakh: true, partialLast: typing)
+      return _validGroups(parts, allowLakh: lakh, partialLast: typing)
           ? parts.join()
           : null;
     }
     final after = parts[1];
-    if (after.length == 3 && _canLeadGroups(parts[0])) return parts.join();
+    final groups = after.length == 3 && _canLeadGroups(parts[0]);
+    // Room for the digits as decimals where people write a decimal comma:
+    // TND "1,250" is 1.250, as typed in the amount field.
+    if (currency != null &&
+        after.length <= digits! &&
+        decimalCommaCurrencies.contains(currency.code)) {
+      return '${parts[0]}.$after';
+    }
+    if (groups) return parts.join();
     return '${parts[0]}.$after';
   }
 
   if (lastDot >= 0) {
     final parts = kept.split('.');
-    if (parts.length == 2) return kept;
+    if (parts.length == 2) {
+      if (digits == 0 && parts[1].length == 3 && _canLeadGroups(parts[0])) {
+        return parts.join();
+      }
+      return kept;
+    }
     for (var i = 1; i < parts.length; i++) {
       final last = i == parts.length - 1;
       final n = parts[i].length;
@@ -72,19 +110,52 @@ String? normalizeAmountInput(String raw, {bool typing = false}) {
   return kept;
 }
 
-/// The digits of [raw] when its commas group them as typed so far (the last
-/// group may be short: "1,0" on the way to "1,000"), or null.
-String? typedCommaGroups(String raw) {
-  final kept = _dropWordMarks(raw).replaceAll(RegExp(r'[^0-9,]'), '');
-  final parts = kept.split(',');
-  return _validGroups(parts, allowLakh: true, partialLast: true)
+/// The digits of [raw] when its [separator]s group them as typed so far
+/// (the last group may be short: "1,0" on the way to "1,000"), or null.
+String? typedGroups(String raw, {String separator = ','}) {
+  final kept = _dropWordMarks(raw)
+      .replaceAll(RegExp('[^0-9${RegExp.escape(separator)}]'), '');
+  final parts = kept.split(separator);
+  return _validGroups(parts, allowLakh: separator == ',', partialLast: true)
       ? parts.join()
       : null;
 }
 
+/// Whether [raw] holds more than one number: digit runs apart by anything
+/// but separators, spaces and apostrophes ("Rs 500 paid at Cafe 21" is 500
+/// and 21, never 50,021; "1e3" is not 13).
+bool _joinsNumbers(String raw) {
+  final first = raw.indexOf(RegExp('[0-9]'));
+  if (first < 0) return false;
+  final last = raw.lastIndexOf(RegExp('[0-9]'));
+  return !RegExp(r"^[0-9.,'\u2019\u02BC\s\u00A0\u2009\u202F]*$")
+      .hasMatch(raw.substring(first, last + 1));
+}
+
+/// Words and letters after a number that multiply it ("2.5k", "1.5 lakh",
+/// "$1.2M", "3 crore"): dropping them would read a different amount.
+const Set<String> _multipliers = {
+  'k', 'kk', 'm', 'mm', 'mn', 'mio', 'mil', 'b', 'bn', 'mrd', 't', 'tn', //
+  'l', 'lac', 'lacs', 'lakh', 'lakhs', 'cr', 'crs', 'crore', 'crores', //
+  'thousand', 'thousands', 'million', 'millions', 'billion', 'billions', //
+  'tsd', 'e',
+};
+
+bool _hasMultiplier(String raw) {
+  final last = raw.lastIndexOf(RegExp('[0-9]'));
+  if (last < 0) return false;
+  final word = RegExp(
+    r'^[\s\u00A0]*(\p{L}+)',
+    unicode: true,
+  ).firstMatch(raw.substring(last + 1));
+  return word != null && _multipliers.contains(word.group(1)!.toLowerCase());
+}
+
 /// [raw] without the '.' and ',' that belong to words rather than to the
 /// number: one right after a letter ("Rs.500", "approx. 300", "500 Rs."),
-/// and every one in a lead-in that holds letters ("Rs . 500").
+/// and one in a lead-in that holds letters ("Rs . 500"), unless it sits
+/// right before the first digit, apart from the word ("USD .50", "Rs. .50"):
+/// that one is the decimal point.
 String _dropWordMarks(String raw) {
   final letter = RegExp(r'\p{L}', unicode: true);
   final firstDigit = raw.indexOf(RegExp('[0-9]'));
@@ -94,8 +165,8 @@ String _dropWordMarks(String raw) {
   for (var i = 0; i < raw.length; i++) {
     final ch = raw[i];
     if (ch == '.' || ch == ',') {
-      if (leadHasLetter && i < firstDigit) continue;
       if (i > 0 && letter.hasMatch(raw[i - 1])) continue;
+      if (leadHasLetter && i < firstDigit - 1) continue;
     }
     out.write(ch);
   }
@@ -140,10 +211,14 @@ const Set<String> decimalCommaCurrencies = {
   'XAF', 'XOF',
 };
 
-/// Minor units for an amount typed in any of the forms above, or null when
-/// it cannot be read, has more decimals than [c] allows, or is too large.
+/// Currencies whose people group digits in lakhs and crores ("1,00,000").
+const Set<String> lakhCurrencies = {'INR', 'NPR', 'PKR', 'BDT', 'LKR'};
+
+/// Minor units for an amount typed in any of the forms above, read the way
+/// [c] is written, or null when it cannot be read, has more decimals than
+/// [c] allows, or is too large.
 int? parseAmountInput(String raw, Currency c) {
-  final t = normalizeAmountInput(raw.trim());
+  final t = normalizeAmountInput(raw.trim(), currency: c);
   if (t == null || t.isEmpty) return null;
-  return Money.parseMinor(t, c);
+  return Money.parseMinor(t.startsWith('.') ? '0$t' : t, c);
 }
