@@ -3260,7 +3260,7 @@ CLOSING ──recv BYE, 2 s, or the link drops──► CLOSED (success; SyncRec
 
 #### 8.7.1 Engine orchestration (`DefaultSyncEngine`)
 
-- **One session at a time** exchanges data. Inbound connections handshake in parallel (at most 4; a fifth evicts the oldest one that has not authenticated), and a session asks for the slot only once the peer's AUTH verifies, so a silent or keyless connection cannot hold it. Then:
+- **One session at a time** exchanges data. Inbound connections handshake in parallel, and a session asks for the slot only once the peer's AUTH verifies, so a silent or keyless connection cannot hold it. Pre-AUTH limits (QA SECURITY-R1-10, R2-03): connections that have not said HELLO yet may number 64, at most 4 from one source (the IP address on LAN); a new connection beyond either limit evicts the oldest silent one (from that source first). Handshakes under way (HELLO received, not authenticated) are at most 4; a fifth HELLO evicts the oldest of them. A new connection never evicts a handshake under way, so a stranger who reconnects in a loop cannot push out a friend. Then:
   - nothing else runs: it is admitted;
   - the slot is held by an inbound session from the **same** device id that started earlier: the old one (dead after a half-open link, or abandoned) is cancelled and recorded as such, and the new one is admitted;
   - this phone's own Sync is for the same phone (both tapped Sync on each other): the phone with the **lower device id** gives way. It cancels its own attempt, serves the other one's connection, and its `syncWith` returns that session's summary. The other phone refuses it with `ERROR busy "Already syncing with you"`. While its own Sync has not learned whom it reaches yet (still connecting, no HELLO), an authenticated inbound session waits up to one handshake timeout (its own handshake timer pauses meanwhile);
@@ -3318,6 +3318,7 @@ This is the same session staying in LIVE. The UI sets `liveMode = true` while th
 | A peer's device name reorders or hides text on screen | Names from a peer (HELLO, adverts, connect and invite links) are cleaned like local names (`TextRules.clean`: no control, bidi or zero-width characters) before they are shown or stored in a `SyncRecord` (`lib/sync/peer_name.dart`). |
 | A link from a web page makes the phone dial out | Only local-network IP addresses are dialed (8.6). |
 | A stranger on the hotspot holds the host's session slot | Handshakes run in parallel; only an authenticated session takes the slot (8.7.1). |
+| A stranger reconnects in a tight loop to push friends' handshakes out | New connections only evict silent ones (no HELLO yet), oldest first and from the same source first; 64 may wait, so a friend's HELLO has many connections' worth of time to arrive (8.7.1). |
 | Replay of an old session | Fresh nonces in HELLO; strictly sequential frame counters. |
 | QR photographed by someone | The QR is the membership secret. It auto-hides after 2 min and sharing is explicit with a warning. Rotation is Phase 2. |
 | Member forges another member's op | Accepted risk for MVP (friends). Phase 2 adds Ed25519 signatures. |

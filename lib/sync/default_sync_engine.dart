@@ -2,9 +2,13 @@
 // transports, choosing a transport, one session at a time.
 //
 // One session at a time means one session that exchanges data. Inbound
-// connections handshake in parallel (up to [kMaxPendingInbound]), and the
-// first to authenticate gets the slot, so a silent stranger cannot hold
-// it. Who gets the slot (SPEC 8.7.1):
+// connections handshake in parallel, and the first to authenticate gets
+// the slot, so a silent stranger cannot hold it. Connections that have not
+// said HELLO yet are cheap and many may wait ([kMaxSilentInbound], at most
+// [kMaxSilentPerSource] from one address); handshakes that are under way
+// are bounded by [kMaxPendingInbound]. A new connection only ever evicts a
+// silent one, so a stranger who keeps reconnecting cannot push out a
+// friend whose handshake is progressing. Who gets the slot (SPEC 8.7.1):
 // - nothing running: the session is admitted;
 // - a new authenticated connection from the phone whose inbound session
 //   holds the slot: it replaces that (dead or abandoned) session;
@@ -30,6 +34,7 @@ import 'sync_clock.dart';
 import 'sync_engine.dart';
 import 'transport/hosting_details.dart';
 import 'transport/lan/local_address.dart';
+import 'transport/lan/tcp_framing.dart' show parseHostPort;
 import 'transport/transport.dart';
 
 export 'sync_clock.dart';
@@ -41,9 +46,23 @@ void _log(String message, [Object? error, StackTrace? st]) => developer.log(
       stackTrace: st,
     );
 
-/// Inbound handshakes that may run at once. A new one beyond this evicts
-/// the oldest one that has not authenticated yet.
+/// Inbound handshakes (HELLO received, not authenticated yet) that may run
+/// at once. One more evicts the oldest of them.
 const int kMaxPendingInbound = 4;
+
+/// Inbound connections that have not said HELLO yet. A new connection
+/// beyond this evicts the oldest of them, so a friend's fresh connection
+/// outlives this many newer ones while its HELLO is on the way (one round
+/// trip; in tests a tight reconnect loop gets about 17 in). A silent
+/// connection costs a socket and a timer until its handshake timeout.
+const int kMaxSilentInbound = 64;
+
+/// Silent inbound connections from one source (the IP address on LAN). A
+/// new one beyond this evicts that source's oldest, so one stranger's
+/// reconnect loop only ever pushes out its own connections.
+const int kMaxSilentPerSource = 4;
+
+const String _tooMany = 'Too many phones connecting';
 
 const String _busyOther = 'Syncing with another phone';
 const String _busySame = 'Already syncing with you';
@@ -388,16 +407,7 @@ final class DefaultSyncEngine implements SyncEngine {
       unawaited(_rejectBusy(channel));
       return;
     }
-    if (_pendingInbound.length >= kMaxPendingInbound) {
-      // The oldest handshake that has not authenticated has had the
-      // longest to prove itself.
-      final victim = _pendingInbound.firstWhere(
-        (s) => s.state.index < SessionState.authenticated.index,
-        orElse: () => _pendingInbound.first,
-      );
-      _pendingInbound.remove(victim);
-      unawaited(victim.cancel(message: 'Too many phones connecting'));
-    }
+    _makeRoomFor(channel);
     final run = _startSession(channel, SessionRole.responder, '');
     unawaited(run.result.then(
       (r) async {
@@ -406,6 +416,56 @@ final class DefaultSyncEngine implements SyncEngine {
       },
       onError: (Object e, StackTrace st) => _log('inbound session', e, st),
     ));
+  }
+
+  /// Who opened [channel], for [kMaxSilentPerSource]: the IP address of a
+  /// LAN connection (its port changes with every connection), else the
+  /// transport address.
+  static String _sourceOf(FrameChannel channel) {
+    final address = channel.peerAddress;
+    if (channel.kind != TransportKind.lan) return '${channel.kind.name}|$address';
+    return 'lan|${parseHostPort(address)?.host ?? address}';
+  }
+
+  /// An inbound connection whose peer has not said HELLO yet.
+  static bool _isSilent(SyncSession s) =>
+      !s.isFinished && s.peerDeviceId == null;
+
+  void _evict(SyncSession victim) {
+    _pendingInbound.remove(victim);
+    unawaited(victim.cancel(message: _tooMany));
+  }
+
+  /// Before a new inbound connection from [channel] starts: evicts the
+  /// oldest silent connection from the same source, or the oldest silent
+  /// one overall, when either limit is reached. Handshakes under way are
+  /// never evicted for a new connection (the oldest silent connection has
+  /// had the longest to speak).
+  void _makeRoomFor(FrameChannel channel) {
+    final source = _sourceOf(channel);
+    final silent = _pendingInbound.where(_isSilent).toList();
+    final mine = [
+      for (final s in silent)
+        if (_sourceOf(s.channel) == source) s,
+    ];
+    if (mine.length >= kMaxSilentPerSource) {
+      _evict(mine.first);
+    } else if (silent.length >= kMaxSilentInbound) {
+      _evict(silent.first);
+    }
+  }
+
+  /// [hello]'s peer has just said HELLO: if that makes more than
+  /// [kMaxPendingInbound] handshakes under way, the oldest of them goes.
+  void _limitHandshakes(SyncSession hello) {
+    final handshaking = [
+      for (final s in _pendingInbound)
+        if (!s.isFinished &&
+            s.peerDeviceId != null &&
+            s.state.index < SessionState.authenticated.index)
+          s,
+    ];
+    if (handshaking.length > kMaxPendingInbound) _evict(handshaking.first);
   }
 
   Future<void> _rejectBusy(FrameChannel channel) async {
@@ -828,7 +888,7 @@ final class DefaultSyncEngine implements SyncEngine {
     final waited = Stopwatch()..start();
     while (true) {
       if (_disposed) return _busyOther;
-      if (!_pendingInbound.contains(s)) return 'Too many phones connecting';
+      if (!_pendingInbound.contains(s)) return _tooMany;
       final out = _outbound;
       if (out != null) {
         final target = out.session?.peerDeviceId;
@@ -892,7 +952,10 @@ final class DefaultSyncEngine implements SyncEngine {
         if (_mayShow(run, null)) _setStatus(session: SessionCompleted(r.summary));
         if (!run.live.isCompleted) run.live.complete(r);
       },
-      onPeerHello: (_) => _notify(),
+      onPeerHello: (s) {
+        if (role == SessionRole.responder) _limitHandshakes(s);
+        _notify();
+      },
       admit: (_) => out == null ? _admitInbound(run) : _admitOutbound(run, out),
     );
     run = _Run(session, _runSeq++);

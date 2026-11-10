@@ -145,7 +145,7 @@ void main() {
     final r = await honestSync();
     flooding = false;
     expect(r.isSuccess, isTrue, reason: '${r.failure}: ${r.message}');
-  }, skip: 'SECURITY-R2-03');
+  });
 
   test('garbage before HELLO ends only that connection', () async {
     final ch = await dial('mallory');

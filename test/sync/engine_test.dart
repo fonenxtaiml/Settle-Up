@@ -589,6 +589,70 @@ void main() {
       }
     });
 
+    Future<List<FrameChannel>> openSilent(Iterable<String> from) async {
+      final out = <FrameChannel>[];
+      for (final address in from) {
+        final t =
+            MemoryTransport(hub, kind: TransportKind.lan, address: address);
+        addTearDown(t.dispose);
+        out.add(await t.connect(const DiscoveredPeer(
+          kind: TransportKind.lan,
+          address: 'b-lan',
+          name: '',
+        )));
+      }
+      return out;
+    }
+
+    /// How many of [channels] the host has closed.
+    Future<int> closedBy(List<FrameChannel> channels) async {
+      var closed = 0;
+      for (final c in channels) {
+        final done = Completer<void>();
+        c.frames.listen((_) {}, onDone: done.complete, onError: (_) {});
+        final ended = await done.future
+            .then((_) => true)
+            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
+        if (ended) closed++;
+      }
+      return closed;
+    }
+
+    test(
+        'one source reconnecting only evicts its own silent connections '
+        '(SECURITY-R2-03)', () async {
+      await priya.engine.startHosting();
+      // A friend's connection that has not said anything yet.
+      final friend = await openSilent(['10.0.0.7:40000']);
+      // One stranger, a new port per connection.
+      final flood = await openSilent([
+        for (var i = 0; i < kMaxSilentPerSource + 6; i++)
+          '10.0.0.66:${41000 + i}',
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await closedBy(flood), 6);
+      expect(await closedBy(friend), 0);
+    });
+
+    test(
+        'new connections never evict a handshake that is under way '
+        '(SECURITY-R2-03)', () async {
+      hub.latency = const Duration(milliseconds: 40);
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      final sync = alex.engine.syncWith(toPriya);
+      // Alex's HELLO has reached the host; his AUTH is still on its way.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      final flood = await openSilent([
+        for (var i = 0; i < kMaxSilentInbound + 8; i++) 'mallory-$i',
+      ]);
+      final summary = await sync;
+      expect(summary.sentOps, 7);
+      for (final c in flood) {
+        await c.close();
+      }
+    });
+
     test('a third phone is told the host is syncing with another phone',
         () async {
       hub.latency = const Duration(milliseconds: 20);
