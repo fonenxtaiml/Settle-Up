@@ -1,7 +1,6 @@
 // Regression tests for the UI flow fixes from QA round 2 (UIFLOW-R1-07,
 // UIFLOW-R2-01, UIFLOW-R2-03, UIFLOW-R1-01), on the real Ledger and router.
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/strings.dart';
