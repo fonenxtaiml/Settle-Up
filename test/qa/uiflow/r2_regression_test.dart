@@ -728,5 +728,5 @@ void main() {
     );
     expect(w.group(gid).liveExpenses.single.money.total, 1200000000);
     await w.engine.dispose();
-  }, skip: true); // QA UIFLOW-R2-04
+  });
 }

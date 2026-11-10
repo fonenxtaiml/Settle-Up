@@ -204,6 +204,6 @@ void main() {
   // quote.
   test('repro amounts', () {
     expect(MoneyFormat.format(12000050, 'INR', signed: true), '+₹1,20,000.50');
-    expect(MoneyFormat.format(Money.maxMinor, 'INR'), '₹99,99,999.99');
+    expect(MoneyFormat.format(Money.maxMinor, 'INR'), '₹99,99,99,999.99');
   });
 }

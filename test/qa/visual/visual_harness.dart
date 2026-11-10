@@ -416,7 +416,7 @@ final class VisualWorld {
     kwd: 125750,
   );
 
-  /// Money.maxMinor in INR (₹99,99,999.99) and KWD (KD999,999.999).
+  /// Money.maxMinor in INR (₹99,99,99,999.99) and KWD (KD99,999,999.999).
   static Future<VisualWorld> huge() =>
       build(inr: Money.maxMinor, kwd: Money.maxMinor);
 }

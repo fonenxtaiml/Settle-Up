@@ -8,6 +8,7 @@ import '../../core/hlc.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
+import '../../core/money.dart';
 import '../../core/ops.dart';
 import '../../core/split.dart';
 import '../../data/repositories.dart';
@@ -506,7 +507,7 @@ final class FakeLedgerRepository implements LedgerRepository {
     SplitSpec paid,
     SplitSpec owed,
   ) {
-    if (total <= 0 || total > 999999999) {
+    if (total <= 0 || total > Money.maxMinor) {
       throw const LedgerException(LedgerErrorCode.invalidInput, 'total');
     }
     try {
@@ -632,7 +633,7 @@ final class FakeLedgerRepository implements LedgerRepository {
   }
 
   MoneyBlock _paymentMoney(PaymentDraft d) {
-    if (d.amount <= 0 || d.amount > 999999999) {
+    if (d.amount <= 0 || d.amount > Money.maxMinor) {
       throw const LedgerException(LedgerErrorCode.invalidInput, 'amount');
     }
     return SplitCalculator.paymentBlock(

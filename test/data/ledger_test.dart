@@ -9,6 +9,7 @@ import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/ledger_state.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/core/split.dart';
 import 'package:settle_up/core/version_vector.dart';
@@ -480,6 +481,22 @@ void main() {
       expect(a.snap.state.expense(e)!.category, Categories.general);
     });
 
+    test('every currency holds amounts up to Money.maxMinor (UIFLOW-R2-04)',
+        () async {
+      final t = await trip();
+      for (final (currency, total) in [
+        ('IDR', 1200000000), // Rp 12,000,000.00, a villa for a week
+        ('COP', 450000000), // COP 4,500,000.00
+        ('INR', Money.maxMinor),
+        ('JPY', Money.maxMinor),
+      ]) {
+        final e = await a.ledger.addExpense(draft(t.g, [t.me, t.sam],
+            currency: currency, total: total));
+        expect(a.snap.state.expense(e)!.money.total, total);
+        expect(a.snap.state.expense(e)!.money.currency, currency);
+      }
+    });
+
     test('validation errors', () async {
       final t = await trip();
       final before = a.snap.ops.length;
@@ -488,7 +505,7 @@ void main() {
       await bad(draft(t.g, [t.me], description: '  '),
           LedgerErrorCode.invalidInput);
       await bad(draft(t.g, [t.me], total: 0), LedgerErrorCode.invalidInput);
-      await bad(draft(t.g, [t.me], total: 1000000000),
+      await bad(draft(t.g, [t.me], total: Money.maxMinor + 1),
           LedgerErrorCode.invalidInput);
       await bad(draft(t.g, [t.me], currency: 'X'), LedgerErrorCode.invalidInput);
       await bad(draft('nope', [t.me]), LedgerErrorCode.groupNotFound);

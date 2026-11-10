@@ -63,7 +63,8 @@ void main() {
     qaPhone(tester);
     final w = await RealWorld.create(name: 'Arjun');
     await openAddExpense(tester, w);
-    await tester.enterText(find.byType(TextField).at(0), '12000000');
+    // Above Money.maxMinor (999,999,999.99 with 2 digits, UIFLOW-R2-04).
+    await tester.enterText(find.byType(TextField).at(0), '1200000000');
     await tester.pump();
     expect(find.textContaining('Enter an amount up to'), findsOneWidget);
     // A smaller amount clears the note.
