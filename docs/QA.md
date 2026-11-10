@@ -159,8 +159,10 @@ under `settle_up.sync.nearby` and `settle_up.sync.ble`.
 
 - **Nearby Connections** (Android only, kind `nearby`): service id
   `app.settleup.sync`, strategy `P2P_CLUSTER`. The advertised endpoint name
-  is `1|<device id prefix>|<device name, 24 max>|<up to 4 tokens>`, so the
-  scanner lists the phone and its shared groups without connecting. Both
+  is `2|<advert id>|<window tag>|<device name, 24 max>|<up to 24 tokens>`
+  (SPEC 8.3: the advert id is random and changes every 10 minutes; no
+  device id is advertised), so the scanner lists the phone and its shared
+  groups without connecting. Both
   sides accept every connection automatically; the session handshake does
   the authentication. One frame is one BYTES payload (32 KiB max). Nearby
   may move the link from Bluetooth to Wi-Fi by itself during a sync; that

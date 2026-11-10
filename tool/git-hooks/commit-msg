@@ -1,0 +1,18 @@
+#!/usr/bin/env bash
+# Rejects commit messages with AI attribution trailers (CONTRIBUTING.md,
+# "Commit messages"). Enable once per clone:
+#   git config core.hooksPath tool/git-hooks
+set -euo pipefail
+here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../commit_message_policy.sh
+source "$here/../commit_message_policy.sh"
+
+if ! bad="$(commit_message_violations <"$1")"; then
+  exit 0
+fi
+{
+  echo "commit-msg: this message has lines the repository does not allow:"
+  sed 's/^/  /' <<<"$bad"
+  echo "Remove them (no co-author, session or tool attribution lines)."
+} >&2
+exit 1
