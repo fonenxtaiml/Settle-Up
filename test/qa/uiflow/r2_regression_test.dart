@@ -520,7 +520,9 @@ void main() {
   });
 
   testWidgets(
-    'UIFLOW-R2-02: typing 12000000 in IDR leaves 1,200,000 in the field with Save enabled, so a tenth of the bill can be saved',
+    // UIFLOW-R2-04 lifted the cap to Rp 999,999,999.99: 1200000000 is the
+    // over-cap amount now (it was 12000000).
+    'UIFLOW-R2-02: typing 1200000000 in IDR leaves 120,000,000 in the field with Save enabled, so a tenth of the bill can be saved',
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');
@@ -533,7 +535,7 @@ void main() {
       await tester.pump();
       // Typed one key at a time, as on a phone keyboard.
       var text = '';
-      for (final ch in '12000000'.split('')) {
+      for (final ch in '1200000000'.split('')) {
         text = tester.widget<TextField>(amount).controller!.text + ch;
         tester.testTextInput.updateEditingValue(
           TextEditingValue(
@@ -548,8 +550,8 @@ void main() {
       final shown = tester.widget<TextField>(amount).controller!.text;
       final message = find.textContaining('Enter an amount up to');
       // Expected: no amount other than what was typed can be saved: either the
-      // field keeps 12,000,000 (accepted) or Save is off until it is fixed.
-      final misleading = shown == '1,200,000' && saveEnabled(tester);
+      // field keeps 1,200,000,000 or Save is off until it is fixed.
+      final misleading = shown == '120,000,000' && saveEnabled(tester);
       expect(message, findsOneWidget);
       expect(misleading, isFalse, reason: 'field shows "$shown"');
       await w.shutdown(tester);

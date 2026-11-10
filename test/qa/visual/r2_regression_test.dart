@@ -87,8 +87,11 @@ void main() {
       late VisualWorld w;
       await tester.runAsync(() async => w = await build());
       for (final variant in kVariants) {
+        // Since UIFLOW-R2-04 the huge INR total is ₹99,99,99,999.99: at
+        // 320 dp, 1.3x+ that is the short-form cut of QA VISUAL-R2-07 below.
+        final r207 = !kwd && variant.size.width == 320 && variant.scale > 1;
         for (final loc in [
-          Routes.group(w.group),
+          if (!r207) Routes.group(w.group),
           if (kwd) Routes.group(w.kwdGroup),
         ]) {
           await pumpVisual(tester, w.phone, v: variant, location: loc);
@@ -537,16 +540,19 @@ void main() {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.huge());
       for (final variant in [v(320, 1.3), v(320, 2.0, Brightness.dark)]) {
-        await pumpVisual(
-          tester,
-          w.phone,
-          v: variant,
-          location: Routes.group(w.kwdGroup),
-        );
-        for (final c in cutContaining(tester, ' spent')) {
-          problems.add('${variantName(variant)}: $c');
+        // Also the INR group: ₹99,99,99,999.99 since UIFLOW-R2-04.
+        for (final group in [w.kwdGroup, w.group]) {
+          await pumpVisual(
+            tester,
+            w.phone,
+            v: variant,
+            location: Routes.group(group),
+          );
+          for (final c in cutContaining(tester, ' spent')) {
+            problems.add('${variantName(variant)}: $c');
+          }
+          await tester.pumpWidget(const SizedBox.shrink());
         }
-        await tester.pumpWidget(const SizedBox.shrink());
       }
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
