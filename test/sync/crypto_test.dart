@@ -598,4 +598,60 @@ void main() {
       await alex.close();
     },
   );
+
+  group('HELLO device name (DATA-R4-03)', () {
+    bool wellFormed(String s) {
+      for (var i = 0; i < s.length; i++) {
+        final u = s.codeUnitAt(i);
+        if (u >= 0xD800 && u <= 0xDBFF) {
+          if (i + 1 >= s.length) return false;
+          final v = s.codeUnitAt(i + 1);
+          if (v < 0xDC00 || v > 0xDFFF) return false;
+          i++;
+        } else if (u >= 0xDC00 && u <= 0xDFFF) {
+          return false;
+        }
+      }
+      return true;
+    }
+
+    test('a name within the limit is sent as it is', () {
+      expect(helloDeviceName("Priya's Pixel"), "Priya's Pixel");
+      final exact = 'x' * kMaxDeviceNameLength;
+      expect(helloDeviceName(exact), exact);
+    });
+
+    test('flags past 100 units are dropped whole', () {
+      final name = 'a${'\u{1F1EE}\u{1F1F3}' * 26}'; // 105 units
+      final cut = helloDeviceName(name);
+      expect(cut.length, lessThanOrEqualTo(kMaxDeviceNameLength));
+      expect(cut, 'a${'\u{1F1EE}\u{1F1F3}' * 24}');
+      expect(wellFormed(cut), isTrue);
+    });
+
+    test('a cluster of BMP units is not split', () {
+      // "kssa" conjunct: 3 units per cluster, 99 units fit in 33 clusters.
+      const kssa = '\u0915\u094D\u0937';
+      final name = kssa * 40;
+      final cut = helloDeviceName(name);
+      expect(cut, kssa * 33);
+    });
+
+    test('the cut name survives the HELLO frame unchanged', () async {
+      final name = 'a${'\u{1F1EE}\u{1F1F3}' * 26}';
+      final hs = await Handshake.start(
+        initiator: true,
+        groupKeys: {'g1': Uint8List(32)},
+        deviceId: 'dev-a',
+        deviceName: name,
+        maxFrame: 16384,
+        transport: TransportKind.lan,
+        random: Random(1),
+      );
+      final frame = FrameCodec.plainFrame(hs.hello);
+      final back = FrameCodec.decodePlainFrame(frame) as HelloMessage;
+      expect(back.deviceName, hs.hello.deviceName);
+      expect(name.startsWith(back.deviceName), isTrue);
+    });
+  });
 }
