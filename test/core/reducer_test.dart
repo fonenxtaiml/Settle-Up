@@ -6,6 +6,7 @@ import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ledger_state.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
+import 'package:settle_up/core/reducer/canonical.dart';
 import 'package:settle_up/core/split.dart';
 
 import 'helpers.dart';
@@ -406,7 +407,7 @@ void main() {
       expect(r.state.groups, isEmpty);
     });
 
-    test('an entity id in two groups belongs to the earliest claim only', () {
+    test('an entity id in two groups is a separate entity in each', () {
       final first = alex.addMember('g1', 'm', 'In g1');
       final second = priya.addMember('g2', 'm', 'In g2');
       for (final order in [
@@ -415,12 +416,12 @@ void main() {
       ]) {
         final s = reduce(order).state;
         expect(s.groups['g1']!.members['m']!.displayName, 'In g1');
-        expect(s.groups['g2']!.members, isEmpty);
+        expect(s.groups['g2']!.members['m']!.displayName, 'In g2');
       }
     });
 
-    test('a later earlier-HLC claim moves the entity (order independent)',
-        () {
+    test('an earlier-HLC create in another group leaves the entity where it '
+        'is (order independent)', () {
       final early = priya.op('g2', EntityType.expense, 'x', OpKind.create,
           alex.addExpense('g2', 'tmp', money: equalBlock(1, 'a', ['a'])).payload,
           hlc: const Hlc(10, 0, 'dev-priya'));
@@ -430,7 +431,7 @@ void main() {
         [early, late],
       ]) {
         final s = reduce(order).state;
-        expect(s.groups['g1']!.expenses, isEmpty);
+        expect(s.groups['g1']!.expenses['x']!.money.total, 5);
         expect(s.groups['g2']!.expenses['x']!.money.total, 1);
       }
     });
@@ -489,6 +490,71 @@ void main() {
             reason: 'the create in g1 claims it');
         expect(s.groups['g2']!.expenses, isEmpty);
       }
+    });
+
+    // Round 2: ids are scoped by group, so even a forged create with an
+    // older HLC elsewhere leaves the entity of its own group untouched.
+    test('a forged earlier create in another group cannot hide or change an '
+        'expense of its own group', () {
+      final members = [
+        alex.addMember('g1', 'a', 'Alex'),
+        alex.addMember('g1', 'b', 'Bob'),
+      ];
+      final created = alex.addExpense('g1', 'x',
+          description: 'Rent', money: equalBlock(600, 'a', ['a', 'b']));
+      final forged = priya.op('g2', EntityType.expense, 'x', OpKind.create,
+          priya.addExpense('g2', 'tmp',
+                  description: 'Forged', money: equalBlock(1, 'z', ['z']))
+              .payload,
+          hlc: const Hlc(1, 0, 'dev-priya'));
+      final honest = reduce([...members, created]).state;
+      for (final order in [
+        [...members, created, forged],
+        [forged, ...members, created],
+        [created, forged, ...members],
+      ]) {
+        final s = reduce(order).state;
+        final x = s.groups['g1']!.expenses['x']!;
+        expect(x.description, 'Rent');
+        expect(x.money.total, 600);
+        expect(BalanceCalculator.groupNets(s.groups['g1']!),
+            BalanceCalculator.groupNets(honest.groups['g1']!));
+        expect(jsonEncode(groupStateToJson(s.groups['g1']!)),
+            jsonEncode(groupStateToJson(honest.groups['g1']!)));
+        // g2 only sees its own (forged) entity.
+        expect(s.expenseIn('g2', 'x')!.description, 'Forged');
+        expect(s.expenseIn('g1', 'x')!.description, 'Rent');
+        expect(s.expense('x')!.groupId, 'g1', reason: 'lowest group id');
+      }
+    });
+
+    test('a forged earlier member create in another group cannot hide a '
+        'member of its own group', () {
+      final created = alex.addMember('g1', 'm', 'Priya');
+      final forged = priya.op('g2', EntityType.member, 'm', OpKind.create,
+          priya.addMember('g2', 'tmp', 'Mallory').payload,
+          hlc: const Hlc(1, 0, 'dev-priya'));
+      for (final order in [
+        [created, forged],
+        [forged, created],
+      ]) {
+        final s = reduce(order).state;
+        expect(s.groups['g1']!.members['m']!.displayName, 'Priya');
+        expect(s.groups['g2']!.members['m']!.displayName, 'Mallory');
+      }
+    });
+
+    test('an edit in one group never reaches the same id in another', () {
+      final a = alex.addExpense('g1', 'x',
+          description: 'One', money: equalBlock(5, 'a', ['a']));
+      final b = priya.addExpense('g2', 'x',
+          description: 'Two', money: equalBlock(7, 'a', ['a']));
+      final edit = priya.op('g2', EntityType.expense, 'x', OpKind.update,
+          {ExpenseFields.description: 'Edited', ExpenseFields.deletedAt: 9});
+      final s = reduce([a, b, edit]).state;
+      expect(s.groups['g1']!.expenses['x']!.description, 'One');
+      expect(s.groups['g1']!.expenses['x']!.isDeleted, isFalse);
+      expect(s.groups['g2']!.expenses['x']!.description, 'Edited');
     });
   });
 
