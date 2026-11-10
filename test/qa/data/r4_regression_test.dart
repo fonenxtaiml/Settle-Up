@@ -409,9 +409,6 @@ void main() {
         expect(file, isNot('.csv'));
         expect(file.length, greaterThan(4));
       },
-      skip:
-          'DATA-R4-02: a first cluster longer than 80 units leaves an '
-          'empty file name',
     );
   });
 
