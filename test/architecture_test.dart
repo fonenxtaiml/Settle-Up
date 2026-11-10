@@ -20,6 +20,9 @@ const Set<String> _coreAllowedPackages = {
   'collection',
   'uuid',
   'unorm_dart', // NFKC for names (NameText), pure Dart
+  // Grapheme clusters, as the UI's maxLength counts them: a name is cut
+  // to its limit in the same characters (NameText.fit), pure Dart.
+  'characters',
 };
 
 /// Files under lib/data that the sync and ui layers may import.
@@ -111,7 +114,8 @@ String? _check(String from, Target t) {
       }
       return _coreAllowedPackages.contains(t.package)
           ? null
-          : 'core may only use package:meta, collection, uuid and unorm_dart';
+          : 'core may only use package:meta, collection, uuid, unorm_dart '
+              'and characters';
     case 'data':
       if (_isFlutterUi(t)) return 'data may not import Flutter UI libraries';
       if (t.inDir('sync') || t.inDir('ui') || t.inDir('theme')) {
