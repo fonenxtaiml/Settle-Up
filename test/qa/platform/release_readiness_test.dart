@@ -374,20 +374,55 @@ void main() {
 
     // PLATFORM-R2-03: adverts carry a rotating advert id, not a device id
     // prefix (SPEC 8.3, 9.x threat table: "nothing stable (no device id)
-    // is advertised"). The privacy policy still says nearby devices see
-    // "the first characters of this phone's random device id".
-    test(
-      'PLATFORM-R2-03: the privacy policy describes what is advertised as '
-      'it is (no device id)',
-      () {
-        final policy = _read('docs/PRIVACY.md');
-        expect(
-          policy,
-          isNot(contains("first characters of this phone's random device id")),
-        );
-      },
-      skip:
-          'PLATFORM-R2-03: PRIVACY.md says the device id prefix is advertised',
-    );
+    // is advertised"). The privacy policy said nearby devices see "the
+    // first characters of this phone's random device id".
+    test('PLATFORM-R2-03: the privacy policy describes what is advertised as '
+        'it is (no device id)', () {
+      final policy = _read('docs/PRIVACY.md');
+      expect(
+        policy,
+        isNot(contains("first characters of this phone's random device id")),
+      );
+      final flat = policy.replaceAll(RegExp(r'\s+'), ' ');
+      // What is advertised: the name, a rotating id that is not linked to
+      // the device id, and the rotating group codes.
+      expect(flat, contains('the phone name you chose in Settings'));
+      expect(flat, contains('a random id that changes every 10 minutes'));
+      expect(flat, contains("not derived from this phone's device id"));
+      expect(flat, contains('short codes that change every 10 minutes'));
+      expect(
+        flat,
+        contains(
+          'Nothing that stays the same, such as the device id, is '
+          'advertised.',
+        ),
+      );
+      // The device id is sent in the clear only in the HELLO of a
+      // connection (SPEC 8.4: "Device id and device name are visible in
+      // HELLO"), and the policy says so.
+      expect(
+        flat,
+        contains('exchange their names and device ids, unencrypted'),
+      );
+    });
+
+    test('PLATFORM-R2-03: no doc or transport comment still describes a '
+        'device id prefix in the Nearby endpoint name', () {
+      final qa = _read('docs/QA.md');
+      expect(qa, isNot(contains('<device id prefix>')));
+      expect(qa, contains('2|<advert id>|<window tag>|'));
+      final nearby = _read('lib/sync/transport/nearby/nearby_transport.dart');
+      expect(nearby, isNot(contains('carries the device id prefix')));
+    });
+
+    // The advertised fields the policy lists are the ones the code writes:
+    // mDNS TXT v/d/w/t, where d is the advert id (8 hex chars, SPEC 8.3).
+    test('PLATFORM-R2-03: LAN and Nearby adverts carry the advert id, not a '
+        'device id', () {
+      final mdns = _read('lib/sync/transport/lan/mdns.dart');
+      expect(mdns, contains('`d=<advertId>`'));
+      final name = _read('lib/sync/transport/nearby/nearby_endpoint_name.dart');
+      expect(name, contains('"2|<advertId>|<windowTag>|'));
+    });
   });
 }
