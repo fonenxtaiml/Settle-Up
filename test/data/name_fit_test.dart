@@ -63,8 +63,8 @@ String _random(Random rnd, int max) {
     final pool = pick == 0
         ? _expanders
         : pick == 1
-            ? _letters
-            : _others;
+        ? _letters
+        : _others;
     sb.write(pool[rnd.nextInt(pool.length)]);
   }
   return sb.toString();
@@ -99,10 +99,7 @@ final class _Phone {
       ids: SequentialIdGenerator((1 << 40) + 0x1000),
       nowMillis: FakeClock().call,
     );
-    await settings.completeOnboarding(
-      displayName: 'Alex',
-      homeCurrency: 'INR',
-    );
+    await settings.completeOnboarding(displayName: 'Alex', homeCurrency: 'INR');
     return _Phone(settings, ledger);
   }
 
@@ -124,8 +121,10 @@ void main() {
       final s = NameText.fit('\uFDFA' * 3);
       expect(s.characters.length, lessThanOrEqualTo(40));
       expect(NameText.fit('${'a' * 38}\u3231'), '${'a' * 38}(\u682A');
-      expect(NameText.fit('Arjun Venkataraman Subramaniam Iyer Jr\u2026'),
-          'Arjun Venkataraman Subramaniam Iyer Jr..');
+      expect(
+        NameText.fit('Arjun Venkataraman Subramaniam Iyer Jr\u2026'),
+        'Arjun Venkataraman Subramaniam Iyer Jr..',
+      );
       // A name that fits once normalised is only normalised.
       expect(NameText.fit('\uFF32ahul'), 'Rahul');
     });
@@ -166,8 +165,7 @@ void main() {
             NameText.hasLetterOrNumber(t),
             reason: why,
           );
-          expect(NameText.key(raw, limit), NameText.key(t, limit),
-              reason: why);
+          expect(NameText.key(raw, limit), NameText.key(t, limit), reason: why);
           if (t.isNotEmpty) {
             expect(NameText.display(raw, limit), t, reason: why);
             expect(NameText.display(t, limit), t, reason: why);
@@ -188,32 +186,37 @@ void main() {
           homeCurrency: 'INR',
         );
         expect(profile.displayName, want, reason: _show(typed));
-        await p.settings.updateProfile(Profile(
-          personId: profile.personId,
-          displayName: 'x$typed',
-          homeCurrency: 'INR',
-        ));
+        await p.settings.updateProfile(
+          Profile(
+            personId: profile.personId,
+            displayName: 'x$typed',
+            homeCurrency: 'INR',
+          ),
+        );
         expect(p.settings.profile!.displayName, NameText.fit('x$typed'));
         await p.settings.setDeviceName(typed);
         expect(p.settings.device.deviceName, want);
-        final g = await p.ledger.createGroup(NewGroup(
-          name: typed,
-          type: GroupType.trip,
-          currency: 'INR',
-          newMemberNames: [typed],
-        ));
+        final g = await p.ledger.createGroup(
+          NewGroup(
+            name: typed,
+            type: GroupType.trip,
+            currency: 'INR',
+            newMemberNames: [typed],
+          ),
+        );
         final gs = p.ledger.current.state.groups[g]!;
         expect(gs.group!.name, NameText.fit(typed, NameText.maxGroupLength));
-        expect(
-          gs.activeMembers.map((m) => m.displayName),
-          contains(want),
-        );
+        expect(gs.activeMembers.map((m) => m.displayName), contains(want));
         final id = await p.ledger.addMember(g, displayName: 'b$typed');
-        expect(p.ledger.current.state.groups[g]!.members[id]!.displayName,
-            NameText.fit('b$typed'));
+        expect(
+          p.ledger.current.state.groups[g]!.members[id]!.displayName,
+          NameText.fit('b$typed'),
+        );
         await p.ledger.renameMember(g, id, 'c$typed');
-        expect(p.ledger.current.state.groups[g]!.members[id]!.displayName,
-            NameText.fit('c$typed'));
+        expect(
+          p.ledger.current.state.groups[g]!.members[id]!.displayName,
+          NameText.fit('c$typed'),
+        );
         // The name as typed is the same person as the one saved.
         expect(duplicateName(typed, [want]), want);
         await p.close();
@@ -247,60 +250,64 @@ void main() {
       await p.close();
     });
 
-    test('property: a name the 40 field lets through and the button '
-        'enables is saved everywhere, one it does not enable is refused',
-        () async {
-      final rnd = Random(8011);
-      final p = await _Phone.open();
-      final g = await p.ledger.createGroup(const NewGroup(
-        name: 'Goa trip',
-        type: GroupType.trip,
-        currency: 'INR',
-      ));
-      var saved = 0;
-      for (var i = 0; i < 400; i++) {
-        final typed = _typed(_random(rnd, 30), NameText.maxLength);
-        final why = _show(typed);
-        // The 4-code-units-per-character cap applies to what is typed.
-        if (TextRules.tooLong(typed.trim(), NameText.maxLength) != null) {
-          continue;
-        }
-        if (!NameText.isValid(typed)) {
-          await expectLater(
-            p.settings.completeOnboarding(
-              displayName: typed,
-              homeCurrency: 'INR',
-            ),
-            throwsArgumentError,
+    test(
+      'property: a name the 40 field lets through and the button '
+      'enables is saved everywhere, one it does not enable is refused',
+      () async {
+        final rnd = Random(8011);
+        final p = await _Phone.open();
+        final g = await p.ledger.createGroup(
+          const NewGroup(
+            name: 'Goa trip',
+            type: GroupType.trip,
+            currency: 'INR',
+          ),
+        );
+        var saved = 0;
+        for (var i = 0; i < 400; i++) {
+          final typed = _typed(_random(rnd, 30), NameText.maxLength);
+          final why = _show(typed);
+          // The 4-code-units-per-character cap applies to what is typed.
+          if (TextRules.tooLong(typed.trim(), NameText.maxLength) != null) {
+            continue;
+          }
+          if (!NameText.isValid(typed)) {
+            await expectLater(
+              p.settings.completeOnboarding(
+                displayName: typed,
+                homeCurrency: 'INR',
+              ),
+              throwsArgumentError,
+              reason: why,
+            );
+            await expectLater(
+              p.ledger.addMember(g, displayName: typed),
+              throwsA(isA<LedgerException>()),
+              reason: why,
+            );
+            continue;
+          }
+          saved++;
+          final want = NameText.fit(typed);
+          final profile = await p.settings.completeOnboarding(
+            displayName: typed,
+            homeCurrency: 'INR',
+          );
+          expect(profile.displayName, want, reason: why);
+          await p.settings.setDeviceName(typed);
+          expect(p.settings.device.deviceName, want, reason: why);
+          final id = await p.ledger.addMember(g, displayName: typed);
+          expect(
+            p.ledger.current.state.groups[g]!.members[id]!.displayName,
+            want,
             reason: why,
           );
-          await expectLater(
-            p.ledger.addMember(g, displayName: typed),
-            throwsA(isA<LedgerException>()),
-            reason: why,
-          );
-          continue;
+          await p.ledger.removeMember(g, id);
         }
-        saved++;
-        final want = NameText.fit(typed);
-        final profile = await p.settings.completeOnboarding(
-          displayName: typed,
-          homeCurrency: 'INR',
-        );
-        expect(profile.displayName, want, reason: why);
-        await p.settings.setDeviceName(typed);
-        expect(p.settings.device.deviceName, want, reason: why);
-        final id = await p.ledger.addMember(g, displayName: typed);
-        expect(
-          p.ledger.current.state.groups[g]!.members[id]!.displayName,
-          want,
-          reason: why,
-        );
-        await p.ledger.removeMember(g, id);
-      }
-      expect(saved, greaterThan(100));
-      await p.close();
-    });
+        expect(saved, greaterThan(100));
+        await p.close();
+      },
+    );
 
     test('property: a group name the 60 field lets through is saved', () async {
       final rnd = Random(8012);
@@ -311,11 +318,9 @@ void main() {
             !NameText.isValid(typed, NameText.maxGroupLength)) {
           continue;
         }
-        final g = await p.ledger.createGroup(NewGroup(
-          name: typed,
-          type: GroupType.trip,
-          currency: 'INR',
-        ));
+        final g = await p.ledger.createGroup(
+          NewGroup(name: typed, type: GroupType.trip, currency: 'INR'),
+        );
         expect(
           p.ledger.current.state.groups[g]!.group!.name,
           NameText.fit(typed, NameText.maxGroupLength),
@@ -339,14 +344,21 @@ void main() {
         throwsArgumentError,
       );
       await expectLater(
-        p.ledger.createGroup(const NewGroup(
-          name: 'Trip',
-          type: GroupType.trip,
-          currency: 'INR',
-          newMemberNames: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
-        )),
-        throwsA(isA<LedgerException>().having(
-            (e) => e.issue, 'issue', LedgerInputIssue.tooLong)),
+        p.ledger.createGroup(
+          const NewGroup(
+            name: 'Trip',
+            type: GroupType.trip,
+            currency: 'INR',
+            newMemberNames: ['aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'],
+          ),
+        ),
+        throwsA(
+          isA<LedgerException>().having(
+            (e) => e.issue,
+            'issue',
+            LedgerInputIssue.tooLong,
+          ),
+        ),
       );
       await p.close();
     });
@@ -358,10 +370,7 @@ void main() {
       expect(NameText.isValid('${'.' * 37}\u2474'), isTrue);
       final p = await _Phone.open();
       await expectLater(
-        p.settings.completeOnboarding(
-          displayName: typed,
-          homeCurrency: 'INR',
-        ),
+        p.settings.completeOnboarding(displayName: typed, homeCurrency: 'INR'),
         throwsArgumentError,
       );
       await p.close();
