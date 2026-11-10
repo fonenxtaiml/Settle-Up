@@ -9,6 +9,7 @@ import '../hlc.dart';
 import '../ids.dart';
 import '../models.dart';
 import '../money.dart';
+import '../name_text.dart';
 import '../ops.dart';
 
 /// One LWW register: the value written by the op with the highest HLC.
@@ -80,7 +81,8 @@ Group? buildGroup(GroupId id, EntityState s) {
   }
   return Group(
     id: id,
-    name: name,
+    // Shown as names typed here are stored, whichever phone wrote it.
+    name: NameText.display(name),
     type: enumByName(GroupType.values, type, GroupType.other),
     currency: currency,
     simplifyDebts: simplify,
@@ -102,7 +104,7 @@ Member? buildMember(GroupId groupId, MemberId id, EntityState s) {
   return Member(
     id: id,
     groupId: groupId,
-    displayName: displayName,
+    displayName: NameText.display(displayName),
     personId: personId,
     createdAt: createdAt,
     deviceId: _nonEmpty(s, MemberFields.deviceId),

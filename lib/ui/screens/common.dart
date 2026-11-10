@@ -9,7 +9,7 @@ import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
-import '../../core/text_clean.dart';
+import '../../core/name_text.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
@@ -454,23 +454,18 @@ Set<ExpenseId> _findDuplicatePayments(GroupState g) {
 /// SPEC 5.16: member display names are 1..40 characters.
 const int kMemberNameMax = 40;
 
-/// The existing name [candidate] would duplicate (case and spaces
-/// ignored: "priya " is "Priya"), or null. Both sides are compared as the
-/// Ledger saves them (TextClean.clean), so a name carrying an invisible
-/// mark (U+200B, U+200E, ...) is the plain name it will be stored as
-/// (UIFLOW-R4-01). The marks the Ledger keeps inside a name but that draw
-/// nothing after a letter (soft hyphen, ZWJ, variation selectors,
-/// invisible operators; TextClean.isBlankMark) are left out of the
-/// comparison too, never out of what is stored: "Rahul" with a soft hyphen
-/// looks like "Rahul" everywhere (UIFLOW-R5-01).
+/// The existing name [candidate] would duplicate, as it is shown, or null.
+/// Both sides are compared in the one form names are stored and shown in
+/// ([NameText.key]): case ignored, a character that draws nothing left
+/// out ("Ra" + soft hyphen + "hul" is "Rahul", UIFLOW-R4-01, UIFLOW-R5-01)
+/// and one that draws a blank as wide as a space read as a space ("Rahul"
+/// + U+3164 + "Kumar" is "Rahul Kumar", never "RahulKumar", UIFLOW-R6-01).
+/// A candidate with no letter or number is no name and matches nothing.
 String? duplicateName(String candidate, Iterable<String> existing) {
-  String key(String n) => String.fromCharCodes(
-    TextClean.clean(n).runes.where((r) => !TextClean.isBlankMark(r)),
-  ).toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-  final k = key(candidate);
-  if (k.isEmpty) return null;
+  if (!NameText.isValid(candidate)) return null;
+  final k = NameText.key(candidate);
   for (final e in existing) {
-    if (key(e) == k) return TextClean.clean(e);
+    if (NameText.key(e) == k) return NameText.display(e);
   }
   return null;
 }
