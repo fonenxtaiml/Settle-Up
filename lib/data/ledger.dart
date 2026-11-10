@@ -159,7 +159,9 @@ final class Ledger implements LedgerRepository, SyncStore {
       list.sort((a, b) => a.counter.compareTo(b.counter));
     }
     for (final g in _mine.keys) {
-      _acked[g] = (await _store.peerKnowledge(g))[me];
+      // A peer cannot hold more of my ops than I wrote (SECURITY-R2-01).
+      _acked[g] = math.min(
+          (await _store.peerKnowledge(g))[me], await _ownMaxCounter(g));
     }
     try {
       _keyCache.addAll(await _keys.all());
@@ -1184,9 +1186,27 @@ final class Ledger implements LedgerRepository, SyncStore {
   ) =>
       _serial(() async {
         if (peer == _me) return;
-        await _store.recordPeerKnowledge(peer, groupId, vv);
-        final acked = (await _store.peerKnowledge(groupId))[_me];
-        if (acked == (_acked[groupId] ?? 0)) return;
+        // Only this phone writes ops with its device id, so a report of
+        // more of them than it wrote is forged. Kept as is, it would show
+        // every later local change as shared although no phone has it
+        // (SECURITY-R2-01).
+        var report = vv;
+        final claimed = vv[_me];
+        if (claimed > 0) {
+          final written = await _ownMaxCounter(groupId);
+          if (claimed > written) {
+            developer.log(
+              'Peer $peer claims my ops up to $claimed in $groupId; '
+              'I wrote $written',
+              name: _logName,
+            );
+            report = vv.withEntry(_me, written);
+          }
+        }
+        await _store.recordPeerKnowledge(peer, groupId, report);
+        final before = _acked[groupId] ?? 0;
+        final acked = math.max(before, report[_me]);
+        if (acked == before) return;
         _acked[groupId] = acked;
         _emit();
       });
