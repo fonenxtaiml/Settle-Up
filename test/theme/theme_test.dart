@@ -137,6 +137,60 @@ void main() {
       });
     }
 
+    // VISUAL-R11-02: every dialog-like surface the app's components open on
+    // (dialogs, both pickers, sheets, menus) takes text in onSurface and
+    // onSurfaceVariant at AA, in both themes. A component left on its M3
+    // default (the pickers took surfaceContainerHigh, 4.28:1 in the dark
+    // theme) is listed with that default so it is checked too.
+    for (final (name, theme) in [
+      ('light', AppTheme.light()),
+      ('dark', AppTheme.dark()),
+    ]) {
+      test('$name: text on every dialog, picker, sheet and menu surface', () {
+        final scheme = theme.colorScheme;
+        final surfaces = <String, Color?>{
+          'dialog': theme.dialogTheme.backgroundColor,
+          'date picker': theme.datePickerTheme.backgroundColor,
+          'time picker': theme.timePickerTheme.backgroundColor,
+          'bottom sheet': theme.bottomSheetTheme.backgroundColor,
+          'modal bottom sheet':
+              theme.bottomSheetTheme.modalBackgroundColor ??
+              theme.bottomSheetTheme.backgroundColor,
+          'popup menu': theme.popupMenuTheme.color ?? scheme.surfaceContainer,
+          'menu':
+              theme.menuTheme.style?.backgroundColor?.resolve({}) ??
+              scheme.surfaceContainer,
+          'navigation bar': theme.navigationBarTheme.backgroundColor,
+        };
+        final bad = <String>[];
+        for (final e in surfaces.entries) {
+          final bg = e.value;
+          if (bg == null) {
+            bad.add('${e.key}: left on its M3 default');
+            continue;
+          }
+          for (final (role, fg) in [
+            ('onSurface', scheme.onSurface),
+            ('onSurfaceVariant', scheme.onSurfaceVariant),
+          ]) {
+            final r = contrast(fg, bg);
+            if (r < 4.5) bad.add('${e.key}: $role ${r.toStringAsFixed(2)}:1');
+          }
+        }
+        expect(bad, isEmpty, reason: bad.join('\n'));
+        // The date field is filled with the picker's own surface, so its
+        // outline marks it out (3:1 for a component boundary).
+        final field = theme.datePickerTheme.inputDecorationTheme;
+        final side = field?.enabledBorder?.borderSide;
+        expect(field?.fillColor, theme.datePickerTheme.backgroundColor);
+        expect(side?.style, BorderStyle.solid);
+        expect(
+          contrast(side!.color, theme.datePickerTheme.backgroundColor!),
+          greaterThanOrEqualTo(3),
+        );
+      });
+    }
+
     test('light outline reaches 3:1 on stone (chip and segment borders)', () {
       expect(
         contrast(AppTheme.lightScheme.outline, AppTheme.lightScheme.surface),

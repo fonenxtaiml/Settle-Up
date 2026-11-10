@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
 import '../theme/app_theme.dart';
+import 'format/app_material_localizations.dart';
 import 'platform/app_window.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -64,6 +65,8 @@ class _SettleUpAppState extends ConsumerState<SettleUpApp> {
       darkTheme: AppTheme.dark(),
       themeMode: SettleUpApp.themeModeOf(settings.themeMode),
       routerConfig: router,
+      // Day-first dates in every Material widget (VISUAL-R11-01).
+      localizationsDelegates: const [AppMaterialLocalizations.delegate],
       builder: (context, child) => HapticsScope(
         enabled: settings.vibration,
         child: child ?? const SizedBox.shrink(),
