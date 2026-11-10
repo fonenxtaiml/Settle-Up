@@ -266,7 +266,7 @@ final class DefaultSyncEngine implements SyncEngine {
   /// likely shares (SPEC 8.3).
   Future<List<GroupId>> _recentlySyncedGroups() async {
     try {
-      final records = await _store.watchSyncRecords().first;
+      final records = await _firstOf(_store.watchSyncRecords());
       return {
         for (final r in records)
           if (r.outcome != SyncOutcome.failed) ...r.groupIds,
@@ -275,6 +275,33 @@ final class DefaultSyncEngine implements SyncEngine {
       _log('reading sync history for advert priority failed', e, st);
       return const [];
     }
+  }
+
+  /// The first event of [stream]. Unlike [Stream.first] it does not wait
+  /// for the subscription's cancel to finish: that future may belong to
+  /// another zone (the root zone's done future), which would make hosting
+  /// wait on an unrelated event loop turn (and never finish under a fake
+  /// clock).
+  static Future<T> _firstOf<T>(Stream<T> stream) {
+    final first = Completer<T>();
+    late final StreamSubscription<T> sub;
+    sub = stream.listen(
+      (value) {
+        if (first.isCompleted) return;
+        first.complete(value);
+        unawaited(sub.cancel());
+      },
+      onError: (Object e, StackTrace st) {
+        if (first.isCompleted) return;
+        first.completeError(e, st);
+        unawaited(sub.cancel());
+      },
+      onDone: () {
+        if (!first.isCompleted) first.completeError(StateError('No element'));
+      },
+      cancelOnError: true,
+    );
+    return first.future;
   }
 
   @override
