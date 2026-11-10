@@ -18,6 +18,13 @@ reference screens. Copy its layouts when you build the real screens.
   layouts go vertical. Nothing clamps the text scale.
 - Amounts have spoken labels like "840.00 INR", with no plus or minus words.
   Decorative tethers and avatars are hidden from screen readers.
+- A control that speaks one label over its own tree goes through
+  `ButtonSemantics`, never `Semantics(button: true, excludeSemantics: true)`
+  alone: that drops the tap action underneath and TalkBack cannot activate
+  it (VISUAL-R9-01). A semantic tap runs the same callback as a finger tap,
+  and `test/ui/widgets/button_semantics_test.dart` checks the source for it.
+- Every tap target is at least 48 x 48 dp. A smaller visual chip sits in a
+  `TapTargetPadding`, which takes a finger tap in its padding too.
 
 ## App setup
 
@@ -29,6 +36,10 @@ reference screens. Copy its layouts when you build the real screens.
 - `HapticsScope(enabled: settings.vibration, child: ...)` gates `Haptics.*`.
 
 ## Widgets (one line each: what it is, then its constructor)
+
+### Accessibility
+- **ButtonSemantics**: one label over a control's own tree, as a button with the tap action. `ButtonSemantics({required String label, required VoidCallback? onTap, required Widget child, String? value, bool? checked, bool? inMutuallyExclusiveGroup, VoidCallback? onLongPress, bool container = false, bool alwaysButton = true})`
+- **TapTargetPadding**: padding that brings a small chip to 48 dp and forwards taps in it. `TapTargetPadding({required EdgeInsetsGeometry padding, required VoidCallback? onTap, required Widget child})`
 
 ### Tether (signature device)
 - **TetherGlyph**: the inline 26 x 10 glyph before a direction word. `TetherGlyph({required MoneyDirection direction, Color? color, String? semanticLabel, double scale = 1})`
@@ -58,7 +69,7 @@ reference screens. Copy its layouts when you build the real screens.
 - **EmptyState**: a slack tether, a headline, one sentence and one action. `EmptyState({required String headline, required String body, String? actionLabel, VoidCallback? onAction})`
 
 ### Add expense
-- **AmountField**: the big amount with the ₹ prefix and an ink underline. It uses the system number keyboard and reports minor units. `AmountField({required String currency, required ValueChanged<int?> onChanged, int? initialMinor, String label = 'Amount', String? currencyName, FocusNode? focusNode, bool autofocus = false, String? errorText, VoidCallback? onCurrencyTap})`
+- **AmountField**: the big amount with the ₹ prefix and an ink underline. With `onCurrencyTap` the symbol shows an expand chevron and is a 48 dp currency button. It uses the system number keyboard and reports minor units. `AmountField({required String currency, required ValueChanged<int?> onChanged, int? initialMinor, String label = 'Amount', String? currencyName, FocusNode? focusNode, bool autofocus = false, String? errorText, VoidCallback? onCurrencyTap})`
 - **LabeledTextField**: a white input with a small label and an optional trailing chip. `LabeledTextField({required String label, TextEditingController? controller, ValueChanged<String>? onChanged, Widget? trailing, String? hintText, FocusNode? focusNode, TextInputAction? textInputAction, ValueChanged<String>? onSubmitted, String? errorText, int? maxLength, List<TextInputFormatter>? inputFormatters})`
 - **CategoryChip**: a tonal chip with a category icon, for example "Transport". `CategoryChip({required String categoryId, required String label, VoidCallback? onTap})`
 - **PickerTile**: a "Paid by" or "Date" picker button. `PickerTile({required String label, required String value, Widget? leading, VoidCallback? onTap})`

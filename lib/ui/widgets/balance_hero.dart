@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/money_format.dart';
+import 'button_semantics.dart';
 import 'kit_strings.dart';
 import 'money_text.dart';
 import 'tether.dart';
@@ -152,11 +153,11 @@ class BalanceHero extends StatelessWidget {
       ],
     );
 
-    return Semantics(
+    return ButtonSemantics(
       container: true,
-      button: onTap != null,
+      alwaysButton: false,
       label: spoken,
-      excludeSemantics: true,
+      onTap: onTap,
       child: onTap == null
           ? content
           : InkWell(
