@@ -18,6 +18,7 @@ import 'package:meta/meta.dart';
 
 import '../../../core/models.dart';
 import '../../crypto/tokens.dart';
+import '../../name_cut.dart';
 import '../transport.dart';
 import 'ble_chunker.dart';
 
@@ -50,7 +51,8 @@ final class BleInfo {
   /// Most tokens INFO carries.
   static const int maxTokens = 96;
 
-  /// Device names longer than this (in Unicode code points) are cut.
+  /// Device names longer than this (in Unicode code points) are cut, on a
+  /// character boundary (DATA-R5-01).
   static const int maxNameRunes = 40;
 
   final int version;
@@ -68,7 +70,7 @@ final class BleInfo {
 
   /// UTF-8 JSON, at most [kBleMaxAttPayload] bytes.
   Uint8List encode() {
-    final name = String.fromCharCodes(deviceName.runes.take(maxNameRunes));
+    final name = cutName(deviceName, (s) => s.runes.length <= maxNameRunes);
     var max = maxTokens;
     while (true) {
       final kept = DiscoveryTokens.forAdvert(groupTokens, max);
