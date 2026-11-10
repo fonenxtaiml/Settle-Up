@@ -7,7 +7,6 @@ import 'package:go_router/go_router.dart';
 import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
-import '../../../core/name_text.dart';
 import '../../../data/repositories.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
@@ -76,7 +75,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
     if (n.isEmpty) return true;
-    final notName = nameInputError(n);
+    final notName = nameInputError(n, limit: kMemberNameMax);
     if (notName != null) {
       setState(() => _personError = notName);
       return false;
@@ -104,7 +103,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   Future<void> _save(Group? original, Map<PersonId, String> people) async {
     setState(() => _tried = true);
     final name = _name.text.trim();
-    if (!NameText.isValid(name, NameText.maxGroupLength) || _saving) {
+    if (!isSavableName(name, kGroupNameMax) || _saving) {
       Haptics.invalid(context);
       return;
     }
@@ -254,10 +253,11 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               label: S.groupName,
               hintText: S.groupNameHint,
               controller: _name,
-              maxLength: NameText.maxGroupLength,
+              maxLength: kGroupNameMax,
+              inputFormatters: nameFormatters(kGroupNameMax),
               errorText: _name.text.trim().isEmpty
                   ? (_tried ? S.nameNeeded : null)
-                  : nameInputError(_name.text, NameText.maxGroupLength),
+                  : nameInputError(_name.text, limit: kGroupNameMax),
               onChanged: (_) => setState(() {}),
             ),
           ),
@@ -348,12 +348,13 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
                 hintText: S.personNameHint,
                 controller: _person,
                 maxLength: kMemberNameMax,
+                inputFormatters: nameFormatters(kMemberNameMax),
                 errorText: _personError,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _addPerson(people),
                 onChanged: (_) => setState(() => _personError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: !NameText.isValid(_person.text)
+                  onPressed: !isSavableName(_person.text, kMemberNameMax)
                       ? null
                       : () => _addPerson(people),
                   style: KitButtonStyles.small(context),
