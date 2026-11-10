@@ -237,4 +237,37 @@ void main() {
     expect(r.availability, TransportAvailability.needsPermission);
     expect(r.permissions, [Permission.locationWhenInUse]);
   });
+
+  test('PLATFORM-R1-11: a permanently denied request is remembered until '
+      'the permission is granted', () async {
+    final p = FakePlatform(PermissionOs.android, sdk: 34);
+    for (final x in _bt) {
+      p.answers[x] = PermissionStatus.permanentlyDenied;
+    }
+    final perms = NearbyPermissions(platform: p);
+    expect(
+      await perms.request(TransportKind.ble),
+      TransportAvailability.permissionPermanentlyDenied,
+    );
+    // Android's status() reads plain denied for a permanently denied one.
+    for (final x in _bt) {
+      p.statuses[x] = PermissionStatus.denied;
+    }
+    expect(
+      await perms.check(TransportKind.ble),
+      TransportAvailability.permissionPermanentlyDenied,
+    );
+    // Granted in the settings page: ready, and the memory is gone.
+    for (final x in _bt) {
+      p.statuses[x] = PermissionStatus.granted;
+    }
+    expect(await perms.check(TransportKind.ble), TransportAvailability.ready);
+    for (final x in _bt) {
+      p.statuses[x] = PermissionStatus.denied;
+    }
+    expect(
+      await perms.check(TransportKind.ble),
+      TransportAvailability.needsPermission,
+    );
+  });
 }
