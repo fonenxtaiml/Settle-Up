@@ -8,6 +8,7 @@ import 'package:settle_up/sync/sync_engine.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
+import '../qa/sync/qa_phone.dart' show SlowConnectTransport;
 import 'support/harness.dart';
 import 'support/phone.dart';
 
@@ -27,6 +28,7 @@ final class Phone {
     String letter,
     String name, {
     TestClock? clock,
+    Duration? connectDelay,
   }) async {
     final phone = await TestPhone.create(letter, deviceName: name);
     final lan = MemoryTransport(
@@ -42,7 +44,10 @@ final class Phone {
     );
     final engine = DefaultSyncEngine(
       store: phone.ledger,
-      transports: [lan, ble],
+      transports: [
+        for (final t in [lan, ble])
+          connectDelay == null ? t : SlowConnectTransport(t, connectDelay),
+      ],
       clock: clock,
       timings: fastTimings,
     );
@@ -588,6 +593,37 @@ void main() {
         await c.close();
       }
     });
+
+    for (final slowIsLower in [false, true]) {
+      test(
+          'both phones tap Sync while the ${slowIsLower ? 'lower' : 'higher'} '
+          "id's dial outlasts the handshake timeout: both succeed "
+          '(SYNC-R2-02)', () async {
+        // fastTimings: handshake 2 s; the slow phone's dial takes 3 s, so
+        // the fast phone's connection waits for it and is told "Starting
+        // its own sync", then serves the slow phone's connection.
+        final slow = await Phone.create(
+          hub,
+          slowIsLower ? '0' : 'c',
+          "Ravi's iPhone",
+          connectDelay: const Duration(seconds: 3),
+        );
+        addTearDown(slow.dispose);
+        await slow.phone.join(alex.phone, seed.g);
+        expect(slow.phone.deviceId.compareTo(alex.phone.deviceId) < 0,
+            slowIsLower);
+        await alex.engine.startHosting();
+        await slow.engine.startHosting();
+        final toSlow = await alex.find(slow);
+        final toAlex = await slow.find(alex);
+        final fs = tap(slow, toAlex);
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        final fa = tap(alex, toSlow);
+        final results = await Future.wait([fa, fs]);
+        expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+        expect(slow.phone.canonical, alex.phone.canonical);
+      });
+    }
 
     Future<List<FrameChannel>> openSilent(Iterable<String> from) async {
       final out = <FrameChannel>[];

@@ -132,6 +132,5 @@ void main() {
         );
       }
     },
-    skip: 'SYNC-R2-02',
   );
 }
