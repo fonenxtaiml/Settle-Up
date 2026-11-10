@@ -1220,15 +1220,37 @@ class _UnitField extends StatelessWidget {
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) {
       final w = widthIn(context);
+      if (!c.maxWidth.isFinite || c.maxWidth >= w) {
+        return SizedBox(width: w, child: _field(context, 1));
+      }
+      // Narrower than the value (stacked under a long name at large
+      // text): the value is scaled down to fit, never scrolled.
+      final base = AppType.amount(context);
+      final fitted = AmountField.fitted(
+        base,
+        '${prefix ?? ''}${controller.text}${suffix ?? ''}',
+        c.maxWidth - 20 - 12,
+        MediaQuery.textScalerOf(context),
+        Directionality.of(context),
+      );
       return SizedBox(
-        width: c.maxWidth.isFinite && c.maxWidth < w ? c.maxWidth : w,
-        child: _field(context),
+        width: c.maxWidth,
+        child: _field(context, fitted.fontSize! / base.fontSize!),
       );
     },
   );
 
-  Widget _field(BuildContext context) {
-    final scheme = Theme.of(context).colorScheme;
+  Widget _field(BuildContext context, double shrink) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final style = AppType.amount(context);
+    final side = theme.textTheme.bodyLarge!;
+    final sideStyle = shrink >= 1
+        ? null
+        : side.copyWith(
+            fontSize: side.fontSize! * shrink,
+            color: scheme.onSurfaceVariant,
+          );
     return TextField(
       controller: controller,
       enabled: enabled,
@@ -1241,7 +1263,9 @@ class _UnitField extends StatelessWidget {
       inputFormatters: [
         UnitInputFormatter(read: read, write: write, signed: signed),
       ],
-      style: AppType.amount(context),
+      style: shrink >= 1
+          ? style
+          : style.copyWith(fontSize: style.fontSize! * shrink),
       decoration: InputDecoration(
         isDense: true,
         hintText: hint ?? '0',
@@ -1249,6 +1273,8 @@ class _UnitField extends StatelessWidget {
         semanticCounterText: label,
         prefixText: prefix,
         suffixText: suffix,
+        prefixStyle: sideStyle,
+        suffixStyle: sideStyle,
         filled: true,
         fillColor: scheme.surfaceContainer,
         contentPadding: const EdgeInsets.symmetric(
