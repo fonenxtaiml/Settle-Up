@@ -1262,6 +1262,7 @@ class _UnitField extends StatelessWidget {
       // UnitInputFormatter keeps the text on one line.
       minLines: 1,
       maxLines: 2,
+      textAlignVertical: TextAlignVertical.center,
       inputFormatters: [
         UnitInputFormatter(read: read, write: write, signed: signed),
       ],
@@ -1270,6 +1271,9 @@ class _UnitField extends StatelessWidget {
           : style.copyWith(fontSize: style.fontSize! * shrink),
       decoration: InputDecoration(
         isDense: true,
+        // A 48 dp tap target at every text scale: the dense padding alone
+        // is 42.8 dp tall at 1.0x (VISUAL-R8-01).
+        constraints: const BoxConstraints(minHeight: Sizes.minTap),
         hintText: hint ?? '0',
         labelText: null,
         semanticCounterText: label,
