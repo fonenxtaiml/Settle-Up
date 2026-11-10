@@ -113,6 +113,48 @@ class AmountField extends StatefulWidget {
     return groupForDisplay(raw, c);
   }
 
+  /// [base] at the largest size (at most its own) at which [text] fits in
+  /// [width] with room for the caret, so a long amount is scaled down and
+  /// never scrolls out of sight (VISUAL-R4-02), as the balance heroes do.
+  static TextStyle fitted(
+    TextStyle base,
+    String text,
+    double width,
+    TextScaler scaler,
+    TextDirection direction,
+  ) {
+    if (!width.isFinite || text.isEmpty) return base;
+    final size = base.fontSize!;
+    double measure(double s) {
+      final tp = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: base.copyWith(fontSize: s),
+        ),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = tp.width;
+      tp.dispose();
+      return w;
+    }
+
+    if (measure(size) <= width) return base;
+    // Text scaling may be nonlinear (Android 14), so search for the size.
+    var lo = 1.0;
+    var hi = size;
+    for (var i = 0; i < 12; i++) {
+      final mid = (lo + hi) / 2;
+      if (measure(mid) <= width) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return base.copyWith(fontSize: lo);
+  }
+
   @override
   State<AmountField> createState() => _AmountFieldState();
 }
@@ -179,48 +221,6 @@ class _AmountFieldState extends State<AmountField> {
     super.dispose();
   }
 
-  /// [base] at the largest size (at most its own) at which [text] fits in
-  /// [width] with room for the caret, so a long amount is scaled down and
-  /// never scrolls out of sight (VISUAL-R4-02), as the balance heroes do.
-  static TextStyle fitted(
-    TextStyle base,
-    String text,
-    double width,
-    TextScaler scaler,
-    TextDirection direction,
-  ) {
-    if (!width.isFinite || text.isEmpty) return base;
-    final size = base.fontSize!;
-    double measure(double s) {
-      final tp = TextPainter(
-        text: TextSpan(
-          text: text,
-          style: base.copyWith(fontSize: s),
-        ),
-        textDirection: direction,
-        textScaler: scaler,
-        maxLines: 1,
-      )..layout();
-      final w = tp.width;
-      tp.dispose();
-      return w;
-    }
-
-    if (measure(size) <= width) return base;
-    // Text scaling may be nonlinear (Android 14), so search for the size.
-    var lo = 1.0;
-    var hi = size;
-    for (var i = 0; i < 12; i++) {
-      final mid = (lo + hi) / 2;
-      if (measure(mid) <= width) {
-        lo = mid;
-      } else {
-        hi = mid;
-      }
-    }
-    return base.copyWith(fontSize: lo);
-  }
-
   @override
   Widget build(BuildContext context) => LayoutBuilder(
     builder: (context, c) => ValueListenableBuilder<TextEditingValue>(
@@ -247,7 +247,7 @@ class _AmountFieldState extends State<AmountField> {
     final symbolWidth = symbolPainter.width;
     symbolPainter.dispose();
     const caret = 2.0;
-    final amountStyle = fitted(
+    final amountStyle = AmountField.fitted(
       baseStyle,
       text,
       // The editable keeps a caret gap at the end; leave room for it too.
