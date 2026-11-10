@@ -1022,4 +1022,166 @@ void main() {
       );
     });
   });
+
+  group('round 4: regression around the field-type fix', () {
+    Map<String, Object?> updateOf(
+      Operation target,
+      Map<String, Object?> payload, {
+      String id = 'retype-r4',
+      int counter = 1,
+    }) => {
+      ...target.toJson(),
+      'id': id,
+      'kind': OpKind.update.name,
+      'deviceId': mallory,
+      'counter': counter,
+      'hlc': Hlc(target.hlc.millis + 1000 + counter, 0, mallory).encode(),
+      'payload': payload,
+    };
+
+    Future<ErrorMessage?> sendBatch(List<Map<String, Object?>> ops) async {
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': ops.length,
+        'ops': ops,
+        'more': false,
+      });
+      final error = await errorFrom(evil);
+      await evil.close();
+      await result;
+      return error;
+    }
+
+    Iterable<Operation> fromMallory() =>
+        priya.opsOf(seed.g).where((o) => o.deviceId == mallory);
+
+    test('one wrong-typed op refuses the whole batch, honest ops in it '
+        'included', () async {
+      final groupOp = alex
+          .opsOf(seed.g)
+          .firstWhere((o) => o.entityType == EntityType.group);
+      final error = await sendBatch([
+        expenseJson(id: 'ok-1', counter: 1),
+        updateOf(groupOp, {GroupFields.name: 7}, id: 'bad-2', counter: 2),
+      ]);
+      expect(error?.code, ErrorCodes.badOp);
+      expect(fromMallory(), isEmpty);
+      await expectStillSyncs();
+    });
+
+    test(
+      'a wrong-typed deletedAt cannot bring back a deleted expense',
+      () async {
+        // The reducer reads a deletedAt of the wrong type as absent, so a
+        // string there would undelete the expense without a restore line.
+        final target = alex
+            .opsOf(seed.g)
+            .lastWhere((o) => o.entityType == EntityType.expense);
+        await alex.ledger.deleteExpense(target.entityId, groupId: seed.g);
+        await syncPair(alex, priya);
+        final live = priya.state.groups[seed.g]!.liveExpenses.length;
+        final error = await sendBatch([
+          {
+            ...updateOf(target, {ExpenseFields.deletedAt: 'never'}),
+            'hlc': Hlc(kBaseMs + 999999, 0, mallory).encode(),
+          },
+        ]);
+        expect(error?.code, ErrorCodes.badOp);
+        expect(priya.state.groups[seed.g]!.liveExpenses.length, live);
+        expect(fromMallory(), isEmpty);
+      },
+    );
+
+    test(
+      'a wrong-typed field in a create op for a new member is refused',
+      () async {
+        final template = alex
+            .opsOf(seed.g)
+            .firstWhere((o) => o.entityType == EntityType.member);
+        final error = await sendBatch([
+          {
+            ...template.toJson(),
+            'id': 'new-member-r4',
+            'deviceId': mallory,
+            'counter': 1,
+            'hlc': Hlc(kBaseMs + 5000, 0, mallory).encode(),
+            'entityId': 'evil-member-r4',
+            'payload': {
+              ...template.payload,
+              MemberFields.displayName: 'Mallory',
+              MemberFields.createdAt: '2026-11-10',
+            },
+          },
+        ]);
+        expect(error?.code, ErrorCodes.badOp);
+        expect(fromMallory(), isEmpty);
+      },
+    );
+
+    // SECURITY-R4-01. TextRules accepts any date with |ms| <= 8.64e15, the
+    // whole DateTime range. A date in the first day of that range is a
+    // valid UTC DateTime, but DateTime.toLocal() (and DateTime(y, m, d)
+    // in DateLabels._day) throw ArgumentError for it in every time zone
+    // but UTC. The group screen builds its day headers in build() with
+    // DateLabels.dayHeader(e.date), so one such expense from any key
+    // holder throws on every build of the group screen (grey screen in a
+    // release build) on every phone east or west of UTC, India included.
+    // The expense editor (e.date.toLocal()) throws too. The UI part only
+    // shows outside UTC: TZ=Asia/Kolkata flutter test
+    // test/qa/security/edge_date_render_test.dart
+    test('an expense dated at the very start of the DateTime range is '
+        'refused', () async {
+      final error = await sendBatch([
+        expenseJson(payloadOverride: {ExpenseFields.date: -8640000000000000}),
+      ]);
+      expect(error?.code, ErrorCodes.badOp);
+      expect(fromMallory(), isEmpty);
+    }, skip: 'SECURITY-R4-01');
+
+    test('an update moving an expense to the very start of the DateTime '
+        'range is refused', () async {
+      final target = alex
+          .opsOf(seed.g)
+          .lastWhere((o) => o.entityType == EntityType.expense);
+      final error = await sendBatch([
+        updateOf(target, {ExpenseFields.date: -8640000000000000 + 3600000}),
+      ]);
+      expect(error?.code, ErrorCodes.badOp);
+      expect(fromMallory(), isEmpty);
+    }, skip: 'SECURITY-R4-01');
+
+    // SECURITY-R4-02. The local Ledger only writes ISO-shaped codes
+    // (^[A-Z]{3}$, Ledger._currency), but the remote check holds a group
+    // currency and a money block currency only to "a non-empty token of at
+    // most 64 units". A peer can set the group currency to 64 letters (the
+    // Home hero then overflows its row by ~480 px and the amount is cut
+    // off) or write an expense in 'inr', which balances keep apart from
+    // 'INR' as a second currency.
+    final currencyCases = <String, Map<String, Object?> Function()>{
+      'a 64-letter group currency': () => updateOf(
+        alex.opsOf(seed.g).firstWhere((o) => o.entityType == EntityType.group),
+        {GroupFields.currency: 'Q' * 64},
+      ),
+      'a lower-case expense currency': () {
+        final template = alex.opsOf(seed.g).last;
+        final money = Map<String, Object?>.from(
+          template.payload[ExpenseFields.money]! as Map,
+        );
+        return expenseJson(
+          payloadOverride: {
+            ExpenseFields.money: {...money, 'currency': 'inr'},
+          },
+        );
+      },
+    };
+    for (final MapEntry(key: what, value: op) in currencyCases.entries) {
+      test('$what is refused', () async {
+        final error = await sendBatch([op()]);
+        expect(error?.code, ErrorCodes.badOp);
+        expect(fromMallory(), isEmpty);
+      }, skip: 'SECURITY-R4-02');
+    }
+  });
 }
