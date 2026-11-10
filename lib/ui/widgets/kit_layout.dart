@@ -66,3 +66,34 @@ bool textFitsWords(
   p.dispose();
   return fits;
 }
+
+/// A segmented-button label that is never broken or clipped: one line,
+/// scaled down when its segment is narrower than the word.
+class SegmentLabel extends StatelessWidget {
+  const SegmentLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    child: Text(text, maxLines: 1, softWrap: false),
+  );
+}
+
+/// Whether the widest of [labels] fits one of [count] equal segments of
+/// [width], each losing [chrome] dp to padding, borders and any icon.
+bool segmentsFit(
+  BuildContext context,
+  Iterable<String> labels,
+  double width, {
+  required int count,
+  required double chrome,
+}) {
+  final style = Theme.of(context).textTheme.labelLarge;
+  final room = width / count - chrome;
+  for (final l in labels) {
+    if (measureTextWidth(context, l, style) > room) return false;
+  }
+  return true;
+}
