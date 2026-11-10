@@ -45,11 +45,19 @@ and its QR code screen), nearby devices on the same Wi-Fi network or
 within Bluetooth range can see:
 
 - the phone name you chose in Settings (for example "Pixel 8"),
-- the first characters of this phone's random device id,
+- a random id that changes every 10 minutes and at every app start. It is
+  not derived from this phone's device id, so it cannot be used to
+  recognise the phone from one window to the next,
 - short codes that change every 10 minutes and mean something only to
   phones that hold the same group key.
 
-They cannot see group names, members or amounts.
+Nothing that stays the same, such as the device id, is advertised. They
+cannot see group names, members or amounts.
+
+When another phone connects to sync, the two phones first exchange their
+names and device ids, unencrypted, to check whether they share a group.
+Everything after that is encrypted, and the connection is closed if they
+share none.
 
 **When you invite someone.** An invite QR code or link contains the group
 id, the group name, its currency, your phone's name and the group key.
