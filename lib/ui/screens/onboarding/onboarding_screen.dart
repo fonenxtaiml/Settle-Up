@@ -75,7 +75,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final c = Currencies.of(_currency);
     final helper = theme.textTheme.bodySmall!.copyWith(color: ink2);
     final valid = NameText.isValid(_name.text);
-    final name = valid ? NameText.normalize(_name.text) : '';
+    final name = valid ? NameText.fit(_name.text) : '';
     return Scaffold(
       bottomNavigationBar: SafeArea(
         top: false,

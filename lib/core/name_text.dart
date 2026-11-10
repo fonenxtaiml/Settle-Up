@@ -1,6 +1,7 @@
 // Names people give each other, their groups and their phones: one form,
 // used to store, show and compare them, on this phone and for names that
 // come from other phones. Pure Dart (SPEC 5.16).
+import 'package:characters/characters.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import 'text_clean.dart';
@@ -45,24 +46,85 @@ abstract final class NameText {
     return unorm.nfc(String.fromCharCodes(out));
   }
 
+  /// The limit of a member name, your name and the phone name (SPEC 5.16,
+  /// 8.9), the shortest name limit, and so the one a name is checked and
+  /// compared by when no other limit is given.
+  static const int maxLength = 40;
+
+  /// The limit of a group name (SPEC 5.16).
+  static const int maxGroupLength = 60;
+
+  /// A character (grapheme) may span several code units: an emoji with a
+  /// skin tone or a flag takes 4. A name of n characters holds at most
+  /// n x this many code units, so one character cannot carry unbounded
+  /// combining marks.
+  static const int unitsPerChar = 4;
+
+  /// [raw] as a name of at most [limit] characters is stored and shown:
+  /// [normalize]d, then, when that is longer than [limit] characters (or
+  /// [limit] x [unitsPerChar] code units), cut to fit, the way a pasted
+  /// name is cut by the field's counter. The field counts what is typed
+  /// and NFKC can make it longer ("\u337F" is four characters, "\uFDFA"
+  /// eighteen, "\u2026" three), so a name that fits the field always fits
+  /// what is saved (DATA-R8-01). Idempotent: fit(fit(x)) == fit(x).
+  static String fit(String raw, [int limit = maxLength]) {
+    var t = normalize(raw);
+    while (!fits(t, limit)) {
+      final units = limit * unitsPerChar;
+      final out = StringBuffer();
+      var n = 0;
+      for (final c in t.characters) {
+        if (n == limit) break;
+        if (out.length + c.length > units) {
+          // One character with more marks than the budget keeps its base
+          // and the marks that fit.
+          for (final r in c.runes) {
+            final w = r > 0xFFFF ? 2 : 1;
+            if (out.length + w > units) break;
+            out.writeCharCode(r);
+          }
+          break;
+        }
+        out.write(c);
+        n++;
+      }
+      final cut = normalize(out.toString());
+      if (cut.length >= t.length) break; // cannot happen; never loop
+      t = cut;
+    }
+    return t;
+  }
+
+  /// Whether [t] holds at most [limit] characters and [limit] x
+  /// [unitsPerChar] code units.
+  static bool fits(String t, int limit) =>
+      t.length <= limit * unitsPerChar && t.characters.length <= limit;
+
   /// Whether the name [raw] shows something to tell people apart by: at
-  /// least one letter or number once [normalize]d. "ㅤ", "⠀", "-" and "."
-  /// are no names.
-  static bool isValid(String raw) => _letterOrNumber.hasMatch(normalize(raw));
+  /// least one letter or number in what is saved of it ([fit] to
+  /// [limit]). "ㅤ", "⠀", "-" and "." are no names, nor is a name whose
+  /// only letter is cut off ("." x 39 + "\u2474", whose NFKC form is 39
+  /// dots and "(1)").
+  static bool isValid(String raw, [int limit = maxLength]) =>
+      hasLetterOrNumber(fit(raw, limit));
+
+  /// Whether [text] holds a letter or number (Unicode L* or N*).
+  static bool hasLetterOrNumber(String text) => _letterOrNumber.hasMatch(text);
 
   static final RegExp _letterOrNumber = RegExp(r'[\p{L}\p{N}]', unicode: true);
 
-  /// What two names are compared by: the [normalize]d form without the
-  /// joiners and selectors it keeps, in lower case. Two names with the
-  /// same key look the same.
-  static String key(String raw) =>
-      String.fromCharCodes(normalize(raw).runes.where((r) => !isInvisible(r)))
+  /// What two names are compared by: the form they are saved in ([fit] to
+  /// [limit]) without the joiners and selectors it keeps, in lower case.
+  /// Two names with the same key look the same once saved.
+  static String key(String raw, [int limit = maxLength]) =>
+      String.fromCharCodes(fit(raw, limit).runes.where((r) => !isInvisible(r)))
           .toLowerCase();
 
-  /// A name another phone sent, as it is shown: [normalize]d, or cleaned
-  /// only ([TextClean.clean]) when nothing would be left of it.
-  static String display(String raw) {
-    final n = normalize(raw);
+  /// A name another phone sent, as it is shown: [fit] to [limit] as this
+  /// phone saves it, or cleaned only ([TextClean.clean]) when nothing
+  /// would be left of it.
+  static String display(String raw, [int limit = maxLength]) {
+    final n = fit(raw, limit);
     return n.isEmpty ? TextClean.clean(raw) : n;
   }
 

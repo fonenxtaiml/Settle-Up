@@ -483,32 +483,32 @@ final class Ledger implements LedgerRepository, SyncStore {
   static String _memberName(String v, String field) =>
       _name(v, field, TextRules.memberName);
 
-  /// A name (SPEC 5.16): stored as it is shown and compared
-  /// ([NameText.normalize]), with at least one letter or number, at most
-  /// [limit] characters.
+  /// A name (SPEC 5.16): stored as it is shown and compared, [NameText.fit]
+  /// to [limit] characters (normalised, then cut like a pasted name when
+  /// normalising made it longer than the field let through, DATA-R8-01),
+  /// with at least one letter or number.
   static String _name(String value, String field, int limit) {
-    final t = NameText.normalize(value);
-    if (!NameText.isValid(t)) {
+    final t = NameText.fit(value, limit);
+    if (!NameText.hasLetterOrNumber(t)) {
       _fail(LedgerErrorCode.invalidInput, '$field is empty');
     }
-    _fit(t, field, limit);
+    final why = TextRules.nameTooLong(value, limit);
+    if (why != null) {
+      throw LedgerException(LedgerErrorCode.invalidInput, '$field is $why',
+          LedgerInputIssue.tooLong);
+    }
     return t;
   }
 
   /// My profile name as it goes into a member op. Settings validate it on
-  /// their own; a name saved before the limits is cleaned and shortened
-  /// rather than blocking every new group.
+  /// their own; a name saved before the limits is cleaned and cut
+  /// ([NameText.fit]) rather than blocking every new group.
   static String _profileName(Profile profile) {
-    final t = NameText.normalize(profile.displayName);
-    if (!NameText.isValid(t)) {
+    final t = NameText.fit(profile.displayName, TextRules.memberName);
+    if (!NameText.hasLetterOrNumber(t)) {
       _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
     }
-    if (TextRules.tooLong(t, TextRules.memberName) == null) return t;
-    final short = t.characters.take(TextRules.memberName).toString();
-    return TextRules.tooLong(short, TextRules.memberName) == null
-        ? short.trim()
-        : _fail(LedgerErrorCode.invalidInput, 'Your name is too long',
-            LedgerInputIssue.tooLong);
+    return t;
   }
 
   static Never _groupFull() => throw const LedgerException(
@@ -1333,8 +1333,9 @@ final class Ledger implements LedgerRepository, SyncStore {
         }
         // A group name from another phone's link, in the form group names
         // are shown in ([NameText.display]).
-        var hint = NameText.display(nameHint);
+        var hint = NameText.display(nameHint, TextRules.groupName);
         if (TextRules.tooLong(hint, TextRules.groupName) != null) {
+          // Only a hint that shows nothing once normalised gets here.
           hint = hint.characters.take(TextRules.groupName).toString().trim();
         }
         // The hint goes first: a key without a hint and without ops is

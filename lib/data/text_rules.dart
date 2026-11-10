@@ -15,14 +15,15 @@ import 'dart:convert';
 
 import 'package:characters/characters.dart';
 
+import '../core/name_text.dart';
 import '../core/ops.dart';
 import '../core/reducer/materialize.dart' show parseMoney;
 import '../core/text_clean.dart';
 
 abstract final class TextRules {
   /// SPEC 5.16.
-  static const int groupName = 60;
-  static const int memberName = 40;
+  static const int groupName = NameText.maxGroupLength;
+  static const int memberName = NameText.maxLength;
   static const int description = 120;
   static const int notes = 1000;
   static const int maxActiveMembers = 50;
@@ -34,7 +35,7 @@ abstract final class TextRules {
   /// A character (grapheme) may span several code units: an emoji with a
   /// skin tone or a flag takes 4. Past that a field is refused, so one
   /// character cannot carry unbounded combining marks.
-  static const int unitsPerChar = 4;
+  static const int unitsPerChar = NameText.unitsPerChar;
 
   /// No op from a peer is stored above this size (encoded JSON, UTF-16
   /// units), the frame of the smallest transport (BLE). The biggest op
@@ -102,6 +103,17 @@ abstract final class TextRules {
       return 'longer than $limit characters';
     }
     return null;
+  }
+
+  /// Null when the name [typed] may be saved for its length, else why not.
+  /// What is saved of a name ([NameText.fit]) always fits [limit]: NFKC can
+  /// make a name longer than it was typed ("\u337F" is four characters),
+  /// and such a name is cut like a pasted one, never refused for a length
+  /// the field's counter did not show (DATA-R8-01). A name is refused only
+  /// when it was too long as typed already.
+  static String? nameTooLong(String typed, int limit) {
+    if (tooLong(NameText.normalize(typed), limit) == null) return null;
+    return tooLong(typed.trim(), limit);
   }
 
   // ------------------------------------------------------- remote checks --
