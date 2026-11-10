@@ -318,6 +318,11 @@ abstract interface class SyncStore {
   DeviceId get localDeviceId;
   String get localDeviceName;
 
+  /// [localDeviceName] now and after every rename (Settings), so a phone
+  /// that is visible re-advertises the new name at once (QA SYNC-R5-01).
+  /// Emits the current value first.
+  Stream<String> watchLocalDeviceName();
+
   /// Groups we hold a key for (pending joins included) -> key.
   Future<Map<GroupId, Uint8List>> groupKeys();
 

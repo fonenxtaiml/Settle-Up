@@ -299,7 +299,17 @@ final class SyncSession {
   DeviceId? get peerDeviceId => _peerHello?.deviceId;
   /// The peer's device name from its HELLO (else the caller's hint),
   /// cleaned: it is shown and recorded.
-  String get peerName => cleanPeerName(_peerHello?.deviceName ?? peerNameHint);
+  /// The HELLO name, or the advert or link hint when HELLO has none worth
+  /// showing (empty, or only hidden characters): never a blank name in the
+  /// session screen and Sync history (DATA-R5-02).
+  String get peerName {
+    final hello = _peerHello?.deviceName;
+    if (hello != null) {
+      final name = cleanPeerName(hello);
+      if (name.isNotEmpty) return name;
+    }
+    return cleanPeerName(peerNameHint);
+  }
   bool get liveMode => _liveMode;
 
   /// Keeps the session open after the exchange and pushes new local ops

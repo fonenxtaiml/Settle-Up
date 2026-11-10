@@ -507,7 +507,7 @@ void main() {
       // with an empty string ("Synced with ").
       expect(sent, isNotEmpty);
       expect(wellFormed(sent), isTrue);
-    }, skip: 'DATA-R5-02');
+    });
   });
 
   group('neighbours: advert names cut by code points', () {
@@ -560,6 +560,6 @@ void main() {
           expect(clusterPrefix(name, got), isTrue, reason: '$kind: $got');
         });
       }
-    }, skip: 'DATA-R5-01');
+    });
   });
 }

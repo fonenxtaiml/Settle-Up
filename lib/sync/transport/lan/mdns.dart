@@ -1,5 +1,5 @@
 // mDNS / DNS-SD for the LAN transport (SPEC 8.7.2): service type
-// `_settleup._tcp`, service name = device name (<= 40 chars), TXT
+// `_settleup._tcp`, service name = device name (<= 40 units, 63 bytes), TXT
 // `v=2`, `d=<advertId>`, `w=<windowTag>`, `t`, `t1`, `t2`, `t3` = up to 60
 // sorted tokens each, back to back, and `m=1` when the phone is in more
 // groups than that (the first 240 in priority order are kept, SPEC 8.3).
@@ -8,6 +8,7 @@
 // Android keeps a whole TXT record under 1300 bytes (about 1000 here).
 // Readers also accept tokens separated by commas.
 import 'dart:async';
+import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io';
 
@@ -15,14 +16,19 @@ import 'package:bonsoir/bonsoir.dart';
 
 import '../../../core/models.dart';
 import '../../crypto/tokens.dart';
+import '../../name_cut.dart';
 import '../transport.dart';
 import 'tcp_framing.dart';
 
 /// DNS-SD service type.
 const String kLanServiceType = '_settleup._tcp';
 
-/// Longest advertised service name.
+/// Longest advertised service name, in UTF-16 units.
 const int kLanServiceNameMax = 40;
+
+/// Longest advertised service name in UTF-8 bytes: one DNS label (RFC 6763
+/// 4.1.1). Android would cut a longer one itself, by bytes.
+const int kLanServiceNameMaxBytes = 63;
 
 /// Tokens in one TXT attribute.
 const int kLanTokensPerKey = 60;
@@ -68,18 +74,18 @@ final class MdnsAdvert {
       other.attributes.length == attributes.length &&
       attributes.entries.every((e) => other.attributes[e.key] == e.value);
 
-  /// Device name cut to 40 chars without splitting a surrogate pair.
+  /// Device name cut to [kLanServiceNameMax] UTF-16 units and
+  /// [kLanServiceNameMaxBytes] UTF-8 bytes (a DNS label) on a character
+  /// boundary (DATA-R5-01).
   static String serviceNameFor(String deviceName) {
     final trimmed = deviceName.trim();
     final name = trimmed.isEmpty ? 'Settle Up' : trimmed;
-    if (name.length <= kLanServiceNameMax) return name;
-    final out = StringBuffer();
-    for (final r in name.runes) {
-      final s = String.fromCharCode(r);
-      if (out.length + s.length > kLanServiceNameMax) break;
-      out.write(s);
-    }
-    return out.toString();
+    return cutName(
+      name,
+      (s) =>
+          s.length <= kLanServiceNameMax &&
+          utf8.encode(s).length <= kLanServiceNameMaxBytes,
+    );
   }
 
   /// TXT attributes for [info]: the first [kLanMaxTokens] of its tokens
