@@ -14,7 +14,10 @@
 //   holds the slot: it replaces that (dead or abandoned) session;
 // - both phones tapped Sync on each other: the phone with the lower device
 //   id gives way and serves the other one's connection; its own Sync call
-//   resolves with that session's result;
+//   resolves with that session's result. When one phone's own dial is still
+//   connecting after a handshake timeout, it answers ERROR busy "Starting
+//   its own sync" and the other phone waits for that dial to arrive and
+//   serves it, whichever id is lower;
 // - otherwise: ERROR busy.
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -66,6 +69,11 @@ const String _tooMany = 'Too many phones connecting';
 
 const String _busyOther = 'Syncing with another phone';
 const String _busySame = 'Already syncing with you';
+
+/// This phone's own Sync is still connecting and has not said whom it
+/// reaches: it may well be the phone asking (both tapped Sync, one dial
+/// slower than a handshake).
+const String _busyDialing = 'Starting its own sync';
 
 /// A Sync this phone started (syncWith, syncWithLink, an invite).
 final class _Outbound {
@@ -774,12 +782,22 @@ final class DefaultSyncEngine implements SyncEngine {
       if (!out.yielded &&
           !r.isSuccess &&
           r.peerErrorCode == ErrorCodes.busy &&
-          peer != null &&
-          _yieldsTo(peer) &&
-          (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
-        // The other phone is syncing with us the other way round: its
-        // connection here is about to ask for the slot.
-        await _awaitYield(out, peer);
+          peer != null) {
+        if (r.message.endsWith(_busyDialing)) {
+          // The other phone is still dialing, maybe us: serve its
+          // connection if it comes (whichever id is lower, since our own
+          // attempt is over). Its dial may take a connect timeout more.
+          await _awaitYield(
+            out,
+            peer,
+            arriving: connectTimeout + timings.handshakeTimeout,
+          );
+        } else if (_yieldsTo(peer) &&
+            (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
+          // The other phone is syncing with us the other way round: its
+          // connection here is about to ask for the slot.
+          await _awaitYield(out, peer);
+        }
       }
       if (out.yielded) {
         try {
@@ -840,13 +858,17 @@ final class DefaultSyncEngine implements SyncEngine {
   }
 
   /// Waits until [out] gives way to an inbound session from [peer]: soon
-  /// if that session is here, briefly if it has not said HELLO yet.
-  Future<void> _awaitYield(_Outbound out, DeviceId peer) async {
+  /// if that session is here, for [arriving] if it has not said HELLO yet.
+  Future<void> _awaitYield(
+    _Outbound out,
+    DeviceId peer, {
+    Duration arriving = const Duration(seconds: 1),
+  }) async {
     final waited = Stopwatch()..start();
     while (!out.yielded && !_disposed) {
       final limit = _inboundFrom(peer) == null
-          ? const Duration(seconds: 1)
-          : timings.handshakeTimeout;
+          ? arriving
+          : arriving + timings.handshakeTimeout;
       final left = limit - waited.elapsed;
       if (left <= Duration.zero) return;
       await _changed.future.timeout(left, onTimeout: () {});
@@ -897,13 +919,19 @@ final class DefaultSyncEngine implements SyncEngine {
           // whom it is for before deciding (at most one handshake timeout;
           // the session's own handshake timer pauses meanwhile).
           final left = timings.handshakeTimeout - waited.elapsed;
-          if (left <= Duration.zero) return _busyOther;
+          // Not "another phone": the dial may be for this very phone, which
+          // then waits for it (SYNC-R2-02).
+          if (left <= Duration.zero) return _busyDialing;
           await _changed.future.timeout(left, onTimeout: () {});
           continue;
         }
         if (target != peer) return _busyOther;
-        // Both phones tapped Sync on each other.
-        if (!_yieldsTo(peer)) return _busySame;
+        // Both phones tapped Sync on each other. Our own attempt may
+        // already be over (refused while the other phone was still
+        // dialing): then we serve this one whichever id is lower.
+        if (!_yieldsTo(peer) && !(out.session?.isFinished ?? false)) {
+          return _busySame;
+        }
         _yield(out, run);
         _admitRun(run);
         return null;
