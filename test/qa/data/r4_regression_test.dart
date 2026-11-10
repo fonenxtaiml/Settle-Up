@@ -442,9 +442,6 @@ void main() {
         expect(wellFormed(sent), isTrue, reason: sent);
         expect(name.characters.startsWith(sent.characters), isTrue);
       },
-      skip:
-          'DATA-R4-03: Handshake.start cuts the device name with '
-          'substring(0, 100)',
     );
   });
 }

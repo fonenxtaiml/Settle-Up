@@ -62,6 +62,10 @@ void main() {
     const PingMessage(1794182400123),
     const PongMessage(1794182400123),
     const ErrorMessage(ErrorCodes.busy, 'Syncing with another phone'),
+    const ErrorMessage(ErrorCodes.busy, 'Starting its own sync', [
+      '0123abcd',
+      'deadbeef',
+    ]),
     const ByeMessage(),
   ];
 
@@ -96,6 +100,57 @@ void main() {
       expect(back.ops[1].raw, newer.raw);
       expect(back.ops[1].isFromNewerSchema, isTrue);
       expect(back.ops[0].payload, _op(1).payload);
+    });
+  });
+
+  group('ERROR.to (QA SYNC-R3-02)', () {
+    ErrorMessage decode(Map<String, Object?> body) {
+      final json = utf8.encode(jsonEncode(body));
+      return FrameCodec.decodePlain(
+        Uint8List.fromList([MessageType.error.code, 0, ...json]),
+      ) as ErrorMessage;
+    }
+
+    test('advert ids round trip; none means the field is left out', () {
+      const plain = ErrorMessage(ErrorCodes.busy, 'Starting its own sync');
+      expect(plain.toJson().containsKey('to'), isFalse);
+      expect(decode(plain.toJson()).dialing, isEmpty);
+      final back = decode(const ErrorMessage(
+        ErrorCodes.busy,
+        'Starting its own sync',
+        ['0123abcd'],
+      ).toJson());
+      expect(back.dialing, ['0123abcd']);
+    });
+
+    test('a malformed hint is ignored, never a bad frame', () {
+      for (final to in <Object?>[
+        'nope',
+        42,
+        {'a': 1},
+        ['NOT-HEX!', 7, null, '0123abc', '0123abcde'],
+      ]) {
+        final m = decode({'code': 'busy', 'msg': 'x', 'to': to});
+        expect(m.code, 'busy');
+        expect(m.dialing, isEmpty, reason: '$to');
+      }
+      final mixed = decode({
+        'code': 'busy',
+        'to': ['zz', 'deadbeef'],
+      });
+      expect(mixed.dialing, ['deadbeef']);
+    });
+
+    test('at most kMaxErrorDialing ids are sent or read', () {
+      final many = [
+        for (var i = 0; i < 20; i++) i.toRadixString(16).padLeft(8, '0'),
+      ];
+      final sent = ErrorMessage(ErrorCodes.busy, '', many).toJson()['to'];
+      expect(sent, hasLength(kMaxErrorDialing));
+      expect(
+        decode({'code': 'busy', 'to': many}).dialing,
+        hasLength(kMaxErrorDialing),
+      );
     });
   });
 

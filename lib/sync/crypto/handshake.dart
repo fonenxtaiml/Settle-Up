@@ -13,6 +13,7 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
+import 'package:characters/characters.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:meta/meta.dart';
 
@@ -79,9 +80,7 @@ final class Handshake {
     ];
     final hello = HelloMessage(
       deviceId: deviceId,
-      deviceName: deviceName.length > kMaxDeviceNameLength
-          ? deviceName.substring(0, kMaxDeviceNameLength)
-          : deviceName,
+      deviceName: helloDeviceName(deviceName),
       ephemeralPublicKey: Uint8List.fromList(pub.bytes),
       nonce: nonce,
       blindedGroups: blinded,
@@ -249,4 +248,18 @@ final class HandshakeKeys {
 
   /// Constant-time check of the peer's AUTH mac.
   bool verifyPeerMac(List<int> mac) => constantTimeEquals(mac, _expectedPeerMac);
+}
+
+/// [name] as HELLO carries it: at most [kMaxDeviceNameLength] UTF-16 units
+/// (what the peer accepts), cut on a character boundary so a letter outside
+/// the BMP or a cluster is never split (DATA-R4-03). A split surrogate pair
+/// would reach the peer as U+FFFD.
+String helloDeviceName(String name) {
+  if (name.length <= kMaxDeviceNameLength) return name;
+  final out = StringBuffer();
+  for (final ch in name.characters) {
+    if (out.length + ch.length > kMaxDeviceNameLength) break;
+    out.write(ch);
+  }
+  return out.toString();
 }
