@@ -102,6 +102,7 @@ final class SessionResult {
     this.verificationCode,
     this.receivedAnyFrame = true,
     this.peerErrorCode,
+    this.peerDialing = const [],
   });
 
   final SyncOutcome outcome;
@@ -130,6 +131,10 @@ final class SessionResult {
 
   /// The `ERROR.code` the peer ended the session with, if it did.
   final String? peerErrorCode;
+
+  /// The peer's `ERROR.to`: the advert ids of the phone its own Sync was
+  /// still dialing when it refused this one (QA SYNC-R3-02).
+  final List<String> peerDialing;
 
   bool get isSuccess => outcome == SyncOutcome.completed;
 
@@ -179,6 +184,18 @@ final class _SendFailed implements Exception {
   String toString() => 'send failed: $cause';
 }
 
+/// The engine's answer to [SyncSession.admit] when the session may not run
+/// now (SPEC 8.7.1): sent as `ERROR busy`.
+@immutable
+final class SlotRefusal {
+  const SlotRefusal(this.message, {this.dialing = const []});
+  final String message;
+
+  /// Sent as `ERROR.to`: the advert ids of the phone this phone's own Sync
+  /// is still dialing (QA SYNC-R3-02).
+  final List<String> dialing;
+}
+
 final class SyncSession {
   SyncSession({
     required this.channel,
@@ -213,7 +230,7 @@ final class SyncSession {
   /// Called once the peer's AUTH verifies, before any group data is sent:
   /// the engine decides whether this session may run now (SPEC 8.7.1).
   /// A non-null result refuses it with `ERROR busy` and that message.
-  final Future<String?> Function(SyncSession session)? admit;
+  final Future<SlotRefusal?> Function(SyncSession session)? admit;
 
   /// Shown until the peer's HELLO arrives (e.g. the discovered name).
   final String peerNameHint;
@@ -245,6 +262,7 @@ final class SyncSession {
   bool _authenticated = false;
   bool _receivedAnyFrame = false;
   String? _peerErrorCode;
+  List<String> _peerDialing = const [];
 
   /// Waiting for the engine to admit this session (after AUTH).
   bool _admitting = false;
@@ -344,8 +362,13 @@ final class SyncSession {
   Future<void> _onError(Object e, StackTrace st) async {
     if (_finished) return; // e.g. a send racing a cancel
     switch (e) {
-      case ProtocolException(:final code, :final message):
-        await _fail(failureForErrorCode(code), message, sendCode: code);
+      case ProtocolException(:final code, :final message, :final dialing):
+        await _fail(
+          failureForErrorCode(code),
+          message,
+          sendCode: code,
+          dialing: dialing,
+        );
       case HandshakeException(:final code, :final message):
         await _fail(failureForErrorCode(code), message, sendCode: code);
       case FrameAuthException(:final message):
@@ -521,7 +544,7 @@ final class SyncSession {
     _state = SessionState.authenticated;
     // The engine bounds its own wait; the handshake timer pauses meanwhile.
     _admitting = true;
-    final String? refusal;
+    final SlotRefusal? refusal;
     try {
       refusal = await admit?.call(this);
     } finally {
@@ -529,7 +552,11 @@ final class SyncSession {
     }
     if (_finished) return;
     if (refusal != null) {
-      throw ProtocolException(ErrorCodes.busy, refusal);
+      throw ProtocolException(
+        ErrorCodes.busy,
+        refusal.message,
+        refusal.dialing,
+      );
     }
     _phase = SyncPhase.comparing;
     // Buffer local ops from now on (pushed only in LIVE).
@@ -673,6 +700,7 @@ final class SyncSession {
 
   Future<void> _onPeerError(ErrorMessage msg) {
     _peerErrorCode = msg.code;
+    _peerDialing = msg.dialing;
     return _fail(
       failureForErrorCode(msg.code),
       msg.msg.isEmpty ? 'Peer error: ${msg.code}' : '${msg.code}: ${msg.msg}',
@@ -902,6 +930,7 @@ final class SyncSession {
         verificationCode: verificationCode,
         receivedAnyFrame: _receivedAnyFrame,
         peerErrorCode: _peerErrorCode,
+        peerDialing: _peerDialing,
       );
 
   Future<void> _finishSuccess() async {
@@ -916,12 +945,13 @@ final class SyncSession {
     SyncFailure failure,
     String message, {
     String? sendCode,
+    List<String> dialing = const [],
   }) async {
     if (_finished) return;
     _finished = true;
     _state = SessionState.failed;
     if (sendCode != null) {
-      final error = ErrorMessage(sendCode, message);
+      final error = ErrorMessage(sendCode, message, dialing);
       try {
         final send = _authenticated ? _sendSealed(error) : _sendPlain(error);
         await send.timeout(const Duration(seconds: 1));

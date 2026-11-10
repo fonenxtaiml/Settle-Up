@@ -11,6 +11,7 @@ import '../../core/ids.dart';
 import '../../core/models.dart';
 import '../../core/ops.dart';
 import '../../core/version_vector.dart';
+import '../crypto/tokens.dart';
 
 /// Highest protocol version this build speaks.
 const int kProtocolVersion = 1;
@@ -62,9 +63,16 @@ abstract final class ErrorCodes {
 /// A frame or message that violates the protocol. [code] is one of
 /// [ErrorCodes] and is what the receiver reports to the peer.
 final class ProtocolException implements Exception {
-  const ProtocolException(this.code, [this.message = '']);
+  const ProtocolException(
+    this.code, [
+    this.message = '',
+    this.dialing = const [],
+  ]);
   final String code;
   final String message;
+
+  /// Sent as `ERROR.to` (see [ErrorMessage.dialing]).
+  final List<String> dialing;
   @override
   String toString() => 'ProtocolException($code: $message)';
 }
@@ -76,6 +84,9 @@ const int kMaxIdLength = 64;
 
 /// Longest device name accepted in HELLO.
 const int kMaxDeviceNameLength = 100;
+
+/// Most advert ids in `ERROR.to`.
+const int kMaxErrorDialing = 8;
 
 /// Most blinded group ids accepted in one HELLO.
 const int kMaxHelloGroups = 256;
@@ -124,6 +135,7 @@ sealed class SyncMessage {
       MessageType.error => ErrorMessage(
           r.string('code', maxLength: 64),
           r.optionalString('msg', maxLength: 1000) ?? '',
+          r.advertIds('to'),
         ),
       MessageType.bye => const ByeMessage(),
     };
@@ -333,15 +345,25 @@ final class PongMessage extends SyncMessage {
 
 @immutable
 final class ErrorMessage extends SyncMessage {
-  const ErrorMessage(this.code, [this.msg = '']);
+  const ErrorMessage(this.code, [this.msg = '', this.dialing = const []]);
   final String code; // ErrorCodes
   final String msg;
+
+  /// `to`, optional: with `busy "Starting its own sync"`, the advert ids
+  /// (SPEC 8.3) of the phone the sender's own Sync is still dialing, so
+  /// the refused phone can tell whether that dial may be for it (QA
+  /// SYNC-R3-02). At most [kMaxErrorDialing]; empty when unknown.
+  final List<String> dialing;
 
   @override
   MessageType get type => MessageType.error;
 
   @override
-  Map<String, Object?> toJson() => {'code': code, 'msg': msg};
+  Map<String, Object?> toJson() => {
+        'code': code,
+        'msg': msg,
+        if (dialing.isNotEmpty) 'to': dialing.take(kMaxErrorDialing).toList(),
+      };
 }
 
 @immutable
@@ -422,6 +444,18 @@ final class _Reader {
     final v = json[field];
     if (v is! List || v.length > maxLength) _bad(field);
     return v;
+  }
+
+  /// Advert ids in an optional hint list: anything else in it (or a
+  /// value that is not a list) is ignored, since a hint must never turn
+  /// an ERROR into a bad frame.
+  List<String> advertIds(String field) {
+    final v = json[field];
+    if (v is! List) return const [];
+    return List.unmodifiable([
+      for (final e in v.take(kMaxErrorDialing))
+        if (e is String && DiscoveryTokens.isAdvertId(e)) e,
+    ]);
   }
 
   Uint8List bytes(String field, int length) =>

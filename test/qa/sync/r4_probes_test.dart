@@ -519,9 +519,6 @@ void main() {
               '2 s; production timings make it ~30 s instead of ~10 s)',
         );
       },
-      skip:
-          'SYNC-R3-02: with the same device name (the default model name) '
-          'the third phone still waits a connect plus a handshake timeout',
     );
   });
 }
