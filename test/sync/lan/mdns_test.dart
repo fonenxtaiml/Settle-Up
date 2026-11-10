@@ -30,7 +30,7 @@ void main() {
         'v': '2',
         'd': '5e1f00d2',
         'w': (2950000 % 4096).toRadixString(16).padLeft(3, '0'),
-        't': '${token(0)},${token(1)}',
+        't': '${token(0)}${token(1)}',
       });
     });
 
@@ -45,12 +45,42 @@ void main() {
       expect(MdnsAdvert.of(noId, 1).attributes.containsKey('d'), isFalse);
     });
 
-    test('48 tokens fit the t TXT string (<= 255 bytes)', () {
-      final a = MdnsAdvert.of(infoWith(60), 1);
-      expect(a.attributes['t']!.split(','), hasLength(kLanMaxTokens));
+    test('240 tokens fit four TXT strings (<= 255 bytes each, the record '
+        'under 1300)', () {
+      final a = MdnsAdvert.of(infoWith(300), 1);
+      expect(a.attributes.keys, containsAll(kLanTokenKeys));
+      expect(a.attributes['m'], '1');
+      var record = 0;
       for (final e in a.attributes.entries) {
-        expect(utf8.encode('${e.key}=${e.value}').length, lessThanOrEqualTo(255));
+        final entry = utf8.encode('${e.key}=${e.value}').length;
+        expect(entry, lessThanOrEqualTo(255));
+        record += entry + 1;
       }
+      expect(record, lessThan(1300));
+      final peer = MdnsSighting(
+        name: 'x',
+        addresses: const ['10.0.0.2'],
+        port: 1,
+        attributes: a.attributes,
+      ).toPeer()!;
+      expect(peer.groupTokens, hasLength(kLanMaxTokens));
+      expect(peer.moreGroups, isTrue);
+      // The first 240 in priority order are the ones kept.
+      expect(peer.groupTokens,
+          {for (var i = 0; i < kLanMaxTokens; i++) token(i)});
+    });
+
+    test('no m flag when every token fits; commas are still read', () {
+      final a = MdnsAdvert.of(infoWith(kLanMaxTokens), 1);
+      expect(a.attributes.containsKey('m'), isFalse);
+      final peer = MdnsSighting(
+        name: 'x',
+        addresses: const ['10.0.0.2'],
+        port: 1,
+        attributes: {'v': '2', 't': '${token(1)},${token(2)}${token(3)}'},
+      ).toPeer()!;
+      expect(peer.groupTokens, {token(1), token(2), token(3)});
+      expect(peer.moreGroups, isFalse);
     });
 
     test('invalid tokens are not advertised', () {

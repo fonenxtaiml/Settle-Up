@@ -56,7 +56,8 @@ final class MemoryTransportHub {
               address: e.key.$2,
               name: e.value.deviceName,
               advertId: e.value.advertId,
-              groupTokens: e.value.groupTokens.toSet(),
+              // Sorted, as real transports advertise them (SPEC 8.3).
+              groupTokens: (e.value.groupTokens.toList()..sort()).toSet(),
               windowTag: switch (e.value.tokenWindow) {
                 final w? => w % DiscoveryTokens.windowTagModulus,
                 null => null,

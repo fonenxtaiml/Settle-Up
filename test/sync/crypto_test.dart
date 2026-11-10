@@ -300,7 +300,12 @@ void main() {
         final keys = {'g1': _key(1), 'g2': _key(2)};
         final adv = await DiscoveryTokens.advertised(keys, t0);
         expect(adv, hasLength(2));
-        expect([...adv]..sort(), adv);
+        // Newest group first (ids are UUIDv7); transports sort what they
+        // keep.
+        expect(adv, [
+          await DiscoveryTokens.token(_key(2), DiscoveryTokens.windowAt(t0)),
+          await DiscoveryTokens.token(_key(1), DiscoveryTokens.windowAt(t0)),
+        ]);
         final later = await DiscoveryTokens.index(
           keys,
           t0.add(const Duration(minutes: 10)),
