@@ -159,7 +159,9 @@ final class Ledger implements LedgerRepository, SyncStore {
       list.sort((a, b) => a.counter.compareTo(b.counter));
     }
     for (final g in _mine.keys) {
-      _acked[g] = (await _store.peerKnowledge(g))[me];
+      // A peer cannot hold more of my ops than I wrote (SECURITY-R2-01).
+      _acked[g] = math.min(
+          (await _store.peerKnowledge(g))[me], await _ownMaxCounter(g));
     }
     try {
       _keyCache.addAll(await _keys.all());
@@ -190,7 +192,7 @@ final class Ledger implements LedgerRepository, SyncStore {
     for (final g in _keyCache.keys.toList()) {
       final hint = await _store.getKv(KvKeys.pending(g));
       if (state.groups[g]?.group != null) {
-        if (hint != null) await _store.setKv(KvKeys.pending(g), null);
+        if (hint != null) await _clearHint(g);
       } else if (hint != null) {
         _pending[g] = hint;
       } else if (!withOps.contains(g) &&
@@ -286,13 +288,20 @@ final class Ledger implements LedgerRepository, SyncStore {
     ];
     for (final g in done) {
       _pending.remove(g);
-      try {
-        await _store.setKv(KvKeys.pending(g), null);
-      } catch (e) {
-        // Harmless: the next open drops the hint of a group it holds.
-        developer.log('Could not clear the invite hint of $g: $e',
-            name: _logName);
-      }
+      await _clearHint(g);
+    }
+  }
+
+  /// Best effort: a hint left behind is harmless (a group that holds its
+  /// create op is never shown as a join) and the next open drops it, so a
+  /// full disk must not turn it into a failed sync or a failed start
+  /// (DATA-R2-01).
+  Future<void> _clearHint(GroupId g) async {
+    try {
+      await _store.setKv(KvKeys.pending(g), null);
+    } catch (e) {
+      developer.log('Could not clear the invite hint of $g: $e',
+          name: _logName);
     }
   }
 
@@ -1060,8 +1069,13 @@ final class Ledger implements LedgerRepository, SyncStore {
         if (!_keyCache.containsKey(groupId)) {
           throw FormatException('No key held for group', groupId);
         }
+        var units = 0;
         for (final op in ops) {
-          _checkRemote(groupId, op);
+          units += _checkRemote(groupId, op);
+        }
+        if (units > TextRules.maxRemoteBatchUnits) {
+          throw FormatException('Batch of ${ops.length} ops is $units units, '
+              'over ${TextRules.maxRemoteBatchUnits}');
         }
         if (ops.isEmpty) return const <Operation>[];
         await _checkOwnOps(groupId, ops);
@@ -1104,9 +1118,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   Future<void> _checkOwnOps(GroupId groupId, List<Operation> ops) async {
     final me = _me;
     if (!ops.any((op) => op.deviceId == me)) return;
-    final purged = purgedMark(await _store.getKv(KvKeys.purged(groupId)));
-    final max =
-        math.max(await _store.maxCounter(groupId, me), purged[me] ?? 0);
+    final max = await _ownMaxCounter(groupId);
     for (final op in ops) {
       if (op.deviceId == me && op.counter > max) {
         throw FormatException(
@@ -1115,10 +1127,17 @@ final class Ledger implements LedgerRepository, SyncStore {
     }
   }
 
+  /// Highest counter this phone has written in [groupId]: stored ops, or
+  /// ones removed by purgeGroup that peers may still hold.
+  Future<int> _ownMaxCounter(GroupId groupId) async {
+    final purged = purgedMark(await _store.getKv(KvKeys.purged(groupId)));
+    return math.max(await _store.maxCounter(groupId, _me), purged[_me] ?? 0);
+  }
+
   /// Throws [FormatException] unless [op] belongs to [groupId], has a valid
   /// counter and HLC device, keeps to the SPEC 5.16 text limits and size,
-  /// and survives a JSON round trip unchanged.
-  static void _checkRemote(GroupId groupId, Operation op) {
+  /// and survives a JSON round trip unchanged. Returns its JSON length.
+  static int _checkRemote(GroupId groupId, Operation op) {
     if (op.groupId != groupId) {
       throw FormatException('Op ${op.id} is for another group', op.groupId);
     }
@@ -1135,8 +1154,9 @@ final class Ledger implements LedgerRepository, SyncStore {
       throw FormatException('Op ${op.id}: $problem', op.id);
     }
     final Operation parsed;
+    final String json;
     try {
-      final json = jsonEncode(op.toJson());
+      json = jsonEncode(op.toJson());
       if (json.length > TextRules.maxRemoteOpUnits) {
         throw FormatException('Op ${op.id} is too large', op.id);
       }
@@ -1155,6 +1175,7 @@ final class Ledger implements LedgerRepository, SyncStore {
         parsed.hlc != op.hlc) {
       throw FormatException('Op ${op.id} does not match its JSON', op.id);
     }
+    return json.length;
   }
 
   @override
@@ -1165,9 +1186,27 @@ final class Ledger implements LedgerRepository, SyncStore {
   ) =>
       _serial(() async {
         if (peer == _me) return;
-        await _store.recordPeerKnowledge(peer, groupId, vv);
-        final acked = (await _store.peerKnowledge(groupId))[_me];
-        if (acked == (_acked[groupId] ?? 0)) return;
+        // Only this phone writes ops with its device id, so a report of
+        // more of them than it wrote is forged. Kept as is, it would show
+        // every later local change as shared although no phone has it
+        // (SECURITY-R2-01).
+        var report = vv;
+        final claimed = vv[_me];
+        if (claimed > 0) {
+          final written = await _ownMaxCounter(groupId);
+          if (claimed > written) {
+            developer.log(
+              'Peer $peer claims my ops up to $claimed in $groupId; '
+              'I wrote $written',
+              name: _logName,
+            );
+            report = vv.withEntry(_me, written);
+          }
+        }
+        await _store.recordPeerKnowledge(peer, groupId, report);
+        final before = _acked[groupId] ?? 0;
+        final acked = math.max(before, report[_me]);
+        if (acked == before) return;
         _acked[groupId] = acked;
         _emit();
       });

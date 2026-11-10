@@ -35,7 +35,7 @@ void main() {
     // Storing the key the friend shows again must succeed.
     await store.put('g1', key);
     expect(await store.keyFor('g1'), key);
-  }, skip: 'SECURITY-R2-02');
+  });
 
   test('a transient read failure does not erase stored keys', () async {
     // SECURITY-R1-11 regression guard: whatever recovery is added must not
