@@ -99,7 +99,16 @@ final class _Outbound {
 
   /// The user tapped Cancel: this attempt stops and never gives way to an
   /// inbound session (that would run the cancelled Sync after all).
-  bool cancelled = false;
+  bool get cancelled => _cancel.isCompleted;
+  final Completer<void> _cancel = Completer();
+
+  /// Completes when the user taps Cancel: a connect attempt still under
+  /// way is abandoned then, not when it gives up (SYNC-R4-01).
+  Future<void> get whenCancelled => _cancel.future;
+
+  void cancel() {
+    if (!_cancel.isCompleted) _cancel.complete();
+  }
 
   /// The inbound session from the same phone this attempt gave way to.
   _Run? yieldedTo;
@@ -800,6 +809,7 @@ final class DefaultSyncEngine implements SyncEngine {
       for (final route in routes) {
         final t = _transportOf(route.kind);
         if (t == null) continue;
+        if (out.cancelled) break;
         if (!out.yielded) {
           _setStatus(
             session: SessionActive(SyncProgress(
@@ -810,7 +820,7 @@ final class DefaultSyncEngine implements SyncEngine {
           );
         }
         try {
-          channel = await t.connect(route, timeout: timeout);
+          channel = await _connectUnlessCancelled(out, t, route, timeout);
           break;
         } catch (e) {
           lastError = e;
@@ -919,6 +929,31 @@ final class DefaultSyncEngine implements SyncEngine {
       }
     }));
     return summary.future;
+  }
+
+  /// Connects over [route], or returns null as soon as the user taps
+  /// Cancel: a route that hangs (a LAN address behind Wi-Fi client
+  /// isolation answers nothing until the connect timeout) must not keep
+  /// the Sync screen on Connecting, nor the engine busy (SYNC-R4-01). A
+  /// channel the abandoned attempt opens later is closed at once.
+  static Future<FrameChannel?> _connectUnlessCancelled(
+    _Outbound out,
+    SyncTransport t,
+    DiscoveredPeer route,
+    Duration timeout,
+  ) async {
+    final attempt = t.connect(route, timeout: timeout);
+    final first = await Future.any<FrameChannel?>([
+      attempt,
+      out.whenCancelled.then((_) => null),
+    ]);
+    if (first == null) {
+      unawaited(attempt.then(
+        (c) => c.close().catchError((Object _) {}),
+        onError: (Object _) {},
+      ));
+    }
+    return first;
   }
 
   /// The result of the inbound session [out] gave way to.
@@ -1301,9 +1336,9 @@ final class DefaultSyncEngine implements SyncEngine {
 
   @override
   Future<void> cancel() async {
-    // A Sync still connecting stops after the current attempt; one waiting
-    // for the other phone's dial stops now.
-    _outbound?.cancelled = true;
+    // A Sync still connecting stops now (its connect attempt is
+    // abandoned); one waiting for the other phone's dial stops now too.
+    _outbound?.cancel();
     final sessions = {?_outbound?.session, ?_active};
     _notify();
     for (final s in sessions) {

@@ -338,9 +338,6 @@ void main() {
               'gave up; the engine stays busy until then',
         );
       },
-      skip:
-          'SYNC-R4-01: Cancel during Connecting waits for the current connect '
-          'attempt to give up (up to the 10 s connect timeout)',
     );
   });
 
