@@ -188,7 +188,12 @@ void main() {
           ExpenseFields.createdAt: kQaBaseMs,
         },
       );
-      await a.ledger.applyRemote(t.g, [bad]);
+      // A peer's op like this is refused at the door (SECURITY-R3-01)...
+      await expectLater(
+          a.ledger.applyRemote(t.g, [bad]), throwsFormatException);
+      expect(a.snap.ops.map((o) => o.id), isNot(contains('remote-bad-money')));
+      // ...but a row an older build already stored must still be survived.
+      await a.sqlite.insertAll([bad]);
       await a.restart();
       expect(a.group(t.g).liveExpenses.map((e) => e.id), [good.id]);
       expect(a.snap.ops.map((o) => o.id), contains('remote-bad-money'));

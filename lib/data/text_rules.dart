@@ -8,13 +8,15 @@
 // so every phone accepts or refuses the same op: a field may hold at most
 // [TextRules.unitsPerChar] UTF-16 code units per allowed character, no
 // text may carry a character that reorders or hides text, a group or
-// member name may not be blank, and fields the schema does not know, ids,
-// whole ops and whole batches have size budgets (SECURITY-R1-02).
+// member name may not be blank, every known field holds the JSON type the
+// schema gives it (SECURITY-R3-01), and fields the schema does not know,
+// ids, whole ops and whole batches have size budgets (SECURITY-R1-02).
 import 'dart:convert';
 
 import 'package:characters/characters.dart';
 
 import '../core/ops.dart';
+import '../core/reducer/materialize.dart' show parseMoney;
 import '../core/text_clean.dart';
 
 abstract final class TextRules {
@@ -195,6 +197,10 @@ abstract final class TextRules {
         return '$key holds control or bidi characters';
       }
       if (!v1) continue;
+      final kind = _kinds[op.entityType]?[key];
+      if (kind != null && !_hasKind(value, kind)) {
+        return '$key does not hold ${kind.what}';
+      }
       final limit = limits[key];
       if (limit != null) {
         if (value is String && value.length > limit * unitsPerChar) {
@@ -217,6 +223,91 @@ abstract final class TextRules {
       }
     }
     return null;
+  }
+
+  /// The JSON type of every known field at schema version 1 (docs/SPEC.md
+  /// 5.6). The reducer treats a field of the wrong type as absent, so a
+  /// required one would hide the whole entity (SECURITY-R3-01).
+  static const Map<EntityType, Map<String, _Kind>> _kinds = {
+    EntityType.group: {
+      GroupFields.name: _Kind.text,
+      GroupFields.type: _Kind.text,
+      GroupFields.currency: _Kind.id,
+      GroupFields.simplifyDebts: _Kind.flag,
+      GroupFields.emoji: _Kind.optionalText,
+      GroupFields.archived: _Kind.flag,
+      GroupFields.createdAt: _Kind.date,
+      GroupFields.deletedAt: _Kind.optionalDate,
+    },
+    EntityType.member: {
+      MemberFields.displayName: _Kind.text,
+      MemberFields.personId: _Kind.id,
+      MemberFields.deviceId: _Kind.optionalText,
+      MemberFields.mergedInto: _Kind.optionalText,
+      MemberFields.createdAt: _Kind.date,
+      MemberFields.deletedAt: _Kind.optionalDate,
+    },
+    EntityType.expense: {
+      ExpenseFields.kind: _Kind.text,
+      ExpenseFields.description: _Kind.text,
+      ExpenseFields.category: _Kind.text,
+      ExpenseFields.date: _Kind.date,
+      ExpenseFields.notes: _Kind.text,
+      ExpenseFields.money: _Kind.money,
+      ExpenseFields.paymentMethod: _Kind.optionalText,
+      ExpenseFields.createdBy: _Kind.id,
+      ExpenseFields.createdAt: _Kind.date,
+      ExpenseFields.deletedAt: _Kind.optionalDate,
+    },
+  };
+
+  /// Largest |ms| a DateTime accepts.
+  static const int maxDateMs = 8640000000000000;
+
+  static bool _hasKind(Object? value, _Kind kind) => switch (kind) {
+    _Kind.text => value is String,
+    _Kind.optionalText => value == null || value is String,
+    _Kind.id => value is String && value.isNotEmpty,
+    _Kind.flag => value is bool,
+    _Kind.date => value is int && value.abs() <= maxDateMs,
+    _Kind.optionalDate =>
+      value == null || (value is int && value.abs() <= maxDateMs),
+    _Kind.money => _isMoneyBlock(value),
+  };
+
+  static const Set<String> _moneyKeys = {
+    'total',
+    'currency',
+    'paidBy',
+    'owedBy',
+    'paid',
+    'owed',
+  };
+  static const Set<String> _specKeys = {'method', 'values'};
+
+  /// True for exactly the block MoneyBlock.toJson writes: the known keys
+  /// only (no room for padding), member id -> int maps, and amounts the
+  /// reducer accepts (parseMoney).
+  static bool _isMoneyBlock(Object? value) {
+    bool keys(Map<Object?, Object?> m, Set<String> known) =>
+        m.length == known.length && m.keys.every(known.contains);
+    bool ints(Object? m) =>
+        m is Map &&
+        m.entries.every((e) => e.key is String && e.value is int);
+    bool spec(Object? s) =>
+        s is Map &&
+        keys(s, _specKeys) &&
+        s['method'] is String &&
+        ints(s['values']);
+    return value is Map &&
+        keys(value, _moneyKeys) &&
+        value['total'] is int &&
+        value['currency'] is String &&
+        spec(value['paidBy']) &&
+        spec(value['owedBy']) &&
+        ints(value['paid']) &&
+        ints(value['owed']) &&
+        parseMoney(value) != null;
   }
 
   static bool _hasControl(String value) {
@@ -247,4 +338,18 @@ abstract final class TextRules {
       _ => false,
     };
   }
+}
+
+/// JSON shape of a known payload field (TextRules._kinds).
+enum _Kind {
+  text('a string'),
+  optionalText('a string or null'),
+  id('a non-empty string'),
+  flag('true or false'),
+  date('a date in milliseconds'),
+  optionalDate('a date in milliseconds or null'),
+  money('a money block');
+
+  const _Kind(this.what);
+  final String what;
 }
