@@ -18,6 +18,7 @@ final Set<String> _allErrorCopy = {
   S.errInvalidSplit,
   S.errPermission,
   S.errRadioOff,
+  S.errLocationOff,
   S.errUnreachable,
   S.errTimeout,
   S.errNoShared,

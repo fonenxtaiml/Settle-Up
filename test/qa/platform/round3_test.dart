@@ -486,8 +486,53 @@ void main() {
             'Bluetooth is on and only the location switch is off, but the '
             'user is told: "$message"',
       );
-    }, skip: 'PLATFORM-R3-01: hosting with location off says Bluetooth or '
-        'Wi-Fi is off');
+    });
+
+    // Regressions for the PLATFORM-R3-01 fix: which failure hosting reports.
+    Future<SyncFailure?> hostingFailure(AndroidPhone phone) async {
+      for (final p in _allRadioPermissions) {
+        phone.os_[p] = PermissionStatus.granted;
+      }
+      final engine = await _engine(phone);
+      addTearDown(engine.dispose);
+      try {
+        await engine.startHosting();
+        await engine.stopHosting();
+        return null;
+      } on SyncException catch (e) {
+        return e.failure;
+      }
+    }
+
+    test('PLATFORM-R3-01 fix: location off, no Wi-Fi -> locationOff, whose '
+        'copy names location, not Bluetooth', () async {
+      final f = await hostingFailure(
+        AndroidPhone(sdk: 29)
+          ..locationOn = false
+          ..lan = false,
+      );
+      expect(f, SyncFailure.locationOff);
+      final copy = syncFailureMessage(f!);
+      expect(copy, contains('ocation'));
+      expect(copy, isNot(contains('Bluetooth or Wi-Fi is off')));
+    });
+
+    test('PLATFORM-R3-01 fix: Bluetooth and location off, no Wi-Fi -> still '
+        'radioOff (Bluetooth first)', () async {
+      final f = await hostingFailure(
+        AndroidPhone(sdk: 29)
+          ..locationOn = false
+          ..radio = RadioState.off
+          ..lan = false,
+      );
+      expect(f, SyncFailure.radioOff);
+    });
+
+    test('PLATFORM-R3-01 fix: location off with Wi-Fi -> hosting works over '
+        'Wi-Fi', () async {
+      final f = await hostingFailure(AndroidPhone(sdk: 29)..locationOn = false);
+      expect(f, isNull);
+    });
   });
 
   group('round 3: privacy policy neighbours of PLATFORM-R2-03', () {

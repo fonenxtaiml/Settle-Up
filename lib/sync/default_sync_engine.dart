@@ -415,8 +415,12 @@ final class DefaultSyncEngine implements SyncEngine {
         a == TransportAvailability.permissionPermanentlyDenied)) {
       return SyncFailure.permissionDenied;
     }
-    if (all.contains(TransportAvailability.radioOff) ||
-        all.contains(TransportAvailability.locationOff)) {
+    // Location off implies Bluetooth on: saying "Bluetooth or Wi-Fi is
+    // off" would send the user to the wrong switch (PLATFORM-R3-01).
+    if (all.contains(TransportAvailability.locationOff)) {
+      return SyncFailure.locationOff;
+    }
+    if (all.contains(TransportAvailability.radioOff)) {
       return SyncFailure.radioOff;
     }
     return SyncFailure.internal;
