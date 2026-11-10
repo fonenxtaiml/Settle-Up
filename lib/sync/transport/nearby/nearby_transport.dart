@@ -30,6 +30,7 @@ import 'dart:typed_data';
 
 import '../../../core/models.dart';
 import '../../platform/permissions.dart';
+import '../sighting_cache.dart';
 import '../transport.dart';
 import 'nearby_api.dart';
 import 'nearby_endpoint_name.dart';
@@ -111,7 +112,10 @@ final class NearbyTransport implements SyncTransport {
   Future<void> _queue = Future.value();
 
   final Set<StreamController<DiscoveredPeer>> _listeners = {};
-  final Map<String, DiscoveredPeer> _found = {};
+  /// Endpoint id -> sighting, for the endpoints found and not yet lost.
+  /// Only the newest endpoint per phone is emitted (SYNC-R6-01); older ones
+  /// stay cached, hidden, until their own loss (SYNC-R8-01).
+  final SightingCache _found = SightingCache();
   bool _discovering = false;
   Timer? _rediscover;
   bool _disposed = false;
@@ -227,9 +231,7 @@ final class NearbyTransport implements SyncTransport {
           return;
         }
         _listeners.add(ctl);
-        for (final p in _found.values) {
-          ctl.add(p);
-        }
+        _found.visible.forEach(ctl.add);
         unawaited(_updateDiscovery());
       },
       onCancel: () {
@@ -277,11 +279,7 @@ final class NearbyTransport implements SyncTransport {
     }
   }
 
-  void _emitAll() {
-    for (final p in _found.values) {
-      _emit(p);
-    }
-  }
+  void _emitAll() => _found.visible.forEach(_emit);
 
   // ----------------------------------------------------------- connect --
 
@@ -352,13 +350,18 @@ final class NearbyTransport implements SyncTransport {
         if (!_discovering) return;
         final peer = parsed.toPeer(endpointId);
         // A phone that re-advertises (a rename) gets a new endpoint id with
-        // the same advert id; drop the old one even if its loss is never
-        // reported, or the row would flip between the names (SYNC-R6-01).
-        _found.removeWhere((_, p) => peer.sameAdvertiserAs(p));
-        _found[endpointId] = peer;
+        // the same advert id. The newest endpoint hides the older ones, so
+        // the row does not flip between the names when the old loss is
+        // never reported (SYNC-R6-01). They stay cached, though: a stale
+        // old endpoint can also be reported after the live one (a restarted
+        // discovery answering from a medium cache, a slower medium), and
+        // its loss must then show the live one again (SYNC-R8-01).
+        _found.put(endpointId, peer);
         _emit(peer);
       case NearbyEndpointLost(:final endpointId):
-        _found.remove(endpointId);
+        // Withdraws this endpoint only; a hidden endpoint of the same phone
+        // that was never lost becomes visible again.
+        _found.remove(endpointId).shown.forEach(_emit);
       case NearbyConnectionInitiated(:final endpointId, :final incoming):
         unawaited(_onInitiated(endpointId, incoming: incoming));
       case NearbyConnectionResult(:final endpointId, :final connected):

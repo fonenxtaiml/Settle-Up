@@ -11,12 +11,12 @@ import 'dart:typed_data';
 import '../../../core/models.dart';
 import '../../platform/permissions.dart';
 import '../hosting_details.dart';
+import '../sighting_cache.dart';
 import '../transport.dart';
 import 'gateway_probe.dart';
 import 'lan_network.dart';
 import 'local_address.dart';
 import 'mdns.dart';
-import 'sighting_cache.dart';
 import 'tcp_framing.dart';
 
 export 'tcp_framing.dart' show kLanMaxFrameBytes;

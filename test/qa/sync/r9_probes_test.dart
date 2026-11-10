@@ -318,10 +318,6 @@ void main() {
           reason: 'no loss was ever reported for E2',
         );
       },
-      skip:
-          'QA SYNC-R8-01: on Nearby a stale old endpoint still evicts the '
-          'live renamed endpoint, so its loss hides a phone that is still '
-          'advertising',
     );
 
     test(
@@ -359,10 +355,6 @@ void main() {
           reason: 'E2 was never reported lost',
         );
       },
-      skip:
-          'QA SYNC-R8-01: on Nearby a stale old endpoint still evicts the '
-          'live renamed endpoint, so its loss hides a phone that is still '
-          'advertising',
     );
   });
 }
