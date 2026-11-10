@@ -91,6 +91,9 @@ final class FaultyStore implements OpStore {
   Future<VersionVector> peerKnowledge(GroupId groupId) =>
       inner.peerKnowledge(groupId);
   @override
+  Future<bool> capPeerKnowledge(GroupId groupId, DeviceId deviceId, int max) =>
+      inner.capPeerKnowledge(groupId, deviceId, max);
+  @override
   Future<void> recordPeerKnowledge(
           DeviceId peer, GroupId groupId, VersionVector vv) =>
       inner.recordPeerKnowledge(peer, groupId, vv);

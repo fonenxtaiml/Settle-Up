@@ -1345,6 +1345,9 @@ final class _FlakyStore implements OpStore {
   Future<VersionVector> peerKnowledge(GroupId groupId) =>
       _inner.peerKnowledge(groupId);
   @override
+  Future<bool> capPeerKnowledge(GroupId groupId, DeviceId deviceId, int max) =>
+      _inner.capPeerKnowledge(groupId, deviceId, max);
+  @override
   Future<void> recordPeerKnowledge(
           DeviceId peer, GroupId groupId, VersionVector vv) =>
       _inner.recordPeerKnowledge(peer, groupId, vv);
