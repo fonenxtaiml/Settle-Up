@@ -30,7 +30,7 @@ void main() {
   for (final (what, ms) in [
     ('earliest', TextRules.minModelDateMs),
     ('latest', TextRules.maxModelDateMs),
-  ])
+  ]) {
     testWidgets(
       'SECURITY-R4-01 the group screen shows an expense at the $what date a '
       'peer may send',
@@ -58,6 +58,7 @@ void main() {
         expect(find.text('Edge'), findsOneWidget);
       },
     ); // SECURITY-R4-01
+  }
 
   test('the remote check refuses a date that has no local calendar day', () {
     // Local offsets run from -12 h to +14 h. Within 14 h of the start of
