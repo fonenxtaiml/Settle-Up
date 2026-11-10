@@ -92,6 +92,7 @@ class SettingsScreen extends ConsumerWidget {
                       initial: profile.displayName,
                       helper: S.yourNameHelper,
                       maxLength: kMemberNameMax,
+                      isName: true,
                     );
                     if (name == null || !context.mounted) return;
                     // Two members with one name cannot be told apart in
@@ -206,6 +207,7 @@ class SettingsScreen extends ConsumerWidget {
                       helper: S.phoneNameHelp,
                       // SPEC 8.9: the mDNS service name, at most 40.
                       maxLength: kDeviceNameMax,
+                      isName: true,
                     );
                     if (name == null || !context.mounted) return;
                     await runGuarded(context, () => repo.setDeviceName(name));

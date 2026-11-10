@@ -229,6 +229,7 @@ Future<String?> promptText(
   String? helper,
   String confirmLabel = S.save,
   int? maxLength,
+  bool isName = false,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -238,6 +239,7 @@ Future<String?> promptText(
     helper: helper,
     confirmLabel: confirmLabel,
     maxLength: maxLength,
+    isName: isName,
   ),
 );
 
@@ -249,6 +251,7 @@ class _TextPrompt extends StatefulWidget {
     this.hint,
     this.helper,
     this.maxLength,
+    this.isName = false,
   });
 
   final String title;
@@ -259,6 +262,10 @@ class _TextPrompt extends StatefulWidget {
 
   /// Caps the text (and the initial value) at this many characters.
   final int? maxLength;
+
+  /// The text is a name: Save needs a letter or number in it
+  /// ([NameText.isValid]), as the Ledger and Settings do (DATA-R6-02).
+  final bool isName;
 
   @override
   State<_TextPrompt> createState() => _TextPromptState();
@@ -277,26 +284,35 @@ class _TextPromptState extends State<_TextPrompt> {
     super.dispose();
   }
 
+  bool get _accepted {
+    final text = _controller.text;
+    return widget.isName ? NameText.isValid(text) : text.trim().isNotEmpty;
+  }
+
   void _submit() {
-    final t = _controller.text.trim();
-    if (t.isEmpty) return;
-    Navigator.of(context).pop(t);
+    if (!_accepted) return;
+    Navigator.of(context).pop(_controller.text.trim());
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
     title: Text(widget.title),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      maxLength: widget.maxLength,
-      textCapitalization: TextCapitalization.words,
-      decoration: InputDecoration(
-        hintText: widget.hint,
-        helperText: widget.helper,
-        helperMaxLines: 3,
+    content: ListenableBuilder(
+      listenable: _controller,
+      builder: (context, _) => TextField(
+        controller: _controller,
+        autofocus: true,
+        maxLength: widget.maxLength,
+        textCapitalization: TextCapitalization.words,
+        decoration: InputDecoration(
+          hintText: widget.hint,
+          helperText: widget.helper,
+          helperMaxLines: 3,
+          errorText: widget.isName ? nameInputError(_controller.text) : null,
+          errorMaxLines: 3,
+        ),
+        onSubmitted: (_) => _submit(),
       ),
-      onSubmitted: (_) => _submit(),
     ),
     actions: [
       TextButton(
@@ -306,7 +322,7 @@ class _TextPromptState extends State<_TextPrompt> {
       ListenableBuilder(
         listenable: _controller,
         builder: (context, _) => FilledButton(
-          onPressed: _controller.text.trim().isEmpty ? null : _submit,
+          onPressed: _accepted ? _submit : null,
           child: Text(widget.confirmLabel),
         ),
       ),
@@ -461,6 +477,13 @@ const int kMemberNameMax = 40;
 /// and one that draws a blank as wide as a space read as a space ("Rahul"
 /// + U+3164 + "Kumar" is "Rahul Kumar", never "RahulKumar", UIFLOW-R6-01).
 /// A candidate with no letter or number is no name and matches nothing.
+/// The message under a name field whose text is not empty but is no name
+/// (no letter or number once normalised, [NameText.isValid]): only
+/// spaces, symbols or characters that show nothing. Null while the field
+/// is empty or holds a name.
+String? nameInputError(String text) =>
+    text.trim().isEmpty || NameText.isValid(text) ? null : S.nameNeedsLetter;
+
 String? duplicateName(String candidate, Iterable<String> existing) {
   if (!NameText.isValid(candidate)) return null;
   final k = NameText.key(candidate);

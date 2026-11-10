@@ -43,6 +43,12 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
   Future<void> _add(GroupState g) async {
     final n = _name.text.trim();
     if (n.isEmpty) return;
+    final notName = nameInputError(n);
+    if (notName != null) {
+      Haptics.invalid(context);
+      setState(() => _nameError = notName);
+      return;
+    }
     final dup = duplicateName(n, [
       for (final m in g.activeMembers) m.displayName,
     ]);
@@ -87,6 +93,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           title: S.renameTitle,
           initial: m.displayName,
           maxLength: kMemberNameMax,
+          isName: true,
         );
         final dup = name == null
             ? null
