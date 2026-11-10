@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/data/repositories.dart';
+import 'package:settle_up/sync/crypto/tokens.dart';
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/sync/pairing/links.dart';
 import 'package:settle_up/sync/sync_engine.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
+import 'package:settle_up/sync/transport/nearby/nearby_endpoint_name.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
+import '../qa/sync/qa_phone.dart' show SlowConnectTransport;
 import 'support/harness.dart';
 import 'support/phone.dart';
 
@@ -27,6 +31,7 @@ final class Phone {
     String letter,
     String name, {
     TestClock? clock,
+    Duration? connectDelay,
   }) async {
     final phone = await TestPhone.create(letter, deviceName: name);
     final lan = MemoryTransport(
@@ -42,7 +47,10 @@ final class Phone {
     );
     final engine = DefaultSyncEngine(
       store: phone.ledger,
-      transports: [lan, ble],
+      transports: [
+        for (final t in [lan, ble])
+          connectDelay == null ? t : SlowConnectTransport(t, connectDelay),
+      ],
       clock: clock,
       timings: fastTimings,
     );
@@ -78,6 +86,41 @@ final class Phone {
         .timeout(const Duration(seconds: 2));
     return list.firstWhere(match);
   }
+}
+
+/// Records what the engine advertises.
+final class CapturingTransport implements SyncTransport {
+  CapturingTransport(this.inner);
+  final MemoryTransport inner;
+  AdvertiseInfo? info;
+
+  @override
+  TransportKind get kind => inner.kind;
+  @override
+  Future<TransportAvailability> availability() => inner.availability();
+  @override
+  Future<TransportAvailability> requestPermissions() =>
+      inner.requestPermissions();
+  @override
+  Future<void> startAdvertising(AdvertiseInfo info) {
+    this.info = info;
+    return inner.startAdvertising(info);
+  }
+
+  @override
+  Future<void> stopAdvertising() => inner.stopAdvertising();
+  @override
+  Stream<FrameChannel> get inbound => inner.inbound;
+  @override
+  Stream<DiscoveredPeer> discover() => inner.discover();
+  @override
+  Future<FrameChannel> connect(
+    DiscoveredPeer peer, {
+    Duration timeout = const Duration(seconds: 10),
+  }) =>
+      inner.connect(peer, timeout: timeout);
+  @override
+  Future<void> dispose() => inner.dispose();
 }
 
 void main() {
@@ -516,6 +559,50 @@ void main() {
     await carol.dispose();
   });
 
+  test(
+      'adverts list recently synced groups first, so a phone in more groups '
+      'than Nearby holds keeps advertising them (SYNC-R2-01)', () async {
+    // 30 newer groups push the seed group out of the first 24.
+    for (var i = 0; i < 30; i++) {
+      await priya.phone.ledger.createGroup(NewGroup(
+        name: 'Trip $i',
+        type: GroupType.trip,
+        currency: 'INR',
+        newMemberNames: const ['X'],
+      ));
+    }
+    final capture = CapturingTransport(
+      MemoryTransport(hub, kind: TransportKind.nearby, address: 'b-nearby'),
+    );
+    final host = DefaultSyncEngine(
+      store: priya.phone.ledger,
+      transports: [capture],
+      timings: fastTimings,
+    );
+    addTearDown(host.dispose);
+    Future<bool> advertisesSeed() async {
+      final info = capture.info!;
+      final w = info.tokenWindow!;
+      final mine = await DiscoveryTokens.token(
+        (await priya.phone.ledger.groupKeys())[seed.g]!,
+        w,
+      );
+      final nearby = NearbyEndpointName.tryParse(
+        NearbyEndpointName.of(info).encode(),
+      )!;
+      expect(nearby.moreGroups, isTrue);
+      return nearby.groupTokens.contains(mine);
+    }
+
+    await host.startHosting();
+    expect(await advertisesSeed(), isFalse);
+    await host.stopHosting();
+    await alex.engine.startHosting();
+    await priya.engine.syncWith(await priya.find(alex));
+    await host.startHosting();
+    expect(await advertisesSeed(), isTrue);
+  });
+
   test('watchStatus and watchNearby emit the current value first', () async {
     expect(await alex.engine.watchStatus().first, same(alex.engine.status));
     expect(await alex.engine.watchNearby().first, isEmpty);
@@ -585,6 +672,101 @@ void main() {
       final summary = await alex.engine.syncWith(await alex.find(priya));
       expect(summary.sentOps, 7);
       for (final c in silent) {
+        await c.close();
+      }
+    });
+
+    for (final slowIsLower in [false, true]) {
+      test(
+          'both phones tap Sync while the ${slowIsLower ? 'lower' : 'higher'} '
+          "id's dial outlasts the handshake timeout: both succeed "
+          '(SYNC-R2-02)', () async {
+        // fastTimings: handshake 2 s; the slow phone's dial takes 3 s, so
+        // the fast phone's connection waits for it and is told "Starting
+        // its own sync", then serves the slow phone's connection.
+        final slow = await Phone.create(
+          hub,
+          slowIsLower ? '0' : 'c',
+          "Ravi's iPhone",
+          connectDelay: const Duration(seconds: 3),
+        );
+        addTearDown(slow.dispose);
+        await slow.phone.join(alex.phone, seed.g);
+        expect(slow.phone.deviceId.compareTo(alex.phone.deviceId) < 0,
+            slowIsLower);
+        await alex.engine.startHosting();
+        await slow.engine.startHosting();
+        final toSlow = await alex.find(slow);
+        final toAlex = await slow.find(alex);
+        final fs = tap(slow, toAlex);
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        final fa = tap(alex, toSlow);
+        final results = await Future.wait([fa, fs]);
+        expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+        expect(slow.phone.canonical, alex.phone.canonical);
+      });
+    }
+
+    Future<List<FrameChannel>> openSilent(Iterable<String> from) async {
+      final out = <FrameChannel>[];
+      for (final address in from) {
+        final t =
+            MemoryTransport(hub, kind: TransportKind.lan, address: address);
+        addTearDown(t.dispose);
+        out.add(await t.connect(const DiscoveredPeer(
+          kind: TransportKind.lan,
+          address: 'b-lan',
+          name: '',
+        )));
+      }
+      return out;
+    }
+
+    /// How many of [channels] the host has closed.
+    Future<int> closedBy(List<FrameChannel> channels) async {
+      var closed = 0;
+      for (final c in channels) {
+        final done = Completer<void>();
+        c.frames.listen((_) {}, onDone: done.complete, onError: (_) {});
+        final ended = await done.future
+            .then((_) => true)
+            .timeout(const Duration(milliseconds: 100), onTimeout: () => false);
+        if (ended) closed++;
+      }
+      return closed;
+    }
+
+    test(
+        'one source reconnecting only evicts its own silent connections '
+        '(SECURITY-R2-03)', () async {
+      await priya.engine.startHosting();
+      // A friend's connection that has not said anything yet.
+      final friend = await openSilent(['10.0.0.7:40000']);
+      // One stranger, a new port per connection.
+      final flood = await openSilent([
+        for (var i = 0; i < kMaxSilentPerSource + 6; i++)
+          '10.0.0.66:${41000 + i}',
+      ]);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(await closedBy(flood), 6);
+      expect(await closedBy(friend), 0);
+    });
+
+    test(
+        'new connections never evict a handshake that is under way '
+        '(SECURITY-R2-03)', () async {
+      hub.latency = const Duration(milliseconds: 40);
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      final sync = alex.engine.syncWith(toPriya);
+      // Alex's HELLO has reached the host; his AUTH is still on its way.
+      await Future<void>.delayed(const Duration(milliseconds: 60));
+      final flood = await openSilent([
+        for (var i = 0; i < kMaxSilentInbound + 8; i++) 'mallory-$i',
+      ]);
+      final summary = await sync;
+      expect(summary.sentOps, 7);
+      for (final c in flood) {
         await c.close();
       }
     });

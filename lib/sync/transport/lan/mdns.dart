@@ -1,9 +1,12 @@
 // mDNS / DNS-SD for the LAN transport (SPEC 8.7.2): service type
 // `_settleup._tcp`, service name = device name (<= 40 chars), TXT
-// `v=2`, `d=<advertId>`, `w=<windowTag>`, `t=<tokens comma-joined, <= 48>`.
+// `v=2`, `d=<advertId>`, `w=<windowTag>`, `t`, `t1`, `t2`, `t3` = up to 60
+// sorted tokens each, back to back, and `m=1` when the phone is in more
+// groups than that (the first 240 in priority order are kept, SPEC 8.3).
 //
-// A DNS TXT string holds at most 255 bytes: 48 tokens of 4 chars take
-// "t=" + 48 * 5 - 1 = 241 bytes.
+// A DNS TXT string holds at most 255 bytes ("t1=" + 240 = 243), and
+// Android keeps a whole TXT record under 1300 bytes (about 1000 here).
+// Readers also accept tokens separated by commas.
 import 'dart:async';
 import 'dart:developer' as developer;
 import 'dart:io';
@@ -21,8 +24,14 @@ const String kLanServiceType = '_settleup._tcp';
 /// Longest advertised service name.
 const int kLanServiceNameMax = 40;
 
+/// Tokens in one TXT attribute.
+const int kLanTokensPerKey = 60;
+
+/// TXT keys that carry tokens, in order.
+const List<String> kLanTokenKeys = ['t', 't1', 't2', 't3'];
+
 /// Most tokens advertised (SPEC 5.12 AdvertiseInfo).
-const int kLanMaxTokens = 48;
+const int kLanMaxTokens = kLanTokensPerKey * 4;
 
 /// The TXT `v` this file writes. Older services are not read.
 const int kLanTxtVersion = 2;
@@ -73,20 +82,37 @@ final class MdnsAdvert {
     return out.toString();
   }
 
-  /// TXT attributes for [info].
+  /// TXT attributes for [info]: the first [kLanMaxTokens] of its tokens
+  /// (priority order), sorted.
   static Map<String, String> txtFor(AdvertiseInfo info) {
-    final tokens = [
-      for (final t in info.groupTokens)
-        if (DiscoveryTokens.isToken(t)) t,
-    ].take(kLanMaxTokens).toList();
+    final kept = DiscoveryTokens.forAdvert(info.groupTokens, kLanMaxTokens);
+    final tokens = kept.tokens;
     final id = info.advertId;
     final window = info.tokenWindow;
     return {
       'v': '$kLanTxtVersion',
       if (id != null && DiscoveryTokens.isAdvertId(id)) 'd': id,
       if (window != null) 'w': DiscoveryTokens.windowTag(window),
-      't': tokens.join(','),
+      't': tokens.take(kLanTokensPerKey).join(),
+      for (var k = 1; k < kLanTokenKeys.length; k++)
+        if (tokens.length > k * kLanTokensPerKey)
+          kLanTokenKeys[k]: tokens
+              .skip(k * kLanTokensPerKey)
+              .take(kLanTokensPerKey)
+              .join(),
+      if (kept.cut) 'm': '1',
     };
+  }
+
+  /// Tokens in TXT [value]: packed back to back, or separated by commas.
+  static Iterable<String> tokensIn(String value) sync* {
+    for (final part in value.split(',')) {
+      if (part.length % DiscoveryTokens.tokenLength != 0) continue;
+      for (var i = 0; i < part.length; i += DiscoveryTokens.tokenLength) {
+        final t = part.substring(i, i + DiscoveryTokens.tokenLength);
+        if (DiscoveryTokens.isToken(t)) yield t;
+      }
+    }
   }
 }
 
@@ -134,8 +160,8 @@ final class MdnsSighting {
     if (best == null) return null;
     final d = attributes['d'];
     final tokens = <String>{
-      for (final t in (attributes['t'] ?? '').split(','))
-        if (DiscoveryTokens.isToken(t)) t,
+      for (final key in kLanTokenKeys)
+        ...MdnsAdvert.tokensIn(attributes[key] ?? ''),
     };
     return DiscoveredPeer(
       kind: TransportKind.lan,
@@ -144,6 +170,7 @@ final class MdnsSighting {
       advertId: d != null && DiscoveryTokens.isAdvertId(d) ? d : null,
       groupTokens: tokens.take(kLanMaxTokens).toSet(),
       windowTag: DiscoveryTokens.parseWindowTag(attributes['w']),
+      moreGroups: attributes['m'] == '1' || tokens.length > kLanMaxTokens,
     );
   }
 }

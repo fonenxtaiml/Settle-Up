@@ -8,6 +8,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/ops.dart';
 import '../../../data/repositories.dart';
@@ -53,17 +54,40 @@ String pendingWhat(LedgerSnapshot snap) {
   return text.isEmpty ? text : text[0].toUpperCase() + text.substring(1);
 }
 
-/// Phone icon from the name a peer advertises.
+/// Phone icon from the name a peer advertises. A phone in more groups
+/// than its advert lists may share one of ours, so it is not "unknown".
 NearbyPhoneKind phoneKindOf(NearbyPeer p) {
-  if (!p.sharesGroups) return NearbyPhoneKind.unknown;
+  if (!p.maySync) return NearbyPhoneKind.unknown;
   return p.name.toLowerCase().contains('iphone')
       ? NearbyPhoneKind.iphone
       : NearbyPhoneKind.android;
 }
 
-/// Starts a session with [peer] and opens the progress screen.
+/// "Wi-Fi, shares Goa trip": how [p] is reached and what it shares.
+String nearbySubtitle(NearbyPeer p, Map<GroupId, String> groupNames) => [
+  if (p.transports.contains(TransportKind.lan)) S.wifi else S.bluetooth,
+  if (!p.sharesGroups && p.moreGroups)
+    S.mayShareGroups
+  else
+    S.sharesGroups([for (final id in p.sharedGroupIds) ?groupNames[id]]),
+].join(', ');
+
+/// The button on [p]'s row: Sync when it shares a group or may (its
+/// advert was cut), Pair otherwise; none while another session runs.
+NearbyPhoneAction nearbyActionOf(NearbyPeer p, SessionStatus session) {
+  if (session is SessionActive) {
+    return session.progress.peerName == p.name
+        ? NearbyPhoneAction.busy
+        : NearbyPhoneAction.none;
+  }
+  return p.maySync ? NearbyPhoneAction.sync : NearbyPhoneAction.pair;
+}
+
+/// Starts a session with [peer] and opens the progress screen. A phone
+/// whose advert shows no shared group but was cut (it is in more groups
+/// than an advert holds) is tried too: the HELLO decides (SPEC 8.3).
 void startSyncWith(BuildContext context, WidgetRef ref, NearbyPeer peer) {
-  if (!peer.sharesGroups) {
+  if (!peer.maySync) {
     showSnack(
       context,
       S.pairHint,
@@ -311,23 +335,9 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
                   for (final p in peers)
                     NearbyPhoneRow(
                       name: p.name,
-                      subtitle: [
-                        if (p.transports.contains(TransportKind.lan))
-                          S.wifi
-                        else
-                          S.bluetooth,
-                        S.sharesGroups([
-                          for (final id in p.sharedGroupIds) ?groupNames[id],
-                        ]),
-                      ].join(', '),
+                      subtitle: nearbySubtitle(p, groupNames),
                       kind: phoneKindOf(p),
-                      action: session is SessionActive
-                          ? (session.progress.peerName == p.name
-                                ? NearbyPhoneAction.busy
-                                : NearbyPhoneAction.none)
-                          : p.sharesGroups
-                          ? NearbyPhoneAction.sync
-                          : NearbyPhoneAction.pair,
+                      action: nearbyActionOf(p, session),
                       onAction: () => startSyncWith(context, ref, p),
                     ),
                 ],

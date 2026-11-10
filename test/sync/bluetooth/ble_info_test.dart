@@ -26,7 +26,7 @@ void main() {
       'd': '5e1f00d2',
       'w': '02b',
       'n': 'Sam iPhone',
-      't': [token(1)],
+      't': token(1),
     });
   });
 
@@ -55,13 +55,36 @@ void main() {
     expect(peer.groupTokens, {token(2), token(3)});
   });
 
-  test('48 tokens fit next to a short name', () {
+  test('96 tokens fit next to a short name; a cut list is flagged', () {
     final bytes = BleInfo(
       advertId: 'aaaaaaaa',
       deviceName: 'Priya',
-      groupTokens: [for (var i = 0; i < 60; i++) token(i)],
+      groupTokens: [for (var i = 0; i < 120; i++) token(i)],
     ).encode();
-    expect(BleInfo.tryParse(bytes)!.groupTokens, hasLength(BleInfo.maxTokens));
+    final parsed = BleInfo.tryParse(bytes)!;
+    expect(parsed.groupTokens, hasLength(BleInfo.maxTokens));
+    expect(parsed.moreGroups, isTrue);
+    expect(parsed.toPeer('p').moreGroups, isTrue);
+    // The first ones in priority order are kept, sorted.
+    expect(parsed.groupTokens,
+        [for (var i = 0; i < BleInfo.maxTokens; i++) token(i)]..sort());
+    final all = BleInfo.tryParse(BleInfo(
+      advertId: 'aaaaaaaa',
+      deviceName: 'Priya',
+      groupTokens: [for (var i = 0; i < 60; i++) token(i)],
+    ).encode())!;
+    expect(all.groupTokens, hasLength(60));
+    expect(all.moreGroups, isFalse);
+  });
+
+  test('a token list (as JSON array) is still read', () {
+    final parsed = BleInfo.tryParse(json({
+      'v': 2,
+      'd': 'aaaaaaaa',
+      'n': 'x',
+      't': [token(1), token(2)],
+    }))!;
+    expect(parsed.groupTokens, [token(1), token(2)]);
   });
 
   test('tokens and a 40-character wide name fit one attribute', () {

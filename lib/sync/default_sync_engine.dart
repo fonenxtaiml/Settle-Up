@@ -2,15 +2,22 @@
 // transports, choosing a transport, one session at a time.
 //
 // One session at a time means one session that exchanges data. Inbound
-// connections handshake in parallel (up to [kMaxPendingInbound]), and the
-// first to authenticate gets the slot, so a silent stranger cannot hold
-// it. Who gets the slot (SPEC 8.7.1):
+// connections handshake in parallel, and the first to authenticate gets
+// the slot, so a silent stranger cannot hold it. Connections that have not
+// said HELLO yet are cheap and many may wait ([kMaxSilentInbound], at most
+// [kMaxSilentPerSource] from one address); handshakes that are under way
+// are bounded by [kMaxPendingInbound]. A new connection only ever evicts a
+// silent one, so a stranger who keeps reconnecting cannot push out a
+// friend whose handshake is progressing. Who gets the slot (SPEC 8.7.1):
 // - nothing running: the session is admitted;
 // - a new authenticated connection from the phone whose inbound session
 //   holds the slot: it replaces that (dead or abandoned) session;
 // - both phones tapped Sync on each other: the phone with the lower device
 //   id gives way and serves the other one's connection; its own Sync call
-//   resolves with that session's result;
+//   resolves with that session's result. When one phone's own dial is still
+//   connecting after a handshake timeout, it answers ERROR busy "Starting
+//   its own sync" and the other phone waits for that dial to arrive and
+//   serves it, whichever id is lower;
 // - otherwise: ERROR busy.
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -21,6 +28,7 @@ import '../core/models.dart';
 import '../data/repositories.dart';
 import 'crypto/tokens.dart';
 import 'nearby_registry.dart';
+import 'peer_name.dart';
 import 'pairing/links.dart';
 import 'protocol/codec.dart';
 import 'protocol/messages.dart';
@@ -29,6 +37,7 @@ import 'sync_clock.dart';
 import 'sync_engine.dart';
 import 'transport/hosting_details.dart';
 import 'transport/lan/local_address.dart';
+import 'transport/lan/tcp_framing.dart' show parseHostPort;
 import 'transport/transport.dart';
 
 export 'sync_clock.dart';
@@ -40,12 +49,31 @@ void _log(String message, [Object? error, StackTrace? st]) => developer.log(
       stackTrace: st,
     );
 
-/// Inbound handshakes that may run at once. A new one beyond this evicts
-/// the oldest one that has not authenticated yet.
+/// Inbound handshakes (HELLO received, not authenticated yet) that may run
+/// at once. One more evicts the oldest of them.
 const int kMaxPendingInbound = 4;
+
+/// Inbound connections that have not said HELLO yet. A new connection
+/// beyond this evicts the oldest of them, so a friend's fresh connection
+/// outlives this many newer ones while its HELLO is on the way (one round
+/// trip; in tests a tight reconnect loop gets about 17 in). A silent
+/// connection costs a socket and a timer until its handshake timeout.
+const int kMaxSilentInbound = 64;
+
+/// Silent inbound connections from one source (the IP address on LAN). A
+/// new one beyond this evicts that source's oldest, so one stranger's
+/// reconnect loop only ever pushes out its own connections.
+const int kMaxSilentPerSource = 4;
+
+const String _tooMany = 'Too many phones connecting';
 
 const String _busyOther = 'Syncing with another phone';
 const String _busySame = 'Already syncing with you';
+
+/// This phone's own Sync is still connecting and has not said whom it
+/// reaches: it may well be the phone asking (both tapped Sync, one dial
+/// slower than a handshake).
+const String _busyDialing = 'Starting its own sync';
 
 /// A Sync this phone started (syncWith, syncWithLink, an invite).
 final class _Outbound {
@@ -226,10 +254,54 @@ final class DefaultSyncEngine implements SyncEngine {
       groupTokens: await DiscoveryTokens.advertised(
         await _store.groupKeys(),
         now,
+        priority: await _recentlySyncedGroups(),
       ),
       advertId: await DiscoveryTokens.advertId(_advertSecret, w),
       tokenWindow: w,
     );
+  }
+
+  /// Groups in Sync history, most recently synced first: when an advert
+  /// cannot hold every token, these are the ones a nearby phone most
+  /// likely shares (SPEC 8.3).
+  Future<List<GroupId>> _recentlySyncedGroups() async {
+    try {
+      final records = await _firstOf(_store.watchSyncRecords());
+      return {
+        for (final r in records)
+          if (r.outcome != SyncOutcome.failed) ...r.groupIds,
+      }.toList();
+    } catch (e, st) {
+      _log('reading sync history for advert priority failed', e, st);
+      return const [];
+    }
+  }
+
+  /// The first event of [stream]. Unlike [Stream.first] it does not wait
+  /// for the subscription's cancel to finish: that future may belong to
+  /// another zone (the root zone's done future), which would make hosting
+  /// wait on an unrelated event loop turn (and never finish under a fake
+  /// clock).
+  static Future<T> _firstOf<T>(Stream<T> stream) {
+    final first = Completer<T>();
+    late final StreamSubscription<T> sub;
+    sub = stream.listen(
+      (value) {
+        if (first.isCompleted) return;
+        first.complete(value);
+        unawaited(sub.cancel());
+      },
+      onError: (Object e, StackTrace st) {
+        if (first.isCompleted) return;
+        first.completeError(e, st);
+        unawaited(sub.cancel());
+      },
+      onDone: () {
+        if (!first.isCompleted) first.completeError(StateError('No element'));
+      },
+      cancelOnError: true,
+    );
+    return first.future;
   }
 
   @override
@@ -390,16 +462,7 @@ final class DefaultSyncEngine implements SyncEngine {
       unawaited(_rejectBusy(channel));
       return;
     }
-    if (_pendingInbound.length >= kMaxPendingInbound) {
-      // The oldest handshake that has not authenticated has had the
-      // longest to prove itself.
-      final victim = _pendingInbound.firstWhere(
-        (s) => s.state.index < SessionState.authenticated.index,
-        orElse: () => _pendingInbound.first,
-      );
-      _pendingInbound.remove(victim);
-      unawaited(victim.cancel(message: 'Too many phones connecting'));
-    }
+    _makeRoomFor(channel);
     final run = _startSession(channel, SessionRole.responder, '');
     unawaited(run.result.then(
       (r) async {
@@ -408,6 +471,56 @@ final class DefaultSyncEngine implements SyncEngine {
       },
       onError: (Object e, StackTrace st) => _log('inbound session', e, st),
     ));
+  }
+
+  /// Who opened [channel], for [kMaxSilentPerSource]: the IP address of a
+  /// LAN connection (its port changes with every connection), else the
+  /// transport address.
+  static String _sourceOf(FrameChannel channel) {
+    final address = channel.peerAddress;
+    if (channel.kind != TransportKind.lan) return '${channel.kind.name}|$address';
+    return 'lan|${parseHostPort(address)?.host ?? address}';
+  }
+
+  /// An inbound connection whose peer has not said HELLO yet.
+  static bool _isSilent(SyncSession s) =>
+      !s.isFinished && s.peerDeviceId == null;
+
+  void _evict(SyncSession victim) {
+    _pendingInbound.remove(victim);
+    unawaited(victim.cancel(message: _tooMany));
+  }
+
+  /// Before a new inbound connection from [channel] starts: evicts the
+  /// oldest silent connection from the same source, or the oldest silent
+  /// one overall, when either limit is reached. Handshakes under way are
+  /// never evicted for a new connection (the oldest silent connection has
+  /// had the longest to speak).
+  void _makeRoomFor(FrameChannel channel) {
+    final source = _sourceOf(channel);
+    final silent = _pendingInbound.where(_isSilent).toList();
+    final mine = [
+      for (final s in silent)
+        if (_sourceOf(s.channel) == source) s,
+    ];
+    if (mine.length >= kMaxSilentPerSource) {
+      _evict(mine.first);
+    } else if (silent.length >= kMaxSilentInbound) {
+      _evict(silent.first);
+    }
+  }
+
+  /// [hello]'s peer has just said HELLO: if that makes more than
+  /// [kMaxPendingInbound] handshakes under way, the oldest of them goes.
+  void _limitHandshakes(SyncSession hello) {
+    final handshaking = [
+      for (final s in _pendingInbound)
+        if (!s.isFinished &&
+            s.peerDeviceId != null &&
+            s.state.index < SessionState.authenticated.index)
+          s,
+    ];
+    if (handshaking.length > kMaxPendingInbound) _evict(handshaking.first);
   }
 
   Future<void> _rejectBusy(FrameChannel channel) async {
@@ -639,10 +752,11 @@ final class DefaultSyncEngine implements SyncEngine {
 
   Future<SyncSummary> _connectAndRun(
     _Outbound out,
-    String name,
+    String advertisedName,
     List<DiscoveredPeer> routes,
     Duration timeout,
   ) async {
+    final name = cleanPeerName(advertisedName);
     final started = _clock.now();
     FrameChannel? channel;
     Object? lastError;
@@ -715,12 +829,22 @@ final class DefaultSyncEngine implements SyncEngine {
       if (!out.yielded &&
           !r.isSuccess &&
           r.peerErrorCode == ErrorCodes.busy &&
-          peer != null &&
-          _yieldsTo(peer) &&
-          (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
-        // The other phone is syncing with us the other way round: its
-        // connection here is about to ask for the slot.
-        await _awaitYield(out, peer);
+          peer != null) {
+        if (r.message.endsWith(_busyDialing)) {
+          // The other phone is still dialing, maybe us: serve its
+          // connection if it comes (whichever id is lower, since our own
+          // attempt is over). Its dial may take a connect timeout more.
+          await _awaitYield(
+            out,
+            peer,
+            arriving: connectTimeout + timings.handshakeTimeout,
+          );
+        } else if (_yieldsTo(peer) &&
+            (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
+          // The other phone is syncing with us the other way round: its
+          // connection here is about to ask for the slot.
+          await _awaitYield(out, peer);
+        }
       }
       if (out.yielded) {
         try {
@@ -781,13 +905,17 @@ final class DefaultSyncEngine implements SyncEngine {
   }
 
   /// Waits until [out] gives way to an inbound session from [peer]: soon
-  /// if that session is here, briefly if it has not said HELLO yet.
-  Future<void> _awaitYield(_Outbound out, DeviceId peer) async {
+  /// if that session is here, for [arriving] if it has not said HELLO yet.
+  Future<void> _awaitYield(
+    _Outbound out,
+    DeviceId peer, {
+    Duration arriving = const Duration(seconds: 1),
+  }) async {
     final waited = Stopwatch()..start();
     while (!out.yielded && !_disposed) {
       final limit = _inboundFrom(peer) == null
-          ? const Duration(seconds: 1)
-          : timings.handshakeTimeout;
+          ? arriving
+          : arriving + timings.handshakeTimeout;
       final left = limit - waited.elapsed;
       if (left <= Duration.zero) return;
       await _changed.future.timeout(left, onTimeout: () {});
@@ -829,7 +957,7 @@ final class DefaultSyncEngine implements SyncEngine {
     final waited = Stopwatch()..start();
     while (true) {
       if (_disposed) return _busyOther;
-      if (!_pendingInbound.contains(s)) return 'Too many phones connecting';
+      if (!_pendingInbound.contains(s)) return _tooMany;
       final out = _outbound;
       if (out != null) {
         final target = out.session?.peerDeviceId;
@@ -838,13 +966,19 @@ final class DefaultSyncEngine implements SyncEngine {
           // whom it is for before deciding (at most one handshake timeout;
           // the session's own handshake timer pauses meanwhile).
           final left = timings.handshakeTimeout - waited.elapsed;
-          if (left <= Duration.zero) return _busyOther;
+          // Not "another phone": the dial may be for this very phone, which
+          // then waits for it (SYNC-R2-02).
+          if (left <= Duration.zero) return _busyDialing;
           await _changed.future.timeout(left, onTimeout: () {});
           continue;
         }
         if (target != peer) return _busyOther;
-        // Both phones tapped Sync on each other.
-        if (!_yieldsTo(peer)) return _busySame;
+        // Both phones tapped Sync on each other. Our own attempt may
+        // already be over (refused while the other phone was still
+        // dialing): then we serve this one whichever id is lower.
+        if (!_yieldsTo(peer) && !(out.session?.isFinished ?? false)) {
+          return _busySame;
+        }
         _yield(out, run);
         _admitRun(run);
         return null;
@@ -893,7 +1027,10 @@ final class DefaultSyncEngine implements SyncEngine {
         if (_mayShow(run, null)) _setStatus(session: SessionCompleted(r.summary));
         if (!run.live.isCompleted) run.live.complete(r);
       },
-      onPeerHello: (_) => _notify(),
+      onPeerHello: (s) {
+        if (role == SessionRole.responder) _limitHandshakes(s);
+        _notify();
+      },
       admit: (_) => out == null ? _admitInbound(run) : _admitOutbound(run, out),
     );
     run = _Run(session, _runSeq++);

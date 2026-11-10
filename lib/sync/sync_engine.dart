@@ -157,6 +157,7 @@ final class NearbyPeer {
     required this.transports,
     required this.sharedGroupIds,
     this.advertId,
+    this.moreGroups = false,
   });
 
   /// Stable for the discovery run, also when the advert id rotates.
@@ -168,7 +169,15 @@ final class NearbyPeer {
   final Set<TransportKind> transports; // preferred: lan > nearby > ble
   final List<GroupId> sharedGroupIds; // from tokens; empty = unknown/none
 
+  /// Its advert left some group tokens out (the phone is in more groups
+  /// than an advert holds), so it may share a group that [sharedGroupIds]
+  /// does not show. Sync may still be tried; the HELLO decides.
+  final bool moreGroups;
+
   bool get sharesGroups => sharedGroupIds.isNotEmpty;
+
+  /// Whether a Sync with this phone may find a shared group.
+  bool get maySync => sharesGroups || moreGroups;
 }
 
 @immutable
