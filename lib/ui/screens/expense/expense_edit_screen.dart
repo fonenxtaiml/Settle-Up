@@ -18,6 +18,7 @@ import '../../../theme/tokens.dart';
 import '../../format/amount_input.dart';
 import '../../format/dates.dart';
 import '../../format/money_format.dart';
+import '../../format/unit_input_formatter.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
@@ -926,6 +927,8 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       SplitMethod.exact => _UnitField(
         controller: _input('exact:$m'),
         enabled: included,
+        read: (t) => parseAmountInput(t, _cur),
+        write: (v) => minorToInput(v, _cur),
         prefix: _cur.symbol,
         label: S.amountOf(name),
         onChanged: (v) => setState(() {
@@ -936,6 +939,8 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       SplitMethod.percent => _UnitField(
         controller: _input('percent:$m'),
         enabled: included,
+        read: parsePercent,
+        write: formatPercent,
         suffix: S.percentSuffix,
         label: S.percentOf(name),
         onChanged: (v) => setState(() {
@@ -946,6 +951,8 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       _ => _UnitField(
         controller: _input('adjust:$m'),
         enabled: included,
+        read: (t) => parseSignedMinor(t, _cur),
+        write: (v) => minorToInput(v, _cur),
         prefix: _cur.symbol,
         hint: S.adjustHint,
         signed: true,
@@ -1122,6 +1129,8 @@ class _UnitField extends StatelessWidget {
     required this.enabled,
     required this.onChanged,
     required this.label,
+    required this.read,
+    required this.write,
     this.prefix,
     this.suffix,
     this.hint,
@@ -1131,6 +1140,11 @@ class _UnitField extends StatelessWidget {
   final TextEditingController controller;
   final bool enabled;
   final ValueChanged<String> onChanged;
+
+  /// The reader for this field's text, and how it writes a value back
+  /// (see [UnitInputFormatter]).
+  final int? Function(String text) read;
+  final String Function(int value) write;
   final String label;
   final String? prefix;
   final String? suffix;
@@ -1153,9 +1167,7 @@ class _UnitField extends StatelessWidget {
           signed: signed,
         ),
         inputFormatters: [
-          FilteringTextInputFormatter.allow(
-            RegExp(signed ? r'[0-9.,+\-−]' : r'[0-9.,]'),
-          ),
+          UnitInputFormatter(read: read, write: write, signed: signed),
         ],
         style: AppType.amount(context),
         decoration: InputDecoration(
@@ -1411,6 +1423,8 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
                       input: _UnitField(
                         controller: _c[m]!,
                         enabled: true,
+                        read: (t) => parseAmountInput(t, _cur),
+                        write: (v) => minorToInput(v, _cur),
                         prefix: _cur.symbol,
                         label: '${S.paidBy}, ${widget.names[m]}',
                         onChanged: (_) => setState(() {}),
