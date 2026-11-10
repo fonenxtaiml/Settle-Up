@@ -84,6 +84,22 @@ double shrinkOf(WidgetTester tester, String text) {
   return lowest;
 }
 
+/// The width of the widest word of [p]'s text in its style and scale (a
+/// one-line paragraph reports its whole width as the min intrinsic).
+double longestWord(RenderParagraph p) {
+  var widest = 0.0;
+  for (final word in p.text.toPlainText().split(RegExp(r'\s+'))) {
+    final tp = TextPainter(
+      text: TextSpan(text: word, style: p.text.style),
+      textDirection: p.textDirection,
+      textScaler: p.textScaler,
+    )..layout();
+    if (tp.width > widest) widest = tp.width;
+    tp.dispose();
+  }
+  return widest;
+}
+
 final RegExp _hasDigit = RegExp(r'\d');
 
 bool animating(WidgetTester tester) =>
@@ -502,7 +518,7 @@ void main() {
               );
               if (title.evaluate().isEmpty) continue;
               final p = tester.renderObject<RenderParagraph>(title.first);
-              final word = p.getMinIntrinsicWidth(double.infinity);
+              final word = longestWord(p);
               if (p.size.width + 0.5 < word) {
                 problems.add(
                   '${variantName(variant)} $loc: "${row.title}" gets '
