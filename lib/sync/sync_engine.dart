@@ -237,6 +237,9 @@ abstract interface class SyncEngine {
   Future<String> inviteLinkFor(GroupId groupId, {bool includeHost = true});
 
   /// Cancels the running session (status -> SessionFailed(cancelled)).
+  /// A Sync still connecting ends at once: the connect attempt under way
+  /// is abandoned (its channel, if it opens later, is closed) and no other
+  /// route is tried (QA SYNC-R4-01).
   Future<void> cancel();
 
   /// Keeps an authenticated session open and pushes new local ops while
