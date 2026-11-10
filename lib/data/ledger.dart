@@ -158,11 +158,6 @@ final class Ledger implements LedgerRepository, SyncStore {
     for (final list in _mine.values) {
       list.sort((a, b) => a.counter.compareTo(b.counter));
     }
-    for (final g in _mine.keys) {
-      // A peer cannot hold more of my ops than I wrote (SECURITY-R2-01).
-      _acked[g] = math.min(
-          (await _store.peerKnowledge(g))[me], await _ownMaxCounter(g));
-    }
     try {
       _keyCache.addAll(await _keys.all());
     } catch (e) {
@@ -186,6 +181,7 @@ final class Ledger implements LedgerRepository, SyncStore {
     final groups = {for (final op in ops) op.groupId, ..._keyCache.keys};
     for (final g in groups) {
       _factory.observe(g, await _store.maxCounter(g, me));
+      await _loadAcked(g);
     }
     final state = _reducer.state;
     final withOps = {for (final op in ops) op.groupId};
@@ -1136,6 +1132,33 @@ final class Ledger implements LedgerRepository, SyncStore {
             'Op ${op.id} claims this phone as its author', op.id);
       }
     }
+  }
+
+  /// How many of my ops in [groupId] some peer holds. A peer cannot hold
+  /// more of them than I wrote (SECURITY-R2-01); a stored report that says
+  /// so (written before that check, or by a peer then) is cut down on disk
+  /// too. Clamped only in memory, every later open would clamp it to what
+  /// I had written by then and show those changes as shared (DATA-R3-01).
+  Future<void> _loadAcked(GroupId groupId) async {
+    final written = await _ownMaxCounter(groupId);
+    final known = (await _store.peerKnowledge(groupId))[_me];
+    if (known > written) {
+      developer.log(
+        'Stored peer knowledge claims my ops up to $known in $groupId; '
+        'I wrote $written',
+        name: _logName,
+      );
+      try {
+        await _store.capPeerKnowledge(groupId, _me, written);
+      } catch (e) {
+        // A read-only or full disk must not stop the app; the clamp below
+        // still holds for this session.
+        developer.log('Could not fix stored peer knowledge: $e',
+            name: _logName);
+      }
+    }
+    final acked = math.min(known, written);
+    if (acked > 0) _acked[groupId] = acked;
   }
 
   /// Highest counter this phone has written in [groupId]: stored ops, or

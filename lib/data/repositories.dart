@@ -42,6 +42,12 @@ abstract interface class OpStore {
   Future<void> recordPeerKnowledge(
       DeviceId peer, GroupId groupId, VersionVector vv);
 
+  /// Lowers every stored report of [deviceId]'s ops in [groupId] to at most
+  /// [max]. The one exception to "knowledge only grows": a report of more
+  /// ops than [deviceId] wrote is forged and must not stay on disk
+  /// (DATA-R3-01). Returns true if a row changed.
+  Future<bool> capPeerKnowledge(GroupId groupId, DeviceId deviceId, int max);
+
   Future<String?> getKv(String key);
   Future<void> setKv(String key, String? value); // null deletes
 

@@ -90,6 +90,9 @@ final class FullDiskStore implements OpStore {
   Future<VersionVector> peerKnowledge(GroupId groupId) =>
       inner.peerKnowledge(groupId);
   @override
+  Future<bool> capPeerKnowledge(GroupId groupId, DeviceId deviceId, int max) =>
+      inner.capPeerKnowledge(groupId, deviceId, max);
+  @override
   Future<String?> getKv(String key) => inner.getKv(key);
   @override
   Future<List<SyncRecord>> syncRecords({int limit = 50}) =>
@@ -313,9 +316,6 @@ void main() {
         expect(a.snap.unsharedCounts[t.g], 1);
         expect(a.snap.totalUnshared, 1);
       },
-      skip:
-          'DATA-R3-01: the forged row on disk is clamped in memory only; '
-          'every later open re-clamps it to the current own counter',
     );
   });
 
