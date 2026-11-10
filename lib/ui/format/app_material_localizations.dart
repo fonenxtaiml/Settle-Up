@@ -24,13 +24,21 @@ class AppMaterialLocalizations extends DefaultMaterialLocalizations {
   static const LocalizationsDelegate<MaterialLocalizations> delegate =
       _Delegate();
 
-  /// A typed date: day, month and four-digit year, one or two digits for
-  /// the day and the month, separated by the same one of '/', '-' or '.'.
-  /// Nothing else is a date: no spaces inside it, no other characters, no
-  /// short years (a two-digit year would be read as the first century).
+  /// A typed date: day, month and year, one or two digits for the day and
+  /// the month, separated by the same one of '/', '-' or '.'. The year is
+  /// four digits, or more with no leading zero: exactly the years
+  /// [formatCompactDate] writes, so the field reads back every date it
+  /// shows, 1 Jan 10000 included (a model date seen east of UTC,
+  /// VISUAL-R12-01). Nothing else is a date: no spaces inside it, no other
+  /// characters, no short years (a two-digit year would be read as the
+  /// first century).
   static final RegExp _compact = RegExp(
-    r'^([0-9]{1,2})([/.\-])([0-9]{1,2})\2([0-9]{4})$',
+    r'^([0-9]{1,2})([/.\-])([0-9]{1,2})\2([0-9]{4}|[1-9][0-9]{4,5})$',
   );
+
+  /// The last whole year a [DateTime] holds (it ends in September
+  /// 275760); a later year is no date.
+  static const int maxCompactYear = 275759;
 
   static String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -64,7 +72,8 @@ class AppMaterialLocalizations extends DefaultMaterialLocalizations {
     final day = int.parse(m.group(1)!);
     final month = int.parse(m.group(3)!);
     final year = int.parse(m.group(4)!);
-    if (year < 1 || month < 1 || month > 12 || day < 1) return null;
+    if (year < 1 || year > maxCompactYear) return null;
+    if (month < 1 || month > 12 || day < 1) return null;
     if (day > DateUtils.getDaysInMonth(year, month)) return null;
     return DateTime(year, month, day);
   }
