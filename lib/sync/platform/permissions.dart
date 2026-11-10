@@ -77,6 +77,12 @@ class NearbyPermissions {
 
   final PermissionPlatform _platform;
 
+  /// Permissions a request() reported permanently denied. On Android a
+  /// status check cannot tell permanently denied from denied (only a
+  /// request can), so check() keeps reporting what the last request said
+  /// until the permission is granted or a later request says otherwise.
+  final Set<Permission> _permanentlyDenied = {};
+
   /// The runtime permissions [kind] needs on this phone, in request order.
   /// Empty when none are needed. Null when the platform cannot do [kind].
   Future<List<Permission>?> requiredFor(TransportKind kind) async {
@@ -159,7 +165,15 @@ class NearbyPermissions {
       ];
       if (request && missing.any((p) => !_permanent(statuses[p]))) {
         try {
-          statuses.addAll(await _platform.request(missing));
+          final asked = await _platform.request(missing);
+          statuses.addAll(asked);
+          asked.forEach((p, s) {
+            if (_permanent(s)) {
+              _permanentlyDenied.add(p);
+            } else {
+              _permanentlyDenied.remove(p);
+            }
+          });
         } catch (e, st) {
           _log('request(${kind.name}) failed', e, st);
         }
@@ -181,6 +195,12 @@ class NearbyPermissions {
       } catch (e, st) {
         _log('status($p) failed', e, st);
         out[p] = PermissionStatus.denied;
+      }
+      if (_granted(out[p])) {
+        _permanentlyDenied.remove(p);
+      } else if (out[p] == PermissionStatus.denied &&
+          _permanentlyDenied.contains(p)) {
+        out[p] = PermissionStatus.permanentlyDenied;
       }
     }
     return out;

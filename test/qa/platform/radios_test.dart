@@ -604,7 +604,7 @@ void round2() {
             'Android status() says "denied" for a permanently denied '
             'permission; the wrapper must remember what request() said',
       );
-    }, skip: 'PLATFORM-R1-11: check() forgets permanentlyDenied on Android');
+    });
 
     // PLATFORM-R2-01: on API 26-30 a BLE scan needs the location service
     // switch on. With Bluetooth on and location off, availability says
