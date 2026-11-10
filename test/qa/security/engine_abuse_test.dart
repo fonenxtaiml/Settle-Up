@@ -1,9 +1,11 @@
 // QA SECURITY round 1: what a stranger on the same Wi-Fi (no group key)
 // can do to a hosting phone through the real DefaultSyncEngine.
+import 'dart:async';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/sync/crypto/handshake.dart';
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/sync/pairing/links.dart';
 import 'package:settle_up/sync/protocol/codec.dart';
@@ -192,6 +194,96 @@ void main() {
       );
     },
   );
+
+  group('round 3: pre-auth limits (SECURITY-R2-03 regression)', () {
+    Future<Uint8List> keylessHello(FrameChannel ch, int i) async {
+      final hs = await Handshake.start(
+        initiator: true,
+        groupKeys: {groupIdOf(9): Uint8List(32)..[0] = 7},
+        deviceId: 'eeeeeeee-0000-7000-8000-${i.toString().padLeft(12, '0')}',
+        deviceName: 'Mallory',
+        maxFrame: ch.maxFrameBytes,
+        transport: ch.kind,
+      );
+      return hs.helloFrame;
+    }
+
+    for (final oneSource in [true, false]) {
+      test('keyless HELLOs sent while a friend\'s AUTH is in flight do not '
+          'evict the friend (${oneSource ? 'one IP' : 'many IPs'})', () async {
+        // The friend has said HELLO and is one round trip from AUTH. A
+        // burst of stranger HELLOs arrives meanwhile: they count as
+        // handshakes under way until no_shared_groups ends them, and a
+        // fifth one under way evicts the oldest (the friend).
+        final ch = await dial('10.0.0.5:5000');
+        final friend = EvilPeer(ch, initiator: true);
+        final hs = await Handshake.start(
+          initiator: true,
+          groupKeys: {seed.g: await alex.keyOf(seed.g)},
+          deviceId: priya.deviceId,
+          deviceName: 'Priya',
+          maxFrame: ch.maxFrameBytes,
+          transport: ch.kind,
+        );
+        await ch.send(hs.helloFrame);
+        final hostHelloFrame = await friend.nextFrame();
+        final keys = await hs.onPeerHello(
+          FrameCodec.decodePlainFrame(hostHelloFrame) as HelloMessage,
+          hostHelloFrame,
+          localMaxFrame: ch.maxFrameBytes,
+        );
+        final burst = <(FrameChannel, Uint8List)>[];
+        final n = oneSource ? kMaxSilentPerSource : 40;
+        for (var i = 0; i < n; i++) {
+          final s = await dial(
+            oneSource ? '10.0.0.66:${4000 + i}' : '10.0.$i.66:4000',
+          );
+          s.frames.listen((_) {}, onError: (_) {});
+          burst.add((s, await keylessHello(s, i)));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+        for (final (s, f) in burst) {
+          unawaited(s.send(f).catchError((Object _) {}));
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 20));
+        await ch.send(FrameCodec.plainFrame(AuthMessage(mac: keys.myMac)));
+        expect(
+          FrameCodec.decodePlainFrame(await friend.nextFrame()),
+          isA<AuthMessage>(),
+        );
+        final next = await friend.nextFrame();
+        expect(
+          next[0],
+          isNot(FrameKind.plain),
+          reason: next[0] == FrameKind.plain
+              ? '${FrameCodec.decodePlainFrame(next)}'
+              : null,
+        );
+        await friend.close();
+        for (final (s, _) in burst) {
+          await s.close();
+        }
+      });
+    }
+
+    test('one IP cannot hold more than its share of silent slots', () async {
+      final mine = <FrameChannel>[];
+      final closed = <int>{};
+      for (var i = 0; i < kMaxSilentPerSource + 3; i++) {
+        final c = await dial('10.0.0.66:${5000 + i}');
+        c.frames.listen((_) {}, onError: (_) {}, onDone: () => closed.add(i));
+        mine.add(c);
+        await Future<void>.delayed(const Duration(milliseconds: 2));
+      }
+      await eventually(() => closed.length >= 3);
+      expect(closed, containsAll([0, 1, 2]), reason: 'oldest go first');
+      final r = await honestSync();
+      expect(r.isSuccess, isTrue, reason: '${r.failure}: ${r.message}');
+      for (final c in mine) {
+        await c.close();
+      }
+    });
+  });
 }
 
 /// Records the addresses the engine dials, and fails every dial.
