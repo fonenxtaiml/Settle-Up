@@ -11,6 +11,7 @@ import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/ui/router.dart';
+import 'package:settle_up/ui/screens/csv_share.dart';
 import 'package:settle_up/ui/strings.dart';
 import 'package:settle_up/ui/widgets/kit_strings.dart';
 
@@ -607,19 +608,23 @@ void main() {
     final shares = stubShare(tester);
     final w = await RealWorld.create(name: 'Arjun');
     await w.seedGroup(name: 'गोवा ट्रिप');
-    await w.seedGroup(name: '🏖️🌴');
+    // A group name needs a letter or a number now (UIFLOW-R6-01); one with
+    // emoji only can still come from an older phone, and its file name
+    // falls back.
+    await expectLater(
+      w.seedGroup(name: '🏖️🌴'),
+      throwsA(isA<LedgerException>()),
+    );
+    expect(csvFileName('🏖️🌴'), '$kCsvFallbackName.csv');
     await pumpReal(tester, w, location: Routes.settings);
     await qaTap(tester, find.text(S.exportGroupCsv));
     await qaTap(tester, inSheet('गोवा ट्रिप'));
-    await letIoFinish(tester);
-    await qaTap(tester, find.text(S.exportGroupCsv));
-    await qaTap(tester, inSheet('🏖️🌴'));
     await letIoFinish(tester);
     final names = [
       for (final s in shares)
         (s['paths']! as List).cast<String>().single.split('/').last,
     ];
-    expect(names, ['गोवा ट्रिप.csv', 'settle-up-export.csv']);
+    expect(names, ['गोवा ट्रिप.csv']);
     await w.shutdown(tester);
   });
 

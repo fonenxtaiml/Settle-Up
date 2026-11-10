@@ -9,6 +9,7 @@ import 'dart:typed_data';
 
 import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/data/kv_settings_repository.dart';
 import 'package:settle_up/data/repositories.dart';
@@ -305,7 +306,11 @@ void main() {
         'the repro name reaches the peer as its base letter and marks',
         () async {
           final got = await nameSeenByAlex('a${'\u0301' * 100}', 'hint');
-          expect(got, 'a${'\u0301' * 99}');
+          // Settings store it in the one form names take (NFKC: "a" and
+          // its first accent are one "á", UIFLOW-R6-01), which then fits
+          // the 100-unit HELLO limit whole.
+          expect(got, NameText.normalize('a${'\u0301' * 100}'));
+          expect(got.length, lessThanOrEqualTo(100));
         },
       );
 
