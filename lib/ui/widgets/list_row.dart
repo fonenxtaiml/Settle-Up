@@ -25,6 +25,8 @@ class KitListRow extends StatelessWidget {
     this.keepTrailingBeside = false,
     this.subtitleLines = 1,
     this.stackTrailing = false,
+    this.trailingWidth,
+    this.leadingWidth = 0,
   });
 
   final String title;
@@ -54,12 +56,50 @@ class KitListRow extends StatelessWidget {
   /// it ([ExpenseRow] on a small phone at 1.3x) stack early.
   final bool stackTrailing;
 
+  /// The natural width of [trailing], when the row should measure it: the
+  /// row then stacks [trailing] under the text below the large-text
+  /// threshold too, whenever the title or subline would get less room than
+  /// its longest word beside it (VISUAL-R4-04, VISUAL-R4-05). [leadingWidth]
+  /// is the width of [leading].
+  final double? trailingWidth;
+  final double leadingWidth;
+
   @override
   Widget build(BuildContext context) {
+    final w = trailingWidth;
+    if (w == null ||
+        trailing == null ||
+        keepTrailingBeside ||
+        stackTrailing ||
+        isLargeText(context)) {
+      return _build(context, stackTrailing);
+    }
+    final theme = Theme.of(context);
+    final titleStyle = this.titleStyle ?? theme.textTheme.titleMedium;
+    final subtitleStyle = this.subtitleStyle ?? theme.textTheme.bodySmall;
+    return LayoutBuilder(
+      builder: (context, c) {
+        final room =
+            c.maxWidth -
+            Space.rowInset * 2 -
+            (leading != null ? leadingWidth + 14 : 0) -
+            Space.md -
+            w -
+            (subtitleTrailing != null ? Space.sm + 8 : 0);
+        final needs = [
+          longestWordWidth(context, title, titleStyle),
+          if (subtitle != null)
+            longestWordWidth(context, subtitle!, subtitleStyle),
+        ].fold(0.0, (a, b) => a > b ? a : b);
+        return _build(context, room + 0.5 < needs);
+      },
+    );
+  }
+
+  Widget _build(BuildContext context, bool stack) {
     final theme = Theme.of(context);
     final large = isLargeText(context);
-    final stacked =
-        (large || stackTrailing) && trailing != null && !keepTrailingBeside;
+    final stacked = (large || stack) && trailing != null && !keepTrailingBeside;
     final maxLines = large ? 3 : 1;
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
