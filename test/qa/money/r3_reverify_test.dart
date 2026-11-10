@@ -257,7 +257,6 @@ void main() {
         await f.replaceAll('1.234');
         expect(f.reported, isNot(123));
       },
-      skip: true, // QA MONEY-R2-05
     );
   });
 
@@ -287,7 +286,6 @@ void main() {
         await f.replaceAll('2,000,000');
         expect(f.reported, anyOf(isNull, 200000000));
       },
-      skip: true, // QA MONEY-R3-01
     );
   });
 
@@ -305,7 +303,6 @@ void main() {
         expect(await typeInto(t, 'IDR', '50.000'), anyOf(isNull, 5000000));
         expect(await typeInto(t, 'EUR', '10.000'), anyOf(isNull, 1000000));
       },
-      skip: true, // QA MONEY-R3-02
     );
   });
 
@@ -325,7 +322,6 @@ void main() {
         await f.keys(',');
         expect(f.reported, anyOf(isNull, 1250));
       },
-      skip: true, // QA MONEY-R3-03
     );
   });
 
@@ -349,7 +345,6 @@ void main() {
           anyOf(isNull, 50),
         );
       },
-      skip: true, // QA MONEY-R3-04
     );
     testWidgets(
       'QA MONEY-R3-04: the amount field reads a pasted "USD .50" as 0.50',
@@ -359,7 +354,6 @@ void main() {
           anyOf(isNull, 50),
         );
       },
-      skip: true, // QA MONEY-R3-04
     );
   });
 
@@ -385,7 +379,6 @@ void main() {
           anyOf(isNull, 100000),
         );
       },
-      skip: true, // QA MONEY-R3-05
     );
   });
 
@@ -405,7 +398,6 @@ void main() {
           anyOf(isNull, 1250),
         );
       },
-      skip: true, // QA MONEY-R3-06
     );
   });
 }

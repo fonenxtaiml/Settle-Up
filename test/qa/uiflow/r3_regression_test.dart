@@ -375,7 +375,6 @@ void main() {
       });
       await tester.pump(const Duration(seconds: 1));
     },
-    skip: true,
   ); // QA UIFLOW-R3-01
 
   // ---------------------------------------- Settings rename (R2-03) --
@@ -450,7 +449,6 @@ void main() {
       expect(find.text(S.alreadyInNamedGroup('Rahul', 'Rahul')), findsNothing);
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R3-02
 
   // ------------------------------------------ amount cap (R2-02, R2-04) --
