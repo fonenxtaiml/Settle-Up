@@ -1,6 +1,6 @@
 // The sightings of one discovery run, keyed by what the platform reports
 // them under (an mDNS service name, a Nearby endpoint id).
-import '../transport.dart';
+import 'transport.dart';
 
 /// Every sighting that was reported and not yet withdrawn (an mDNS goodbye
 /// or TTL expiry, a Nearby "lost"), of which only the newest per
