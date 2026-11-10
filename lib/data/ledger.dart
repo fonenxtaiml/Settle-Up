@@ -529,6 +529,23 @@ final class Ledger implements LedgerRepository, SyncStore {
       _knownName(_settings.device.deviceName) ??
       _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
 
+  /// [name] as it goes into a member op for [person]. My stored profile
+  /// name, when the op adds or renames me under it (Join > "I'm not on the
+  /// list" passes it as it is), goes by [_profileName] like New group and
+  /// Add friend: a name an earlier build saved with no letter ("\u{1F60E}")
+  /// or longer than the limit is how I am shown and must not block a flow
+  /// that adds me, with nothing on the screen to change (UIFLOW-R8-02). Any
+  /// other name was typed now and goes by the rule for a typed name.
+  String _nameFor(String name, PersonId? person, String field) {
+    final profile = _settings.profile;
+    if (profile != null &&
+        person == profile.personId &&
+        NameText.normalize(name) == NameText.normalize(profile.displayName)) {
+      return _profileName(profile);
+    }
+    return _memberName(name, field);
+  }
+
   static Never _groupFull() => throw const LedgerException(
         LedgerErrorCode.invalidInput,
         'A group has at most ${TextRules.maxActiveMembers} people',
@@ -785,8 +802,8 @@ final class Ledger implements LedgerRepository, SyncStore {
   }) =>
       _serial(() async {
         final gs = _liveGroup(groupId);
-        final name = _memberName(displayName, 'displayName');
         final person = personId == null ? null : _text(personId, 'personId');
+        final name = _nameFor(displayName, person, 'displayName');
         // A 1:1 group stays two people.
         if (gs.group?.isDirect ?? false) {
           final known = person != null && gs.memberForPerson(person) != null;
@@ -821,7 +838,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   ) =>
       _serial(() async {
         final member = _member(_liveGroup(groupId), memberId);
-        final displayName = _memberName(name, 'name');
+        final displayName = _nameFor(name, member.personId, 'name');
         if (displayName == member.displayName) return;
         await _commit(_factory.batch()
           ..update(groupId, EntityType.member, memberId,
