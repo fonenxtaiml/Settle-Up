@@ -1549,24 +1549,20 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, Space.sm, 16, Space.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.tonal(
-                      onPressed: widget.total > 0 ? _splitEvenly : null,
-                      child: const Text(S.splitRestEqually),
-                    ),
-                  ),
-                  const SizedBox(width: Space.sm),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: left == 0 && sum > 0 && !_unreadable
-                          ? () => Navigator.of(context).pop(_values)
-                          : null,
-                      child: const Text(S.done),
-                    ),
-                  ),
-                ],
+              // Side by side only when both labels fit their half on one
+              // line; stacked full width otherwise (VISUAL-R6-01).
+              child: ButtonPair(
+                labels: const [S.splitRestEqually, S.done],
+                first: FilledButton.tonal(
+                  onPressed: widget.total > 0 ? _splitEvenly : null,
+                  child: const Text(S.splitRestEqually),
+                ),
+                second: FilledButton(
+                  onPressed: left == 0 && sum > 0 && !_unreadable
+                      ? () => Navigator.of(context).pop(_values)
+                      : null,
+                  child: const Text(S.done),
+                ),
               ),
             ),
           ],
