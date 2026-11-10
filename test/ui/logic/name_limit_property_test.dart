@@ -16,17 +16,17 @@ import 'package:settle_up/ui/strings.dart';
 /// Pieces a random name is made of, one list per character class.
 const _classes = <List<String>>[
   // Letters and digits.
-  ['a', 'B', 'z', 'Q', '7', '0', 'ß', 'é', 'Ж', 'अ', 'क्', 'ि', '中', '한'],
+  ['a', 'B', 'z', 'Q', '7', '0', 'ß', 'é', 'Ж', 'अ', 'क\u094D', 'ि', '中', '한'],
   // Characters NFKC makes longer.
   ['…', '½', '™', 'ﬁ', '㈜', 'ﷺ', '㎏', '①', 'Ⅻ', '⑽', '㍻', 'ﬃ', '¼', '℡'],
   // Characters NFKC makes shorter or changes: full width, compatibility.
   ['Ａ', 'ｂ', '１', 'ｶ', 'ﾞ', 'ℌ', '²', 'ſ'],
   // Spaces and fillers that become one space.
-  [' ', '  ', '\t', ' ', ' ', '　', 'ㅤ', 'ᅠ', 'ᅟ', 'ﾠ', '⠀'],
+  [' ', '  ', '\t', '\u00A0', '\u2003', '\u3000', '\u3164', '\u1160', '\u115F', '\uFFA0', '\u2800'],
   // Characters that are left out.
-  ['​', '‌', '‍', '⁠', '­', '‎', '‮', '⁦', '﻿', '️', '͏'],
+  ['\u200B', '\u200C', '\u200D', '\u2060', '\u00AD', '\u200E', '\u202E', '\u2066', '\uFEFF', '\uFE0F', '\u034F'],
   // Combining marks and emoji sequences (several code units, one char).
-  ['́', '̈', '👩‍💻', '👨‍👩‍👧‍👦', '❤️', '🇮🇳', '🏴󠁧󠁢󠁥󠁮󠁧󠁿', '1️⃣'],
+  ['\u0301', '\u0308', '👩\u200D💻', '👨\u200D👩\u200D👧\u200D👦', '❤\uFE0F', '🇮🇳', '🏴\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', '1\uFE0F\u20E3'],
   // Symbols and punctuation.
   ['.', '-', '😎', '&', "'", '’', '/'],
 ];
@@ -76,11 +76,11 @@ void main() {
 
   test('UIFLOW-R8-01: emoji with many code units count against the code '
       'unit cap the save applies', () {
-    final family = '👨‍👩‍👧‍👦' * 15; // 15 characters, 165 code units
+    final family = '👨\u200D👩\u200D👧\u200D👦' * 15; // 15 characters, 165 code units
     expect(family.characters.length, 15);
     expect(_storedFits(family, 40), isFalse);
     expect(NameLimit.fits(family, 40), isFalse);
-    expect(NameLimit.fits('👨‍👩‍👧‍👦' * 14, 40), isTrue);
+    expect(NameLimit.fits('👨\u200D👩\u200D👧\u200D👦' * 14, 40), isTrue);
   });
 
   test('property: a name the field counts as fitting always fits once '
