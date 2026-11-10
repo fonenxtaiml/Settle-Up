@@ -610,7 +610,7 @@ void main() {
         isNotNull,
         reason: 'a Goa trip create op took the Private expense away',
       );
-    }, skip: 'SECURITY-R1-04');
+    });
 
     test('a member create op in another group with an older HLC cannot take '
         'a member away from its own group', () async {
@@ -646,7 +646,7 @@ void main() {
         isNotNull,
         reason: 'a Goa trip create op took the Private member away',
       );
-    }, skip: 'SECURITY-R1-04');
+    });
   });
 
   group('round 2: own counter and peer knowledge', () {

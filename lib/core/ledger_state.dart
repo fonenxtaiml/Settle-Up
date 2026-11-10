@@ -113,12 +113,25 @@ final class LedgerState {
   Iterable<GroupState> get visibleGroups => groups.values
       .where((g) => g.group != null && !g.group!.isDeleted);
 
+  /// The expense [id] of [groupId]. Prefer this when the group is known:
+  /// entity ids are scoped by group (SPEC 7.2), so hostile input can put the
+  /// same id in two groups.
+  Expense? expenseIn(GroupId groupId, ExpenseId id) =>
+      groups[groupId]?.expenses[id];
+
+  /// The expense [id] in any group. If hostile input put the id in several
+  /// groups, the one in the lowest group id (the same on every replica).
   Expense? expense(ExpenseId id) {
-    for (final g in groups.values) {
-      final e = g.expenses[id];
-      if (e != null) return e;
+    GroupId? best;
+    Expense? found;
+    for (final MapEntry(key: g, value: gs) in groups.entries) {
+      final e = gs.expenses[id];
+      if (e != null && (best == null || g.compareTo(best) < 0)) {
+        best = g;
+        found = e;
+      }
     }
-    return null;
+    return found;
   }
 
   /// Canonical, key-sorted JSON of everything materialized (including
