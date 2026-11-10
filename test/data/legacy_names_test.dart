@@ -230,6 +230,123 @@ void main() {
     });
   });
 
+  group('my profile name going into a member op that adds or renames me '
+      '(UIFLOW-R8-02, Join > "I\'m not on the list")', () {
+    /// A group I was in and left, so adding me is adding me as a new
+    /// member, as "I'm not on the list" does on a group I joined.
+    Future<GroupId> groupWithoutMe(_Phone p) async {
+      final g = await p.newGroup();
+      final gs = p.ledger.current.state.groups[g]!;
+      await p.ledger.removeMember(g, gs.memberForPerson('p-legacy')!.id);
+      return g;
+    }
+
+    Future<String> addMe(_Phone p, GroupId g, String name) async {
+      final id = await p.ledger.addMember(
+        g,
+        displayName: name,
+        personId: 'p-legacy',
+      );
+      await p.ledger.claimMember(g, id);
+      return p.ledger.current.state.groups[g]!.members[id]!.displayName;
+    }
+
+    test('one with no letter, longer than the limit or showing nothing is '
+        'added the way New group adds it', () async {
+      for (final legacy in [
+        '\u{1F60E}',
+        '.',
+        '\u2605',
+        ' \u{1F60E}\u200B ',
+        'Arjun ${'a' * 39}',
+        '\u337F' * 40,
+        '\u{1F60E}' * 45,
+        '',
+        ' ',
+        '\u3164',
+        '\u200B\u200D',
+      ]) {
+        final p = await _Phone.open(legacy);
+        final want = p.myNameIn(await p.newGroup());
+        // The claim screen passes the name trimmed; any other caller may
+        // pass it as it is stored.
+        for (final passed in {legacy, legacy.trim()}) {
+          final g = await groupWithoutMe(p);
+          expect(await addMe(p, g, passed), want, reason: _show(passed));
+        }
+        await p.close();
+      }
+    });
+
+    test('property: whatever an earlier build saved, adding me under it '
+        'works and gives the name New group gives', () async {
+      final rnd = Random(8203);
+      for (var i = 0; i < 150; i++) {
+        final legacy = _random(rnd, 50);
+        final why = _show(legacy);
+        final p = await _Phone.open(legacy);
+        final want = p.myNameIn(await p.newGroup());
+        final g = await groupWithoutMe(p);
+        final mine = await addMe(p, g, legacy.trim());
+        expect(mine, want, reason: why);
+        _expectSendable(mine, why);
+        await p.close();
+      }
+    });
+
+    test('renaming me to my stored name works', () async {
+      for (final legacy in ['\u{1F60E}', 'Arjun ${'a' * 39}']) {
+        final p = await _Phone.open(legacy);
+        final g = await p.newGroup();
+        final want = p.myNameIn(g);
+        final mine = p.ledger.current.state.groups[g]!
+            .memberForPerson('p-legacy')!
+            .id;
+        await p.ledger.renameMember(g, mine, 'Arjun');
+        await p.ledger.renameMember(g, mine, legacy);
+        expect(p.myNameIn(g), want, reason: _show(legacy));
+        await p.close();
+      }
+    });
+
+    test('a name typed now still follows the typed rule, for me or anyone '
+        'else', () async {
+      final p = await _Phone.open('\u{1F60E}');
+      final g = await groupWithoutMe(p);
+      // My stored name for someone else: typed.
+      for (final name in ['\u{1F60E}', '.']) {
+        await expectLater(
+          p.ledger.addMember(g, displayName: name),
+          throwsA(isA<LedgerException>()),
+          reason: _show(name),
+        );
+        await expectLater(
+          p.ledger.addMember(g, displayName: name, personId: 'p-other'),
+          throwsA(isA<LedgerException>()),
+          reason: _show(name),
+        );
+      }
+      // A name other than my stored one, for me: typed.
+      for (final name in ['.', '\u2605', 'Arjun ${'a' * 39}', '\u3164']) {
+        await expectLater(
+          p.ledger.addMember(g, displayName: name, personId: 'p-legacy'),
+          throwsA(isA<LedgerException>()),
+          reason: _show(name),
+        );
+      }
+      expect(await addMe(p, g, 'Arjun'), 'Arjun');
+      // Renaming someone else to my stored name: typed.
+      final meera = p.ledger.current.state.groups[g]!.activeMembers.firstWhere(
+        (m) => m.displayName == 'Meera',
+      );
+      await expectLater(
+        p.ledger.renameMember(g, meera.id, '\u{1F60E}'),
+        throwsA(isA<LedgerException>()),
+      );
+      await p.close();
+    });
+  });
+
   group('a person picked from another group (UIFLOW-R8-02)', () {
     test('one whose name has no letter (from an older phone) joins a new '
         'group and a friend group', () async {
