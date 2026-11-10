@@ -52,7 +52,15 @@ within Bluetooth range can see:
   phones that hold the same group key.
 
 Nothing that stays the same, such as the device id, is advertised. They
-cannot see group names, members or amounts.
+cannot see group names, members or amounts. This covers what the phone
+broadcasts over Wi-Fi and Bluetooth, not what it shows on its screen.
+
+The QR code shown while the phone is visible (on the Sync screen and its
+QR code screen) is different: it contains the phone name, this phone's
+address on the local network and its device id, so that a friend who
+scans it can connect at once. Anyone who can see or photograph the screen
+can read them. It contains no group key, group names, members or amounts,
+and on its own it cannot be used to join a group or to sync.
 
 When another phone connects to sync, the two phones first exchange their
 names and device ids, unencrypted, to check whether they share a group.

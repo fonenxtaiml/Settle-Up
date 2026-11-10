@@ -160,11 +160,72 @@ void main() {
     });
   });
 
+  test('UIFLOW-R2-05 (round 3): install_git_hooks.sh enables the hook so a '
+      'commit with trailers is rejected', () async {
+    final repo = Directory('${tmp.path}/hooked')..createSync();
+    await _git(repo, ['init', '-q', '-b', 'dev']);
+    Directory('${repo.path}/tool/git-hooks').createSync(recursive: true);
+    for (final f in [
+      'install_git_hooks.sh',
+      'commit_message_policy.sh',
+      'git-hooks/commit-msg',
+    ]) {
+      File(_tool(f)).copySync('${repo.path}/tool/$f');
+    }
+    final install = await _run('bash', [
+      'tool/install_git_hooks.sh',
+    ], cwd: repo.path);
+    expect(install.exitCode, 0, reason: '${install.stdout}${install.stderr}');
+    final cfg = await _run('git', [
+      'config',
+      '--get',
+      'core.hooksPath',
+    ], cwd: repo.path);
+    expect((cfg.stdout as String).trim(), 'tool/git-hooks');
+
+    await _git(repo, ['add', '.']);
+    File('${repo.path}/.msg').writeAsStringSync('Add tools\n\n$_trailers');
+    final bad = await _run('git', [
+      'commit',
+      '-q',
+      '-F',
+      '.msg',
+    ], cwd: repo.path);
+    expect(bad.exitCode, isNot(0), reason: 'hook let trailers through');
+    File('${repo.path}/.msg').writeAsStringSync('Add tools\n');
+    final good = await _run('git', [
+      'commit',
+      '-q',
+      '-F',
+      '.msg',
+    ], cwd: repo.path);
+    expect(good.exitCode, 0, reason: '${good.stderr}');
+  });
+
+  test('UIFLOW-R2-05 (round 3): CI checks the commits of every pull request '
+      'and push into dev and main', () {
+    final wf = File('$_root/.github/workflows/commit-messages.yml')
+        .readAsStringSync();
+    expect(wf, contains('pull_request:'));
+    expect(wf, contains('push:'));
+    expect(wf, contains('branches: [dev, main]'));
+    expect(wf, contains('fetch-depth: 0'));
+    expect(wf, contains('tool/check_commit_messages.sh'));
+    expect(wf, contains(r'origin/$BASE_REF..$HEAD_SHA'));
+    // Untrusted event fields reach the script only through env, never by
+    // ${{ }} interpolation inside run.
+    final run = wf.substring(wf.indexOf('run: |'));
+    expect(run, isNot(contains(r'${{')));
+  });
+
   test('UIFLOW-R2-05: CONTRIBUTING documents the policy and the tools', () {
     final doc = File('$_root/CONTRIBUTING.md').readAsStringSync();
     expect(doc, contains('## Commit messages'));
     expect(doc, contains('git config core.hooksPath tool/git-hooks'));
     expect(doc, contains('tool/check_commit_messages.sh'));
     expect(doc, contains('tool/squash_merge.sh'));
+    expect(doc, contains('tool/install_git_hooks.sh'));
+    expect(doc, contains('.github/workflows/commit-messages.yml'));
+    expect(doc, contains('required status check'));
   });
 }

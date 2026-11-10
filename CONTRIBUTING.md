@@ -32,11 +32,17 @@ lines: no `Co-Authored-By` for a tool or assistant, no session links and no
 Enable the hook once per clone (it applies to every worktree):
 
 ```sh
-git config core.hooksPath tool/git-hooks
+tool/install_git_hooks.sh   # same as: git config core.hooksPath tool/git-hooks
 ```
 
-`tool/git-hooks/commit-msg` then rejects a message with such lines. Before
-pushing to `dev` or `main`, check the commits that would land:
+`tool/git-hooks/commit-msg` then rejects a message with such lines. A hook
+is local and can be skipped, so the same check also runs on GitHub: the
+"Commit messages" workflow (`.github/workflows/commit-messages.yml`) checks
+every commit a pull request into `dev` or `main` would bring in, and every
+commit pushed to them. In the branch protection rules of `dev` and `main`,
+make "Commit messages" a required status check, so a branch that fails it
+cannot be merged as it is. Before pushing to `dev` or `main`, check the
+commits that would land:
 
 ```sh
 tool/check_commit_messages.sh origin/dev..HEAD
