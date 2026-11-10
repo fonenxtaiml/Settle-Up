@@ -159,4 +159,13 @@ void main() {
       expect(r.peers.single.sharedGroupIds, ['g1']);
     });
   });
+
+  test('advertised names are cleaned before they are listed', () {
+    // SECURITY-R2-04.
+    r.update(
+      peer(TransportKind.lan, '10.0.0.2:1', name: 'Alex\u202E5000 diap'),
+      t0,
+    );
+    expect(r.peers.single.name, 'Alex5000 diap');
+  });
 }

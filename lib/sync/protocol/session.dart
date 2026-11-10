@@ -19,6 +19,7 @@ import '../../core/ops.dart';
 import '../../data/repositories.dart';
 import '../crypto/aead.dart';
 import '../crypto/handshake.dart';
+import '../peer_name.dart';
 import '../sync_engine.dart';
 import '../transport/transport.dart';
 import 'batching.dart';
@@ -278,7 +279,9 @@ final class SyncSession {
   String? get verificationCode => _authenticated ? _keys?.verificationCode : null;
   List<GroupId> get sharedGroups => _keys?.sharedGroups ?? const [];
   DeviceId? get peerDeviceId => _peerHello?.deviceId;
-  String get peerName => _peerHello?.deviceName ?? peerNameHint;
+  /// The peer's device name from its HELLO (else the caller's hint),
+  /// cleaned: it is shown and recorded.
+  String get peerName => cleanPeerName(_peerHello?.deviceName ?? peerNameHint);
   bool get liveMode => _liveMode;
 
   /// Keeps the session open after the exchange and pushes new local ops

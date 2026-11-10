@@ -21,6 +21,7 @@ import '../core/models.dart';
 import '../data/repositories.dart';
 import 'crypto/tokens.dart';
 import 'nearby_registry.dart';
+import 'peer_name.dart';
 import 'pairing/links.dart';
 import 'protocol/codec.dart';
 import 'protocol/messages.dart';
@@ -636,10 +637,11 @@ final class DefaultSyncEngine implements SyncEngine {
 
   Future<SyncSummary> _connectAndRun(
     _Outbound out,
-    String name,
+    String advertisedName,
     List<DiscoveredPeer> routes,
     Duration timeout,
   ) async {
+    final name = cleanPeerName(advertisedName);
     final started = _clock.now();
     FrameChannel? channel;
     Object? lastError;
