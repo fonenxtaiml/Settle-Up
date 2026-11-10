@@ -885,7 +885,6 @@ void main() {
           );
           await expectStillSyncs();
         },
-        skip: 'SECURITY-R3-01',
       );
     }
 
@@ -926,7 +925,7 @@ void main() {
         final error = await sendOne(updateOf(target, payload));
         expect(count(), before, reason: 'one op hid ${target.entityId}');
         expect(error?.code, ErrorCodes.badOp);
-      }, skip: 'SECURITY-R3-01');
+      });
     }
 
     test('padding inside a known money block is refused', () async {
@@ -947,7 +946,7 @@ void main() {
       );
       expect(error?.code, ErrorCodes.badOp);
       expect(priya.opsOf(seed.g).where((o) => o.deviceId == mallory), isEmpty);
-    }, skip: 'SECURITY-R3-01');
+    });
   });
 
   group('round 3: regression around the round 2 fixes', () {
