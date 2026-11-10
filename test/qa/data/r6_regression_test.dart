@@ -305,7 +305,9 @@ void main() {
         'the repro name reaches the peer as its base letter and marks',
         () async {
           final got = await nameSeenByAlex('a${'\u0301' * 100}', 'hint');
-          expect(got, 'a${'\u0301' * 99}');
+          // Settings stores the name normalised (NFC: 'á' and 99 marks, 100
+          // units), which the HELLO carries whole.
+          expect(got, '\u00E1${'\u0301' * 99}');
         },
       );
 
@@ -439,6 +441,6 @@ void main() {
           reason: 'U+${blank.runes.first.toRadixString(16)}: $create',
         );
       }
-    }, skip: 'DATA-R6-02');
+    });
   });
 }
