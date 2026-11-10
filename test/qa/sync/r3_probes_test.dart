@@ -243,9 +243,6 @@ void main() {
         );
         expect(settledAfter, lessThan(const Duration(seconds: 1)));
       },
-      skip:
-          'SYNC-R3-01: Cancel is ignored while a refused Sync waits for '
-          "the other phone's slow dial",
     );
 
     test(
