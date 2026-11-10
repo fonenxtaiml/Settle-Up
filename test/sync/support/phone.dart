@@ -76,8 +76,12 @@ final class SpyStore implements SyncStore {
 
   @override
   DeviceId get localDeviceId => inner.localDeviceId;
+  /// When set, the device name this phone sends in its HELLO instead of
+  /// its own (a phone on an older version, whose settings kept any name).
+  String? deviceNameOverride;
+
   @override
-  String get localDeviceName => inner.localDeviceName;
+  String get localDeviceName => deviceNameOverride ?? inner.localDeviceName;
   @override
   Stream<String> watchLocalDeviceName() => inner.watchLocalDeviceName();
   @override
