@@ -9,7 +9,7 @@
 import '../core/ids.dart';
 import '../core/models.dart';
 import 'crypto/tokens.dart';
-import 'peer_name.dart';
+import 'peer_label.dart';
 import 'sync_engine.dart';
 import 'transport/transport.dart';
 
@@ -222,10 +222,9 @@ final class NearbyRegistry {
           if (g != null) shared.add(g);
         }
       }
-      // Advertised names are the peer's word: cleaned before they show.
-      final name = routes
-          .map((r) => cleanPeerName(r.peer.name))
-          .firstWhere((n) => n.isNotEmpty, orElse: () => '');
+      // Advertised names are the peer's word: cleaned before they show,
+      // and a row is never blank (DATA-R6-01).
+      final name = peerLabel([for (final r in routes) r.peer.name]);
       // The most recently seen advert id.
       final withId = [
         for (final r in routes)
