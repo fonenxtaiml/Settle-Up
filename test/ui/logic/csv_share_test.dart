@@ -16,6 +16,19 @@ void main() {
     expect(csvFileName('a:b*c?"d<e>f|g\\h'), 'abcdefgh.csv');
   });
 
+  test('a long name is cut on a character boundary (DATA-R3-02)', () {
+    // 2 UTF-16 units per letter: 50 of them pass the 80-unit cut.
+    final name = 'a${'\u{20000}' * 50}${'b' * 9}';
+    final file = csvFileName(name);
+    expect(file, 'a${'\u{20000}' * 39}.csv');
+    expect(utf8.decode(utf8.encode(file)), file);
+    // A letter with its combining mark stays whole too.
+    final marks = '${'x' * 79}e\u0301';
+    expect(csvFileName(marks), '${'x' * 79}.csv');
+    // Names that fit are kept as they are.
+    expect(csvFileName('b' * 80), '${'b' * 80}.csv');
+  });
+
   test('the CSV starts with a UTF-8 BOM and keeps non-Latin text', () async {
     final p = await QaPhone.create(home: 'INR');
     final t = await p.group(['Zoë']);
