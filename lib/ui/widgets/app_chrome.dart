@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
+import 'button_semantics.dart';
 import 'kit_layout.dart';
 import 'kit_strings.dart';
 
@@ -202,12 +203,13 @@ class DropdownChip extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     const radius = BorderRadius.all(Radius.circular(10));
-    return Semantics(
-      button: true,
+    return ButtonSemantics(
       label: semanticLabel ?? label,
-      excludeSemantics: true,
-      child: Padding(
+      onTap: onTap,
+      // 34 dp visual chip inside a 48 dp tap target.
+      child: TapTargetPadding(
         padding: const EdgeInsets.symmetric(vertical: 7),
+        onTap: onTap,
         child: Material(
           shape: RoundedRectangleBorder(
             borderRadius: radius,
