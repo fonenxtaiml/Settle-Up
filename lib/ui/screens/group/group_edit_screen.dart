@@ -257,19 +257,9 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           ),
           gutter(const SectionHeading(S.groupType)),
           gutter(
-            SegmentedButton<GroupType>(
-              showSelectedIcon: false,
-              segments: [
-                for (final t in [
-                  GroupType.trip,
-                  GroupType.home,
-                  GroupType.couple,
-                  GroupType.other,
-                ])
-                  ButtonSegment(value: t, label: Text(groupTypeLabel(t))),
-              ],
-              selected: {_type},
-              onSelectionChanged: (s) => setState(() => _type = s.first),
+            _GroupTypePicker(
+              value: _type,
+              onChanged: (t) => setState(() => _type = t),
             ),
           ),
           const SizedBox(height: Space.md),
@@ -441,4 +431,64 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       ),
     );
   }
+}
+
+/// Trip, Home, Couple, Other: a segmented control while every word fits
+/// its quarter, and wrapping chips at large text or on a narrow phone, so
+/// a label is never broken mid-word ("Cou/ple").
+class _GroupTypePicker extends StatelessWidget {
+  const _GroupTypePicker({required this.value, required this.onChanged});
+
+  final GroupType value;
+  final ValueChanged<GroupType> onChanged;
+
+  static const _types = [
+    GroupType.trip,
+    GroupType.home,
+    GroupType.couple,
+    GroupType.other,
+  ];
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final fits = segmentsFit(
+        context,
+        _types.map(groupTypeLabel),
+        constraints.maxWidth,
+        count: _types.length,
+        // Text button padding (12 a side) and the segment borders.
+        chrome: 24 + 2,
+      );
+      if (fits) {
+        return SegmentedButton<GroupType>(
+          showSelectedIcon: false,
+          segments: [
+            for (final t in _types)
+              ButtonSegment(value: t, label: SegmentLabel(groupTypeLabel(t))),
+          ],
+          selected: {value},
+          onSelectionChanged: (s) => onChanged(s.first),
+        );
+      }
+      return Semantics(
+        label: S.groupType,
+        container: true,
+        explicitChildNodes: true,
+        child: Wrap(
+          spacing: Space.sm,
+          runSpacing: Space.sm,
+          children: [
+            for (final t in _types)
+              ChoiceChip(
+                label: Text(groupTypeLabel(t)),
+                selected: t == value,
+                showCheckmark: false,
+                onSelected: (_) => onChanged(t),
+              ),
+          ],
+        ),
+      );
+    },
+  );
 }
