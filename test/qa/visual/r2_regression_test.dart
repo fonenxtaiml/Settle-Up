@@ -301,7 +301,6 @@ void main() {
       }
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R1-03 (reopened)
   );
 
   testWidgets(
@@ -334,7 +333,6 @@ void main() {
       }
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R1-05 (reopened)
   );
 
   testWidgets(
@@ -356,7 +354,6 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R1-06 (reopened)
   );
 
   // ------------------------------------------------------------------
@@ -382,7 +379,6 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R2-01
   );
 
   testWidgets(
@@ -412,7 +408,6 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R2-02
   );
 
   testWidgets(
@@ -439,7 +434,6 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R2-03
   );
 
   testWidgets(
@@ -466,7 +460,6 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R2-04
   );
 
   testWidgets(
@@ -500,7 +493,6 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(p.dispose);
     },
-    skip: true, // QA VISUAL-R2-05
   );
 
   testWidgets(
@@ -526,7 +518,6 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.runAsync(w.phone.dispose);
     },
-    skip: true, // QA VISUAL-R2-06
   );
 
   testWidgets(
@@ -551,6 +542,5 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty);
     },
-    skip: true, // QA VISUAL-R2-07
   );
 }
