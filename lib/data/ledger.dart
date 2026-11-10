@@ -504,11 +504,10 @@ final class Ledger implements LedgerRepository, SyncStore {
         LedgerInputIssue.groupFull,
       );
 
-  static final RegExp _currencyPattern = RegExp(r'^[A-Z]{3}$');
 
   static String _currency(String code) {
     final c = code.trim().toUpperCase();
-    if (!_currencyPattern.hasMatch(c)) {
+    if (!TextRules.currencyPattern.hasMatch(c)) {
       _fail(LedgerErrorCode.invalidInput, 'Bad currency "$code"');
     }
     return c;

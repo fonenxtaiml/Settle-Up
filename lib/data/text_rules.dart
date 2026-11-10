@@ -234,7 +234,7 @@ abstract final class TextRules {
     EntityType.group: {
       GroupFields.name: _Kind.text,
       GroupFields.type: _Kind.text,
-      GroupFields.currency: _Kind.id,
+      GroupFields.currency: _Kind.currency,
       GroupFields.simplifyDebts: _Kind.flag,
       GroupFields.emoji: _Kind.optionalText,
       GroupFields.archived: _Kind.flag,
@@ -284,6 +284,15 @@ abstract final class TextRules {
   static bool isModelDate(int ms) =>
       ms >= minModelDateMs && ms <= maxModelDateMs;
 
+  /// The only currency code shape a Ledger writes: three upper-case
+  /// ASCII letters (ISO 4217 form). Peers are held to it too, so a group
+  /// never carries a code that overflows the screen or an 'inr' that
+  /// balances keep apart from 'INR' (SECURITY-R4-02).
+  static final RegExp currencyPattern = RegExp(r'^[A-Z]{3}$');
+
+  static bool _isCurrency(Object? value) =>
+      value is String && currencyPattern.hasMatch(value);
+
   static bool _hasKind(Object? value, _Kind kind) => switch (kind) {
     _Kind.text => value is String,
     _Kind.optionalText => value == null || value is String,
@@ -291,6 +300,7 @@ abstract final class TextRules {
     _Kind.flag => value is bool,
     _Kind.date => value is int && isModelDate(value),
     _Kind.optionalDate => value == null || (value is int && isModelDate(value)),
+    _Kind.currency => _isCurrency(value),
     _Kind.money => _isMoneyBlock(value),
   };
 
@@ -305,8 +315,8 @@ abstract final class TextRules {
   static const Set<String> _specKeys = {'method', 'values'};
 
   /// True for exactly the block MoneyBlock.toJson writes: the known keys
-  /// only (no room for padding), member id -> int maps, and amounts the
-  /// reducer accepts (parseMoney).
+  /// only (no room for padding), an ISO-shaped currency, member id -> int
+  /// maps, and amounts the reducer accepts (parseMoney).
   static bool _isMoneyBlock(Object? value) {
     bool keys(Map<Object?, Object?> m, Set<String> known) =>
         m.length == known.length && m.keys.every(known.contains);
@@ -320,7 +330,7 @@ abstract final class TextRules {
     return value is Map &&
         keys(value, _moneyKeys) &&
         value['total'] is int &&
-        value['currency'] is String &&
+        _isCurrency(value['currency']) &&
         spec(value['paidBy']) &&
         spec(value['owedBy']) &&
         ints(value['paid']) &&
@@ -366,6 +376,7 @@ enum _Kind {
   flag('true or false'),
   date('a date in milliseconds from 1900 to 9999'),
   optionalDate('a date in milliseconds from 1900 to 9999 or null'),
+  currency('a three-letter upper-case currency code'),
   money('a money block');
 
   const _Kind(this.what);
