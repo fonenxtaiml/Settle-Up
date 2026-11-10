@@ -8,6 +8,7 @@ import '../../../core/balances.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
+import '../../../core/name_text.dart';
 import '../../../theme/tokens.dart';
 import '../../format/money_format.dart';
 import '../../providers.dart';
@@ -42,7 +43,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
 
   Future<void> _add(GroupState g) async {
     final n = _name.text.trim();
-    if (n.isEmpty) return;
+    if (!NameText.isValid(n)) return;
     final dup = duplicateName(n, [
       for (final m in g.activeMembers) m.displayName,
     ]);
@@ -235,7 +236,9 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
                 onSubmitted: (_) => _add(g),
                 onChanged: (_) => setState(() => _nameError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: _name.text.trim().isEmpty ? null : () => _add(g),
+                  onPressed: !NameText.isValid(_name.text)
+                      ? null
+                      : () => _add(g),
                   style: KitButtonStyles.small(context),
                   child: const Text(S.addPerson),
                 ),
