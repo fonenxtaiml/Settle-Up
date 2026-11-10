@@ -254,7 +254,6 @@ void main() {
     'QA VISUAL-R11-01: the input-only date picker takes US month-first '
     'dates with no format shown, so a day-first date is saved as another '
     'date',
-    skip: true, // QA VISUAL-R11-01
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
