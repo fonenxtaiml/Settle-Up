@@ -1,8 +1,10 @@
-// LanTransport.discover() keeps one cached service per advertiser
+// LanTransport.discover() shows one cached service per advertiser
 // (SYNC-R6-01): mDNS caches services by name, so after a rename whose
 // goodbye is missed the old name must not be re-emitted next to the new
-// one. Driven by a scripted mDNS backend that delivers exactly the events
-// a test gives it (resolves, late resolves, late or missing goodbyes).
+// one. A goodbye withdraws only its own service, so an older sighting of
+// the same phone without a goodbye is shown again (SYNC-R8-01). Driven by
+// a scripted mDNS backend that delivers exactly the events a test gives
+// it (resolves, late resolves, late or missing goodbyes).
 import 'dart:async';
 import 'dart:math';
 
@@ -137,12 +139,26 @@ void main() {
       );
     });
 
-    test('a goodbye of the new name does not bring the old one back', () async {
+    // SYNC-R8-01: a goodbye withdraws its own service only. The older
+    // sighting had no goodbye, so the platform still holds it (a fresh
+    // browse would list it too); it is shown until its own goodbye or
+    // expiry instead of hiding a phone that may still be advertising.
+    test('a goodbye of the newest name shows the older one again until '
+        'that one has its own goodbye', () async {
       expect(
         await shownAfter([
           resolved('Pixel 8'),
           resolved("Alex's phone"),
           goodbye("Alex's phone"),
+        ]),
+        {'10.0.0.2:52741/Pixel 8/abcd1234'},
+      );
+      expect(
+        await shownAfter([
+          resolved('Pixel 8'),
+          resolved("Alex's phone"),
+          goodbye("Alex's phone"),
+          goodbye('Pixel 8'),
         ]),
         isEmpty,
       );
@@ -194,20 +210,22 @@ void main() {
     });
 
     test('seeded random event sequences: never two rows for one advertiser, '
-        'and each row is that advertiser\'s newest sighting', () async {
+        'and each row is that advertiser\'s newest sighting without a '
+        'goodbye', () async {
       const names = ['Pixel 8', "Alex's phone", 'Priya', 'Sam', 'Pixel 8 2'];
       const hosts = ['10.0.0.2', '10.0.0.3', '10.0.0.4'];
       const ids = ['aaaa0001', 'aaaa0002', 'aaaa0003', null];
       for (var seed = 0; seed < 40; seed++) {
         final rng = Random(seed);
         final events = <(String, MdnsSighting?)>[];
-        // Reference model: newest sighting per advertiser, applied in order.
-        final live = <String, DiscoveredPeer>{};
+        // Reference model: every service that resolved and has had no
+        // goodbye since, in resolve order; each phone shows its newest one.
+        final cached = <String, DiscoveredPeer>{};
         for (var i = 0, n = 1 + rng.nextInt(12); i < n; i++) {
           final name = names[rng.nextInt(names.length)];
           if (rng.nextInt(4) == 0) {
             events.add(goodbye(name));
-            live.remove(name);
+            cached.remove(name);
             continue;
           }
           final e = resolved(
@@ -217,10 +235,15 @@ void main() {
             id: ids[rng.nextInt(ids.length)],
           );
           events.add(e);
-          final peer = e.$2!.toPeer()!;
-          live.removeWhere((k, p) => k == name || peer.sameAdvertiserAs(p));
-          live[name] = peer;
+          cached.remove(name);
+          cached[name] = e.$2!.toPeer()!;
         }
+        final order = cached.values.toList();
+        final live = [
+          for (var j = 0; j < order.length; j++)
+            if (!order.skip(j + 1).any((n) => n.sameAdvertiserAs(order[j])))
+              order[j],
+        ];
 
         await t.dispose();
         mdns = _ScriptedMdns();
@@ -233,7 +256,7 @@ void main() {
         );
         final shown = await shownAfter(events);
         expect(shown, {
-          for (final p in live.values) '${p.address}/${p.name}/${p.advertId}',
+          for (final p in live) '${p.address}/${p.name}/${p.advertId}',
         }, reason: 'seed $seed: $events');
         // Independent of the model: no two rows share an address or id.
         final rows = shown.map((s) => s.split('/')).toList();

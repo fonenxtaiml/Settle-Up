@@ -16,6 +16,7 @@ import 'gateway_probe.dart';
 import 'lan_network.dart';
 import 'local_address.dart';
 import 'mdns.dart';
+import 'sighting_cache.dart';
 import 'tcp_framing.dart';
 
 export 'tcp_framing.dart' show kLanMaxFrameBytes;
@@ -259,7 +260,8 @@ final class LanTransport implements SyncTransport, HostingDetails {
   @override
   Stream<DiscoveredPeer> discover() {
     late StreamController<DiscoveredPeer> ctl;
-    final cache = <String, DiscoveredPeer>{}; // service name -> peer
+    // Service name -> sighting; only the newest per phone is emitted.
+    final cache = SightingCache();
     StreamSubscription<(String, MdnsSighting?)>? browse;
     StreamSubscription<DiscoveredPeer>? probe;
     Timer? refresh;
@@ -276,24 +278,33 @@ final class LanTransport implements SyncTransport, HostingDetails {
       ctl.add(p);
     }
 
+    // An address no longer shown through mDNS goes back to the probe.
+    void forget(Iterable<DiscoveredPeer> peers) {
+      final shown = {for (final p in cache.visible) p.address};
+      for (final p in peers) {
+        if (!shown.contains(p.address)) _mdnsSeen.remove(p.address);
+      }
+    }
+
     void onSighting((String, MdnsSighting?) event) {
       final (name, sighting) = event;
       final peer = sighting?.toPeer();
       if (peer == null) {
-        final gone = cache.remove(name);
-        if (gone != null) _mdnsSeen.remove(gone.address);
+        // A goodbye withdraws this service only. If it was its phone's
+        // newest sighting, the phone's next newest one that had no goodbye
+        // is shown again: a stale replay of an old name may have resolved
+        // after the live one (SYNC-R8-01).
+        final (:removed, :shown) = cache.remove(name);
+        if (removed != null) forget([removed]);
+        shown.forEach(emit);
         return;
       }
-      // One phone runs one service at a time: this sighting replaces the
+      // One phone runs one service at a time: this sighting hides the
       // service's earlier one and any other cached service of the same
       // phone (same address or advert id), such as its name before a
-      // rename whose goodbye was missed (SYNC-R6-01).
-      cache.removeWhere((other, p) {
-        if (other != name && !peer.sameAdvertiserAs(p)) return false;
-        if (p.address != peer.address) _mdnsSeen.remove(p.address);
-        return true;
-      });
-      cache[name] = peer;
+      // rename whose goodbye was missed (SYNC-R6-01). The hidden ones stay
+      // cached until their own goodbye.
+      forget(cache.put(name, peer));
       emit(peer);
     }
 
@@ -320,16 +331,14 @@ final class LanTransport implements SyncTransport, HostingDetails {
         });
         // Re-emit what mDNS still sees: resolve events come only on change.
         refresh = Timer.periodic(rediscoverInterval, (_) {
-          for (final p in cache.values.toList()) {
-            emit(p);
-          }
+          cache.visible.forEach(emit);
         });
       },
       onCancel: () async {
         refresh?.cancel();
         await probe?.cancel();
         await browse?.cancel();
-        for (final p in cache.values) {
+        for (final p in cache.all) {
           _mdnsSeen.remove(p.address);
         }
         cache.clear();
