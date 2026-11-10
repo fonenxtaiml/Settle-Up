@@ -3323,7 +3323,7 @@ This is the same session staying in LIVE. The UI sets `liveMode = true` while th
 |---|---|
 | A stranger nearby injects expenses | No group key, so no valid blinded id or AUTH. Rejected. |
 | Passive sniffing on hotspot/BLE | AES-256-GCM with ephemeral keys. Group ids are blinded. Tokens and the advert id rotate every 10 min and nothing stable (no device id) is advertised. The device name is advertised by design, so people can tell phones apart. |
-| A peer's device name reorders or hides text on screen | Names from a peer (HELLO, adverts, connect and invite links) are cleaned like local names (`TextRules.clean`: no control, bidi or zero-width characters) before they are shown or stored in a `SyncRecord` (`lib/sync/peer_name.dart`). |
+| A peer's device name reorders or hides text on screen | Names from a peer (HELLO, adverts, connect and invite links) are cleaned like local names (`TextClean.clean` in `lib/core/text_clean.dart`, which `TextRules.clean` uses: no control, bidi or zero-width characters) before they are shown or stored in a `SyncRecord` (`lib/sync/peer_name.dart`). |
 | A link from a web page makes the phone dial out | Only local-network IP addresses are dialed (8.6). |
 | A stranger on the hotspot holds the host's session slot | Handshakes run in parallel; only an authenticated session takes the slot (8.7.1). |
 | A stranger reconnects in a tight loop to push friends' handshakes out | New connections only evict silent ones (no HELLO yet), oldest first and from the same source first; 64 may wait, so a friend's HELLO has many connections' worth of time to arrive (8.7.1). |
