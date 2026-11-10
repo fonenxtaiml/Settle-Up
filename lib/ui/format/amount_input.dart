@@ -1,392 +1,414 @@
-// Reading amounts the way people type or paste them. The amount field shows
-// "1,234.50" (comma groups, dot decimal), but people also type "12,50" or
-// paste "1.234,50" (dot groups, comma decimal), "1 234,50" or "1'234.50".
-// One reader for every amount input, so no field turns a thousand into one.
+// Reading amounts the way people type or paste them, with one strict
+// grammar per currency that every amount input uses: the big amount field,
+// the split fields, the payer sheet, the adjustments and a paste into any
+// of them. A text either matches the grammar and is that amount, or it is
+// no amount at all: nothing in it is dropped, joined or guessed.
 import '../../core/currencies_data.dart';
 import '../../core/money.dart';
 
-/// [raw] as canonical "1234.50" (digits, at most one '.' decimal point, no
-/// grouping), or null when it cannot be read without guessing.
-///
-/// Rules:
-/// - spaces, NBSP, apostrophes and other non-digit marks are grouping or
-///   decoration and are dropped; so is a '.' or ',' that belongs to a word
-///   ("Rs. 500", "approx. 300"): one right after a letter, or one in a
-///   lead-in with letters before the first digit, unless it sits right
-///   before that digit ("USD .50" is half a dollar);
-/// - text with more than one number in it ("Rs 500 paid at Cafe 21",
-///   "Dinner for 4: 1,200", "Dinner for 4 1,200", "1e3") is refused: it is
-///   never joined into a different amount. A space or apostrophe between
-///   digits groups them only when every run after it has three digits
-///   ("1 234,50", "1'234.50"), and a space only in a currency written that
-///   way or in a bare number ("Table 12 340" is two numbers in USD);
-/// - a word after the number that is not a currency ("2.5k", "1.5 lakh",
-///   "$1.2M", "1.5 mln", "5万", "50 cents") is refused: it may multiply or
-///   divide the number, so it is never dropped. "50 kr", "500 Rs." and
-///   "1,250 DT" are read;
-/// - with both '.' and ',', the last one is the decimal separator and the
-///   other may only group digits before it ("1.234,50", "1,234.50");
-/// - commas only: several commas group ("1,20,000"); a single comma groups
-///   when exactly three digits follow it ("1,000", as the field shows a
-///   thousand), otherwise it is a decimal comma ("12,5", "12,");
-/// - dots only: a single dot is the decimal point ("12.345" in KWD);
-///   several dots group, as long as every group after the first has three
-///   digits (the last may still be being typed: "1.234.5");
-/// - a first group of 0 ("0,500", "00,123") or with a leading zero never
-///   groups thousands: "0,500" is a decimal comma.
-///
-/// With [currency], the text is read the way that currency is written, the
-/// same in every amount input (the big field, split fields, the payer
-/// sheet, a paste):
-/// - a single comma followed by no more digits than the currency has is
-///   its decimal comma where people write one: TND "1,250" is 1.250, as
-///   the amount field shows it when typed (KWD writes a dot, and "1,250"
-///   there is a thousand two hundred and fifty);
-/// - in a currency with no decimals, a single dot followed by three digits
-///   groups: VND "50.000" is fifty thousand (a dot cannot be a decimal
-///   point there);
-/// - lakh grouping ("1,00,000") is read only for currencies written that
-///   way; "1,23," in USD is not a number.
-///
-/// With [typing], the text is still being typed at its end, so the last
-/// comma group may be short too ("1,234," and "1,234,5" on the way to
-/// "1,234,567").
-///
-/// A minus ("-30", "–30", "30-", "(30)"; see [amountSign]) is refused
-/// unless [allowSign]: an amount that cannot be negative never drops it
-/// and reads the number as positive. With [allowSign] the sign is left to
-/// the caller and the number is read without it.
-///
-/// The fraction is not cut to the currency here; callers decide.
-String? normalizeAmountInput(
-  String raw, {
-  bool typing = false,
-  Currency? currency,
-  bool allowSign = false,
-}) {
-  if (_joinsNumbers(raw, currency) || _hasUnknownWordAfter(raw)) return null;
-  final sign = amountSign(raw);
-  if (sign == null || (sign < 0 && !allowSign)) return null;
-  final kept = _dropWordMarks(raw).replaceAll(RegExp(r'[^0-9.,]'), '');
-  if (kept.isEmpty) return '';
-  final lakh = currency == null || lakhCurrencies.contains(currency.code);
-  final digits = currency?.minorDigits;
-  final lastDot = kept.lastIndexOf('.');
-  final lastComma = kept.lastIndexOf(',');
+/// Why a text is not an amount the app can save.
+enum AmountIssue {
+  /// It is not a number written the way the currency is written ("Rs 500
+  /// paid at Cafe 21", "2.5k", "1,2,3", "(30)"), or not one yet ("1,").
+  unreadable,
 
-  if (lastDot >= 0 && lastComma >= 0) {
-    final decimal = lastDot > lastComma ? '.' : ',';
-    final group = decimal == '.' ? ',' : '.';
-    final at = kept.lastIndexOf(decimal);
-    final whole = kept.substring(0, at);
-    final frac = kept.substring(at + 1);
-    // One decimal separator, grouping only before it.
-    if (whole.contains(decimal) || frac.contains(group)) return null;
-    if (!_validGroups(whole.split(group), allowLakh: lakh)) return null;
-    return '${whole.replaceAll(group, '')}.$frac';
-  }
+  /// It has more decimals than the currency ("12.345" in USD, "800.50" in
+  /// JPY), or a dot that may be a decimal point with too many decimals as
+  /// well as a thousands mark ("10.000" in EUR).
+  decimals,
 
-  if (lastComma >= 0) {
-    final parts = kept.split(',');
-    if (parts.length > 2) {
-      return _validGroups(parts, allowLakh: lakh, partialLast: typing)
-          ? parts.join()
-          : null;
-    }
-    final after = parts[1];
-    final groups = after.length == 3 && _canLeadGroups(parts[0]);
-    // Room for the digits as decimals where people write a decimal comma:
-    // TND "1,250" is 1.250, as typed in the amount field.
-    if (currency != null &&
-        after.length <= digits! &&
-        decimalCommaCurrencies.contains(currency.code)) {
-      return '${parts[0]}.$after';
-    }
-    if (groups) return parts.join();
-    return '${parts[0]}.$after';
-  }
-
-  if (lastDot >= 0) {
-    final parts = kept.split('.');
-    if (parts.length == 2) {
-      if (digits == 0 && parts[1].length == 3 && _canLeadGroups(parts[0])) {
-        return parts.join();
-      }
-      return kept;
-    }
-    for (var i = 1; i < parts.length; i++) {
-      final last = i == parts.length - 1;
-      final n = parts[i].length;
-      if (last ? n > 3 : n != 3) return null;
-    }
-    if (!_canLeadGroups(parts.first)) return null;
-    return parts.join();
-  }
-  return kept;
+  /// It is larger than the largest amount the app holds.
+  tooLarge,
 }
 
-/// The digits of [raw] when its [separator]s group them as typed so far
-/// (the last group may be short: "1,0" on the way to "1,000"), or null.
-String? typedGroups(String raw, {String separator = ','}) {
-  final kept = _dropWordMarks(raw)
-      .replaceAll(RegExp('[^0-9${RegExp.escape(separator)}]'), '');
-  final parts = kept.split(separator);
-  return _validGroups(parts, allowLakh: separator == ',', partialLast: true)
-      ? parts.join()
-      : null;
+/// What [readAmount] makes of a text.
+final class AmountReading {
+  const AmountReading._(
+    this.minor,
+    this.issue,
+    this.canonical,
+    this.number, {
+    this.ambiguous = false,
+  });
+
+  static const AmountReading empty = AmountReading._(null, null, '', '');
+
+  /// Minor units (signed where the field allows a sign), or null.
+  final int? minor;
+
+  /// Why there is no amount, or null (an amount, or an empty text).
+  final AmountIssue? issue;
+
+  /// The number as "1234.50": the digits, then the decimal point and the
+  /// decimals as written, when the text is a number in the currency's
+  /// grammar (also when it is too large or has too many decimals);
+  /// otherwise null.
+  final String? canonical;
+
+  /// The number as written, without the currency mark, the sign and the
+  /// spaces around it ("Rs. 1,200/-" is "1,200"), or null when the text is
+  /// not of that form.
+  final String? number;
+
+  /// With [AmountIssue.decimals]: the text also reads as a whole number
+  /// in another of the currency's conventions ("10.000" in EUR).
+  final bool ambiguous;
+
+  bool get isEmpty => minor == null && issue == null;
 }
 
-/// The spaces that may group digits: the space, the no-break, figure,
-/// thin and narrow no-break spaces. A tab or a line break never does: it
-/// is what lies between two copied spreadsheet cells or two lines.
-const String _groupSpaces = ' \u00A0\u2007\u2009\u202F';
-
-/// Whether [raw] holds more than one number: digit runs apart by anything
-/// but separators, spaces and apostrophes ("Rs 500 paid at Cafe 21" is 500
-/// and 21, never 50,021; "1e3" is not 13; two spreadsheet cells "500" and
-/// "210" copied with a tab between them are never 500,210), or
-/// apart by a space or an apostrophe that cannot be a thousands mark
-/// ("Dinner for 4 1,200", "Rs 500 21"). A space groups only in a currency
-/// written with space groups ("1 234,50 €", "1 234,50 EUR"), or in a bare
-/// number, and never with a word around it that is not a currency
-/// ("Dinner for 4 120 €" and "Table 12 340" are two numbers in every
-/// currency).
-bool _joinsNumbers(String raw, Currency? currency) {
-  final first = raw.indexOf(RegExp('[0-9]'));
-  if (first < 0) return false;
-  final last = raw.lastIndexOf(RegExp('[0-9]'));
-  final span = raw.substring(first, last + 1);
-  if (!RegExp("^[0-9.,'\u2019\u02BC$_groupSpaces]*\$").hasMatch(span)) {
-    return true;
+/// Reads [raw] as an amount in [c]. The grammar, the same for every
+/// amount input, accepts exactly:
+///
+/// - optional spaces at either end (any Unicode space, tab or line break);
+/// - with [signed], at most one sign, '-', '−' (U+2212) or '+', first or
+///   right after a currency mark before the number ("-30", "₹-30");
+///   without it, no sign at all ("-30" is no amount);
+/// - at most one mark of [c], before or after the number, with or without
+///   a space: its code, symbol or name and a few local spellings ("₹500",
+///   "Rs. 500", "500 €", "1,250 DT", "50 kr"). A mark that is also a word
+///   that multiplies or divides ("K", "M", "P") counts only before the
+///   number. In the lakh currencies "/-" may close it ("Rs. 500/-");
+/// - digits in one of the currency's conventions, each with a single group
+///   separator and a single decimal separator:
+///   - the app's own: comma groups (thin spaces where a comma before three
+///     digits is a decimal comma, TND), a dot decimal, and in the lakh
+///     currencies also Indian 2-2-3 groups ("12,34,567");
+///   - space groups (space, no-break, narrow no-break or thin space) or
+///     apostrophe groups, with a dot decimal ("1 234.50", "1'234.50");
+///   - where people write a decimal comma, dot or space groups with a
+///     comma decimal ("1.234,50", "1 234,50");
+///   - elsewhere, a comma decimal with no groups ("12,5"), unless the
+///     comma groups in the app's form ("1,250" in KWD is 1250);
+///   - in a currency with no decimals, dot groups too ("50.000").
+///   Groups are exact (a first group of 1 to 3 digits with no leading zero,
+///   then groups of three), there is at most one decimal separator, and it
+///   is followed by no more digits than the currency has. A dot that reads
+///   both as a decimal point with too many decimals and as a thousands mark
+///   ("10.000" in EUR) is not taken either way.
+///
+/// Anything else (words, multipliers, two numbers, brackets, dashes, other
+/// spaces or marks between the digits, short or long groups) is no amount.
+/// The same text always reads the same, typed or pasted, in any field.
+AmountReading readAmount(String raw, Currency c, {bool signed = false}) {
+  final t = raw.trim();
+  if (t.isEmpty) return AmountReading.empty;
+  final parts = _split(t, c, signed: signed);
+  if (parts == null) return _unreadable;
+  final (sign, number, whole) = parts;
+  // "1.250,-" is "1.250," read with no decimals after the comma.
+  final n = _readNumber(whole == null ? number : '$number$whole', c);
+  if (n == null || (whole != null && (n.$2 || !n.$1.endsWith('.')))) {
+    return AmountReading._(null, AmountIssue.unreadable, null, number);
   }
-  final marks = RegExp("[$_groupSpaces'\u2019\u02BC]+");
-  final runs = span.split(marks);
-  if (runs.length == 1) return false;
-  // Thousands marks: "1", then runs of three ("234"), the last of which
-  // may carry the decimals ("234,50").
-  if (!RegExp(r'^[1-9][0-9]{0,2}$').hasMatch(runs.first)) return true;
-  for (var i = 1; i < runs.length; i++) {
-    final isLast = i == runs.length - 1;
-    final ok = isLast
-        ? RegExp(r'^[0-9]{3}(?:[.,][0-9]*)?$').hasMatch(runs[i])
-        : RegExp(r'^[0-9]{3}$').hasMatch(runs[i]);
-    if (!ok) return true;
+  final (canonical, over, ambiguous) = n;
+  if (over) {
+    return AmountReading._(
+      null,
+      AmountIssue.decimals,
+      canonical,
+      number,
+      ambiguous: ambiguous,
+    );
   }
-  final spaced = RegExp('[$_groupSpaces]').hasMatch(span);
-  if (!spaced) return false;
-  final words = RegExp(r'\p{L}+', unicode: true).allMatches(raw);
-  if (currency != null && !spaceGroupCurrencies.contains(currency.code)) {
-    return words.isNotEmpty;
+  final digits = canonical.split('.').first;
+  final v = digits.length > 12
+      ? null
+      : Money.parseMinor(digits.isEmpty ? '0$canonical' : canonical, c);
+  if (v == null) {
+    return AmountReading._(null, AmountIssue.tooLarge, canonical, number);
   }
-  return words.any((w) => !_isCurrencyWord(w.group(0)!));
+  return AmountReading._(sign * v, null, canonical, number);
 }
 
-/// Whether [word] may stand next to an amount because it names its
-/// currency ("EUR", "Rs", "kr"), and cannot change it ("k", "m" and "p"
-/// are symbols too, but also multiply or divide).
-bool _isCurrencyWord(String word) {
-  final w = word.toLowerCase();
-  return !_multipliers.contains(w) &&
-      !_cjkMultiplier.hasMatch(w) &&
-      _currencyWords.contains(w);
-}
-
-/// Every way a minus is written: hyphen-minus, the minus sign, the en and
-/// em dashes and the figure dash (as text editors and chat apps turn "-"
-/// into one), the hyphen and the non-breaking hyphen (text copied from
-/// PDFs and web pages often carries one for a minus), and the small and
-/// full-width hyphen-minus.
-const String _minusChars = '-\u2212\u2013\u2014\u2012\u2010\u2011\uFE63\uFF0D';
-
-/// Words that write a minus before a number ("minus 30").
-const Set<String> _minusWords = {
-  'minus', 'negative', 'neg', 'moins', 'menos', 'meno', 'минус', 'мінус', //
-  'eksi', 'mínus',
-};
-
-/// The sign written around the number in [raw]: -1 for a minus right
-/// before it or at the start ("-30", "–30", "‐30", "USD -50", "-USD .50"),
-/// for a minus word before it ("minus 30"), right after it ("30-", as
-/// accounting writes it) or for brackets around it ("(30)"); 1 otherwise
-/// ("+30", "Rs. 1,200/-", "1.250,- €", "Fr. 30.–" are not negative). Null
-/// when the text holds more than one sign ("-(30)", "+30-") or a bracket
-/// that does not close around the number ("(30", "30)", "500 (approx)"):
-/// it cannot be read without guessing.
-int? amountSign(String raw) {
-  final first = raw.indexOf(RegExp('[0-9]'));
-  if (first < 0) return 1;
-  final last = raw.lastIndexOf(RegExp('[0-9]'));
-  final lead = raw.substring(0, first);
-  final trail = raw.substring(last + 1);
-  const m = '[$_minusChars]';
-  final atStart = RegExp('^\\s*$m').hasMatch(lead);
-  final beforeDigits = RegExp('$m\\s*[.,]?\$').hasMatch(lead);
-  final leadMinus = atStart || beforeDigits;
-  final doubleLead =
-      atStart && beforeDigits && RegExp(m).allMatches(lead).length > 1;
-  final trailMinus = RegExp('^[\\s\\u00A0]*$m').hasMatch(trail);
-  final opens = '('.allMatches(raw).length;
-  final brackets =
-      opens == 1 &&
-      ')'.allMatches(raw).length == 1 &&
-      lead.contains('(') &&
-      trail.contains(')');
-  if (!brackets && (raw.contains('(') || raw.contains(')'))) return null;
-  final wordMinus = RegExp(r'\p{L}+', unicode: true)
-      .allMatches(lead)
-      .any((w) => _minusWords.contains(w.group(0)!.toLowerCase()));
-  final marks = [
-    leadMinus,
-    wordMinus,
-    trailMinus,
-    brackets,
-  ].where((b) => b).length;
-  if (doubleLead || marks > 1) return null;
-  if (marks == 1 && lead.contains('+')) return null;
-  return marks == 1 ? -1 : 1;
-}
-
-/// [raw] without the spaces and apostrophes that group its digits ("1 234"
-/// is "1234"), so a key typed after a pasted amount extends its last group
-/// instead of reading as a second number.
-String closeDigitGroups(String raw) => raw.replaceAll(
-  RegExp("(?<=[0-9])[$_groupSpaces'\u2019\u02BC]+(?=[0-9])"),
-  '',
+const AmountReading _unreadable = AmountReading._(
+  null,
+  AmountIssue.unreadable,
+  null,
+  null,
 );
 
-/// Currencies written with a space between thousands ("1 234,50 €",
-/// "12 500 DT"). Elsewhere a space between digits groups them only in a
-/// bare number.
-const Set<String> spaceGroupCurrencies = {
-  ...decimalCommaCurrencies,
-  'CAD', 'CHF', 'ZAR', //
+/// Minor units for [raw] read in [c] ([readAmount]), or null when it is no
+/// amount (a sign never is one here).
+int? parseAmountInput(String raw, Currency c) => readAmount(raw, c).minor;
+
+/// Signed minor units for [raw] read in [c] ([readAmount] with a sign), or
+/// null.
+int? parseSignedAmountInput(String raw, Currency c) =>
+    readAmount(raw, c, signed: true).minor;
+
+/// The mark the amount field groups thousands of [c] with: a comma, or a
+/// thin space where a comma before three digits is the decimal comma
+/// people write (TND "1,250" is 1.250 DT).
+String amountGroupMark(Currency c) =>
+    c.minorDigits >= 3 && decimalCommaCurrencies.contains(c.code) ? ' ' : ',';
+
+/// The spaces that may group digits: the space and the no-break, narrow
+/// no-break and thin spaces. A tab, a line break or another space never
+/// does.
+const String _groupSpaces = '    ';
+
+/// The apostrophes that may group digits ("1'234.50").
+const String _apostrophes = "'’ʼ";
+
+final RegExp _numberChars = RegExp('^[0-9.,$_groupSpaces$_apostrophes]+\$');
+
+final RegExp _digits = RegExp(r'^[0-9]*$');
+
+/// [t] (trimmed) as its sign, its number (the currency mark taken off) and
+/// the separator of a ",-" that marks it whole, or null when it is not of
+/// the form [readAmount] reads.
+(int, String, String?)? _split(String t, Currency c, {required bool signed}) {
+  var rest = t;
+  var sign = 0;
+  void takeSign() {
+    if (rest.isEmpty || sign != 0) return;
+    final ch = rest[0];
+    if (ch != '-' && ch != '−' && ch != '+') return;
+    sign = ch == '+' ? 1 : -1;
+    rest = rest.substring(1);
+  }
+
+  takeSign();
+  final marks = _marksOf(c);
+  var marked = false;
+  for (final m in marks) {
+    if (_startsWith(rest, m.text)) {
+      rest = _trimSpaces(rest.substring(m.text.length), start: true);
+      marked = true;
+      break;
+    }
+  }
+  if (marked) takeSign();
+  final lakh = lakhCurrencies.contains(c.code);
+  if (lakh && rest.length > 2 && rest.endsWith('/-')) {
+    rest = rest.substring(0, rest.length - 2);
+  } else if (!marked) {
+    for (final m in marks) {
+      if (m.prefixOnly || !_endsWith(rest, m.text)) continue;
+      rest = _trimSpaces(
+        rest.substring(0, rest.length - m.text.length),
+        start: false,
+      );
+      break;
+    }
+  }
+  // ",-" closes a whole amount ("1.250,- €", "Fr. 30.–"): no decimals.
+  String? whole;
+  final dash = RegExp('(?<=[0-9])[.,][-\u2013]\$').firstMatch(rest);
+  if (dash != null) {
+    whole = rest[dash.start];
+    rest = rest.substring(0, dash.start);
+  }
+  if (rest.isEmpty || !_numberChars.hasMatch(rest)) return null;
+  // The number starts and ends with a digit or a decimal separator, never
+  // with a group space or an apostrophe.
+  for (final ch in [rest[0], rest[rest.length - 1]]) {
+    if (_groupSpaces.contains(ch) || _apostrophes.contains(ch)) return null;
+  }
+  if (sign != 0 && !signed) return null;
+  return (sign == 0 ? 1 : sign, rest, whole);
+}
+
+String _trimSpaces(String s, {required bool start}) {
+  var a = 0;
+  var b = s.length;
+  if (start) {
+    while (a < b && _groupSpaces.contains(s[a])) {
+      a++;
+    }
+  } else {
+    while (b > a && _groupSpaces.contains(s[b - 1])) {
+      b--;
+    }
+  }
+  return s.substring(a, b);
+}
+
+bool _startsWith(String s, String mark) =>
+    s.length > mark.length &&
+    s.substring(0, mark.length).toLowerCase() == mark.toLowerCase();
+
+bool _endsWith(String s, String mark) =>
+    s.length > mark.length &&
+    s.substring(s.length - mark.length).toLowerCase() == mark.toLowerCase();
+
+/// A way a currency is marked next to an amount.
+final class _Mark {
+  const _Mark(this.text, {this.prefixOnly = false});
+
+  final String text;
+
+  /// The mark is also a word that multiplies or divides a number it
+  /// follows ("2.5K", "5M", "50p"): it is read only before the number.
+  final bool prefixOnly;
+}
+
+/// Words that, after a number, multiply or divide it.
+const Set<String> _scaleWords = {
+  'k', 'kk', 'm', 'mm', 'mn', 'b', 'bn', 't', 'tn', 'l', 'lk', 'cr', 'e', //
+  'c', 'p', 'g',
 };
 
-/// Words that multiply a number, or divide it, when they follow it
-/// ("2.5k", "1.5 lakh", "$1.2M", "2 млн", "50 cents"). Some are also
-/// currency symbols ("K", "m"); a number followed by one is still refused,
-/// since dropping it could read a different amount.
-const Set<String> _multipliers = {
-  'k', 'kk', 'm', 'mm', 'mn', 'mln', 'mio', 'mil', 'mill', 'b', 'bn', //
-  'bln', 'bil', 'mrd', 'mld', 'mlrd', 'md', 't', 'tn', 'tr', 'trn', //
-  'l', 'lk', 'lac', 'lacs', 'lakh', 'lakhs', 'cr', 'crs', 'crore', //
-  'crores', 'thousand', 'thousands', 'million', 'millions', 'billion', //
-  'billions', 'trillion', 'grand', 'tsd', 'tys', 'tyś', 'tysięcy', //
-  'mille', 'mila', 'miljoen', 'miljon', 'millones', 'millón', 'milhões', //
-  'тыс', 'тысяч', 'тысячи', 'тис', 'млн', 'млрд', 'хил', 'e', //
-  'cent', 'cents', 'paise', 'paisa', 'ct', 'cts', 'c', 'p', 'pence', //
-  'penny', 'pennies', 'centavo', 'centavos', 'céntimo', 'céntimos', //
-  'centime', 'centimes', 'centesimi', 'kop', 'коп', 'копеек', 'копейки', //
-  'копійок', 'gr', 'grosz', 'groszy', 'haléř', 'haléřů', 'öre', 'øre', //
-  'fils', 'halala', 'halalas', 'sen', 'satang', 'pct', 'percent',
+/// Local ways of writing a currency, besides its code, symbol and name.
+const Map<String, List<String>> _localMarks = {
+  'INR': ['Rs.', 'Rs', 'Re.', 'Re', '₹'],
+  'NPR': ['Rs.', 'Rs', 'रू'],
+  'PKR': ['Rs.', 'Rs', '₨'],
+  'LKR': ['Rs.', 'Rs', '₨'],
+  'BDT': ['Tk.', 'Tk', '৳'],
+  'USD': [r'US$', r'$'],
+  'EUR': ['€'],
+  'GBP': ['£'],
+  'JPY': ['¥', '円', '￥'],
+  'CNY': ['¥', '元', 'RMB', '￥'],
+  'KRW': ['₩', '원'],
+  'RUB': ['₽', 'руб.', 'руб', 'р.'],
+  'UAH': ['₴', 'грн.', 'грн'],
+  'PLN': ['zł', 'zl'],
+  'CZK': ['Kč', 'Kc'],
+  'HUF': ['Ft'],
+  'DKK': ['kr.', 'kr'],
+  'NOK': ['kr.', 'kr'],
+  'SEK': ['kr.', 'kr'],
+  'ISK': ['kr.', 'kr'],
+  'CHF': ['Fr.', 'Fr', 'SFr.'],
+  'THB': ['฿', 'บาท'],
+  'AED': ['د.إ', 'Dhs', 'Dh'],
+  'SAR': ['ر.س', 'SR'],
+  'TND': ['DT', 'د.ت'],
+  'KWD': ['KD', 'د.ك'],
+  'BHD': ['BD'],
+  'OMR': ['RO'],
+  'JOD': ['JD'],
+  'TRY': ['₺', 'TL'],
+  'ZAR': ['R'],
+  'BRL': [r'R$'],
+  'IDR': ['Rp'],
+  'MYR': ['RM'],
+  'PHP': ['₱'],
+  'VND': ['₫', 'đ'],
+  'ILS': ['₪'],
+  'NGN': ['₦'],
 };
 
-/// Marks that divide a number or change its unit: the cent and mill signs,
-/// percent and per mille, vulgar fractions, the fraction and division
-/// slashes, and superscript and subscript digits ("99¢", "15%", "1½",
-/// "10²"). Text that holds one is never read with it dropped.
-final RegExp _unitMarks = RegExp(
-  '[\u00A2\uFFE0\u20A5\u20B0%\u066A\uFE6A\uFF05\u2030\u2031'
-  '\u00BC-\u00BE\u2150-\u215F\u2189\u2044\u2215'
-  '\u00B2\u00B3\u00B9\u2070-\u209F]',
-);
+final Map<String, List<_Mark>> _marksCache = {};
 
-/// Numerals that open a CJK word after a number ("5万", "3千円", "5만원"):
-/// ten thousand, thousand, hundred, hundred million and so on.
-final RegExp _cjkMultiplier = RegExp('^[十百千万萬亿億兆천만억조백십]');
-
-/// Words that may follow a number because they name its currency: every
-/// ISO code, the letters of every symbol, each currency's own name ("50
-/// rupees", "20 euro") and a few local spellings ("Rs", "DT", "kr", "円").
-final Set<String> _currencyWords = () {
-  final letters = RegExp(r'\p{L}+', unicode: true);
-  final words = <String>{
-    'rs', 'rp', 'dt', 'kd', 'bd', 'ro', 'jd', 'kr', 'zł', 'zl', 'ft', //
-    'kč', 'kc', 'lei', 'лв', 'грн', 'руб', 'р', 'тг', 'сум', 'tl', 'dh', //
-    'dhs', 'sar', 'eur', 'euro', 'euros', 'rupees', 'rupaye', 'only', //
-    '円', '元', '원', '圓', '块', 'บาท', 'ريال', 'دينار', 'درهم', 'جنيه', //
-  };
-  for (final c in isoCurrencies) {
-    words.add(c.code.toLowerCase());
-    final symbol = letters.firstMatch(c.symbol)?.group(0);
-    if (symbol != null) words.add(symbol.toLowerCase());
+/// Every mark of [c], longest first (so "Rs." is tried before "Rs").
+List<_Mark> _marksOf(Currency c) => _marksCache.putIfAbsent(c.code, () {
+  final texts = <String>{...?_localMarks[c.code]};
+  if (isoCurrencies.any((x) => x.code == c.code)) {
+    texts
+      ..add(c.code)
+      ..add(c.symbol);
+    // "CA$" and "CN¥" are written with the sign alone too.
+    final sign = c.symbol.replaceAll(RegExp(r'\p{L}', unicode: true), '');
+    if (sign.isNotEmpty && sign != c.symbol && !sign.contains('.')) {
+      texts.add(sign);
+    }
     final name = c.name.split(' ').last.toLowerCase();
-    words
+    texts
       ..add(name)
       ..add('${name}s');
   }
-  return words;
-}();
+  texts.removeWhere((m) => m.isEmpty || RegExp('[0-9.,]').hasMatch(m[0]));
+  return [
+    for (final m in texts)
+      _Mark(m, prefixOnly: _scaleWords.contains(m.toLowerCase())),
+  ]..sort((a, b) => b.text.length.compareTo(a.text.length));
+});
 
-/// Whether a word that is not a currency follows the number: it may be a
-/// multiplier ("2.5k", "1.5 mln", "5万") or a smaller unit ("50p", "50
-/// cents"), or start another phrase, and the number without it could be a
-/// different amount. A mark that divides the number or changes its unit
-/// ("99¢", "15%", "1½"; [_unitMarks]) anywhere in the text counts too.
-bool _hasUnknownWordAfter(String raw) {
-  final last = raw.lastIndexOf(RegExp('[0-9]'));
-  if (last < 0) return false;
-  if (_unitMarks.hasMatch(raw)) return true;
-  final word = RegExp(
-    r'^[\s\u00A0\u2009\u202F]*(\p{L}+)',
-    unicode: true,
-  ).firstMatch(raw.substring(last + 1));
-  if (word == null) return false;
-  return !_isCurrencyWord(word.group(1)!);
-}
+/// One way of writing digits: a group separator ([group] null for none), a
+/// decimal separator ([decimal] null for none) and whether Indian lakh
+/// groups are allowed.
+typedef _Convention = ({String? group, String? decimal, bool lakh});
 
-/// [raw] without the '.' and ',' that belong to words rather than to the
-/// number: one right after a letter ("Rs.500", "approx. 300", "500 Rs."),
-/// and one in a lead-in that holds letters ("Rs . 500"), unless it sits
-/// right before the first digit, apart from the word ("USD .50", "Rs. .50"):
-/// that one is the decimal point.
-String _dropWordMarks(String raw) {
-  final letter = RegExp(r'\p{L}', unicode: true);
-  final firstDigit = raw.indexOf(RegExp('[0-9]'));
-  final out = StringBuffer();
-  final leadHasLetter =
-      firstDigit > 0 && letter.hasMatch(raw.substring(0, firstDigit));
-  for (var i = 0; i < raw.length; i++) {
-    final ch = raw[i];
-    if (ch == '.' || ch == ',') {
-      if (i > 0 && letter.hasMatch(raw[i - 1])) continue;
-      if (leadHasLetter && i < firstDigit - 1) continue;
+/// [number] read in the conventions of [c] as (canonical, too many
+/// decimals, also a whole number in another convention), or null.
+(String, bool, bool)? _readNumber(String number, Currency c) {
+  final minor = c.minorDigits;
+  final commaCountry = decimalCommaCurrencies.contains(c.code);
+  // The app's own form first: the field's own text always reads back as
+  // itself.
+  final own = _readIn(number, (
+    group: amountGroupMark(c),
+    decimal: '.',
+    lakh: lakhCurrencies.contains(c.code),
+  ), minor);
+  if (own != null && !own.$2) return (own.$1, false, false);
+  final others = <_Convention>[
+    for (final s in _groupSpaces.split('')) ...[
+      (group: s, decimal: '.', lakh: false),
+      if (commaCountry) (group: s, decimal: ',', lakh: false),
+    ],
+    for (final a in _apostrophes.split(''))
+      (group: a, decimal: '.', lakh: false),
+    if (commaCountry) (group: '.', decimal: ',', lakh: false),
+    if (!commaCountry) (group: null, decimal: ',', lakh: false),
+    if (minor == 0) (group: '.', decimal: null, lakh: false),
+  ];
+  final ok = <String>{};
+  var over = own;
+  for (final conv in others) {
+    final r = _readIn(number, conv, minor);
+    if (r == null) continue;
+    if (r.$2) {
+      over ??= r;
+    } else {
+      ok.add(r.$1);
     }
-    out.write(ch);
   }
-  return out.toString();
+  if (ok.isEmpty) return over == null ? null : (over.$1, true, false);
+  // "10.000" in EUR: ten thousand, or ten with three decimals typed by
+  // mistake. Neither is taken. (In a currency with no decimals a dot never
+  // is a decimal point: VND "50.000" is fifty thousand.)
+  if (own != null && minor > 0) return (own.$1, true, true);
+  if (ok.length > 1) return (ok.first, true, true);
+  return (ok.single, false, false);
 }
 
-/// Whether [first] can be the first group of a grouped number: 1..3 digits
-/// and no leading zero ("0,500" and "05,000" are not thousands).
-bool _canLeadGroups(String first) =>
-    first.isNotEmpty && first.length <= 3 && !first.startsWith('0');
-
-/// Groups after the first have three digits (or two, Indian lakh/crore
-/// style, before a final group of three); the first is 1..3 digits with no
-/// leading zero. With [partialLast], the last group may be short (still
-/// being typed).
-bool _validGroups(
-  List<String> groups, {
-  bool allowLakh = false,
-  bool partialLast = false,
-}) {
-  if (groups.length < 2) return true;
-  if (!_canLeadGroups(groups.first)) return false;
-  for (var i = 1; i < groups.length; i++) {
-    final n = groups[i].length;
-    final last = i == groups.length - 1;
-    if (n == 3) continue;
-    if (last && partialLast && n < 3) continue;
-    if (allowLakh && !last && n == 2) continue;
-    return false;
+/// [number] read in [conv] as (canonical, too many decimals), or null.
+(String, bool)? _readIn(String number, _Convention conv, int minor) {
+  var whole = number;
+  String? frac;
+  final d = conv.decimal;
+  if (d != null) {
+    final at = number.indexOf(d);
+    if (at >= 0) {
+      if (number.indexOf(d, at + 1) >= 0) return null;
+      whole = number.substring(0, at);
+      frac = number.substring(at + 1);
+      if (!_digits.hasMatch(frac)) return null;
+    }
   }
-  return true;
+  final String digits;
+  if (_digits.hasMatch(whole)) {
+    digits = whole;
+  } else {
+    final g = conv.group;
+    if (g == null || !_grouped(whole, g, lakh: conv.lakh)) return null;
+    digits = whole.replaceAll(g, '');
+  }
+  if (digits.isEmpty && (frac == null || frac.isEmpty)) return null;
+  final w = digits.replaceFirst(RegExp(r'^0+(?=[0-9])'), '');
+  final canonical = frac == null ? w : '$w.$frac';
+  // A currency with no decimals has no decimal separator either.
+  return (canonical, frac != null && (minor == 0 || frac.length > minor));
+}
+
+/// Whether [whole] is digits grouped by [g] exactly: 1 to 3 digits with no
+/// leading zero, then groups of three ("1,234,567"), or with [lakh] also
+/// the Indian 2-2-3 form ("12,34,567").
+bool _grouped(String whole, String g, {required bool lakh}) {
+  final e = RegExp.escape(g);
+  if (RegExp('^[1-9][0-9]{0,2}(?:$e[0-9]{3})+\$').hasMatch(whole)) {
+    return true;
+  }
+  return lakh &&
+      RegExp('^[1-9][0-9]?(?:$e[0-9]{2})+$e[0-9]{3}\$').hasMatch(whole);
 }
 
 /// Currencies whose people write a decimal comma ("12,50 €", "0,250 DT").
-/// A comma the amount field has shown as the decimal point stays one there,
-/// so a third digit after it is refused rather than read as a thousand.
 const Set<String> decimalCommaCurrencies = {
   'ALL', 'AOA', 'ARS', 'AZN', 'BAM', 'BGN', 'BOB', 'BRL', 'BYN', 'CLP', //
   'COP', 'CRC', 'CVE', 'CZK', 'DKK', 'DZD', 'EUR', 'GEL', 'HUF', 'IDR', //
@@ -397,23 +419,3 @@ const Set<String> decimalCommaCurrencies = {
 
 /// Currencies whose people group digits in lakhs and crores ("1,00,000").
 const Set<String> lakhCurrencies = {'INR', 'NPR', 'PKR', 'BDT', 'LKR'};
-
-/// Minor units for an amount typed in any of the forms above, read the way
-/// [c] is written, or null when it cannot be read, has more decimals than
-/// [c] allows, or is too large.
-int? parseAmountInput(String raw, Currency c) {
-  final t = normalizeAmountInput(raw.trim(), currency: c);
-  if (t == null || t.isEmpty) return null;
-  return Money.parseMinor(t.startsWith('.') ? '0$t' : t, c);
-}
-
-/// Signed minor units for an amount typed in any of the forms above, with
-/// its minus written in any of the forms [amountSign] reads, or null.
-int? parseSignedAmountInput(String raw, Currency c) {
-  final sign = amountSign(raw);
-  if (sign == null) return null;
-  final t = normalizeAmountInput(raw.trim(), currency: c, allowSign: true);
-  if (t == null || t.isEmpty) return null;
-  final v = Money.parseMinor(t.startsWith('.') ? '0$t' : t, c);
-  return v == null ? null : sign * v;
-}

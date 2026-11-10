@@ -149,7 +149,8 @@ void main() {
         // it (MONEY-R3-03 reopened), and the point after it is its decimal
         // point.
         ('BHD', '1,250.', '1,250.', 1250000),
-        ('BHD', '1,250,', '1,250', 1250000),
+        // On its way to "1,250,000": no amount yet (round 7).
+        ('BHD', '1,250,', '1,250,', null),
         ('USD', '1,23,', '1.23', 123),
         ('EUR', '12,5.', '12.5', 1250),
         ('KWD', '1.250,', '1.250', 1250),
@@ -208,8 +209,9 @@ void main() {
       expect(parseAmountInput('Rs. .50', inr), 50);
       expect(parseAmountInput('EUR ,50', Currencies.of('EUR')), 50);
       expect(parseAmountInput('.5', usd), 50);
-      // The word's own dot, and a dot apart from the digits, still go.
-      expect(parseAmountInput('Rs . 500', inr), 50000);
+      // The mark's own dot still goes; a dot apart from it and the digits
+      // is no amount (round 7, one strict grammar).
+      expect(parseAmountInput('Rs . 500', inr), isNull);
       expect(parseAmountInput('Rs.500', inr), 50000);
     });
 
@@ -238,7 +240,10 @@ void main() {
     test('TND "1,250" is 1.250 everywhere; KWD keeps the comma grouping', () {
       expect(parseAmountInput('1,250', tnd), 1250);
       expect(parseSignedMinor('-1,250', tnd), -1250);
-      expect(parseAmountInput('1,250,000', tnd), 1250000000);
+      // TND groups with dots or spaces; its comma is only ever the
+      // decimal comma (round 7).
+      expect(parseAmountInput('1,250,000', tnd), isNull);
+      expect(parseAmountInput('1.250.000', tnd), 1250000000);
       expect(parseAmountInput('1.250,500', tnd), 1250500);
       expect(parseAmountInput('1,250', Currencies.of('KWD')), 1250000);
       // No decimals: a dot and three digits is a thousand.

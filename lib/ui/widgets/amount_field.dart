@@ -44,12 +44,13 @@ class AmountField extends StatefulWidget {
   /// Makes the symbol a button that opens a currency picker.
   final VoidCallback? onCurrencyTap;
 
-  /// Digits and one decimal separator, grouped for display. [raw] may use
-  /// either separator convention ("1,234.50", "1.234,50", "12,5"); see
-  /// [normalizeAmountInput]. Exposed for tests.
+  /// Digits and one decimal separator, grouped for display. [raw] is read
+  /// as every amount input reads it ([readAmount]: "1,234.50", "1.234,50",
+  /// "12,5"); text that is no amount keeps its digits and first dot.
+  /// Exposed for tests.
   static String groupForDisplay(String raw, Currency c) {
     final clean =
-        normalizeAmountInput(raw) ?? raw.replaceAll(RegExp(r'[^0-9.]'), '');
+        readAmount(raw, c).canonical ?? raw.replaceAll(RegExp(r'[^0-9.]'), '');
     final dot = clean.indexOf('.');
     var whole = dot < 0 ? clean : clean.substring(0, dot);
     var frac = dot < 0 ? null : clean.substring(dot + 1).replaceAll('.', '');
@@ -73,10 +74,7 @@ class AmountField extends StatefulWidget {
   /// space where a comma before three digits is the decimal comma people
   /// write (TND "1,250" is 1.250 DT): the field shows 1,250 DT as
   /// "1 250", so its own text never reads back as a different amount.
-  static String groupMark(Currency c) =>
-      c.minorDigits >= 3 && decimalCommaCurrencies.contains(c.code)
-      ? thinSpace
-      : ',';
+  static String groupMark(Currency c) => amountGroupMark(c);
 
   /// U+2009, the thousands mark for [groupMark]'s currencies.
   static const thinSpace = '\u2009';
@@ -163,55 +161,41 @@ class _AmountFieldState extends State<AmountField> {
   late final TextEditingController _controller;
   late Currency _currency = Currencies.of(widget.currency);
 
-  /// Why the text is not an amount the app can save (it passes the largest
-  /// one the app holds, or a paste has more decimals than the currency);
-  /// the field says so instead of ignoring it.
-  AmountRefusal? _refusal;
+  /// Why the text is not an amount the app can save (it is no number in
+  /// the currency's grammar, has more decimals than the currency, or passes
+  /// the largest amount the app holds); the field says so.
+  AmountIssue? _issue;
   late final _formatter = _GroupingFormatter(
     () => _currency,
-    onRefusal: (v) {
-      if (v != _refusal && mounted) setState(() => _refusal = v);
+    onIssue: (v) {
+      if (v != _issue && mounted) setState(() => _issue = v);
     },
   );
 
   @override
   void initState() {
     super.initState();
-    _controller = TextEditingController(
-      text: widget.initialMinor == null
-          ? ''
-          : AmountField.textFor(widget.initialMinor!, _currency),
-    );
+    final text = widget.initialMinor == null
+        ? ''
+        : AmountField.textFor(widget.initialMinor!, _currency);
+    _controller = TextEditingController(text: text);
+    _formatter.show(text, _currency);
   }
 
   @override
   void didUpdateWidget(AmountField old) {
     super.didUpdateWidget(old);
     if (old.currency != widget.currency) {
+      final from = _currency;
       _currency = Currencies.of(widget.currency);
-      // The shown text is ours (commas group, the dot is the decimal
-      // point); what was typed is no longer read in the old currency.
-      _formatter.reset();
-      final shown =
-          normalizeAmountInput(AmountField.ungroup(_controller.text)) ?? '';
-      final dot = shown.indexOf('.');
-      if (dot >= 0 && shown.length - dot - 1 > _currency.minorDigits) {
-        // KWD 1.250 switched to USD: keep it on screen and say why, never
-        // a silently cut 1.25.
-        _refusal = AmountRefusal.decimals;
-        widget.onChanged(null);
-        return;
-      }
-      if (_refusal == AmountRefusal.decimals) _refusal = null;
-      final text = AmountField.groupForDisplay(
-        AmountField.ungroup(_controller.text),
-        _currency,
-      );
-      _controller.value = TextEditingValue(
-        text: text,
-        selection: TextSelection.collapsed(offset: text.length),
-      );
-      widget.onChanged(AmountField.parse(text, _currency));
+      // What is on screen is read again in the new currency, by the same
+      // grammar: the field's own form ("1,234.50") stays that amount, and
+      // text that held no amount still holds none unless it is one there
+      // (JPY "1200.50" is 1,200.50 in USD; "1.200.5" is none anywhere).
+      final v = _formatter.recurrency(from, _currency);
+      _issue = _formatter.issue;
+      _controller.value = v;
+      widget.onChanged(_formatter.held);
     }
   }
 
@@ -259,13 +243,14 @@ class _AmountFieldState extends State<AmountField> {
     final symbol = Text(_currency.symbol, style: symbolStyle);
     final error =
         widget.errorText ??
-        switch (_refusal) {
-          AmountRefusal.tooLarge => KitStrings.amountUpTo(
+        switch (_issue) {
+          AmountIssue.tooLarge => KitStrings.amountUpTo(
             MoneyFormat.format(Money.maxMinor, _currency.code),
           ),
-          AmountRefusal.decimals => KitStrings.amountDecimals(
+          AmountIssue.decimals => KitStrings.amountDecimals(
             _currency.minorDigits,
           ),
+          AmountIssue.unreadable => KitStrings.amountUnreadable,
           null => null,
         };
 
@@ -334,11 +319,8 @@ class _AmountFieldState extends State<AmountField> {
                           hintText: '0',
                           hintStyle: baseStyle.copyWith(color: scheme.outline),
                         ),
-                        onChanged: (t) => widget.onChanged(
-                          _formatter.incomplete
-                              ? null
-                              : AmountField.parse(t, _currency),
-                        ),
+                        onChanged: (t) =>
+                            widget.onChanged(_formatter.heldFor(t, _currency)),
                       ).withLabel(
                         '${widget.label}, ${widget.currencyName ?? _currency.code}',
                         error,
@@ -369,42 +351,79 @@ extension on TextField {
       Semantics(label: label, hint: error, textField: true, child: this);
 }
 
+/// Keeps what was typed or pasted and shows the amount it reads as.
+///
+/// The field holds the amount [readAmount] reads from what the user wrote,
+/// and nothing else: keys typed at the end extend what was typed (not the
+/// grouped text on screen), so typing a text key by key and pasting it
+/// always give the same amount. While the text is no amount in the
+/// currency's grammar ("1,", "1,2", "800.5" in JPY, "10.000" in EUR) it is
+/// shown as written and the field holds no amount, saying why when it
+/// cannot become one or has too many decimals.
 class _GroupingFormatter extends TextInputFormatter {
-  _GroupingFormatter(this.currency, {required this.onRefusal});
+  _GroupingFormatter(this.currency, {required this.onIssue});
 
   final Currency Function() currency;
 
-  /// Why the text is not an amount the app can save (too large, too many
-  /// decimals), or null; the field says so instead of ignoring the key.
-  final ValueChanged<AmountRefusal?> onRefusal;
+  /// Why the text holds no amount the app can save, or null.
+  final ValueChanged<AmountIssue?> onIssue;
 
-  /// What the user typed at the end of the field, before the display cut
-  /// extra decimals: "1.234" shows as "1.23" in EUR, and a comma typed next
-  /// must still read "1.234," as one thousand two hundred and thirty-four.
-  String? _typed;
+  /// What the user wrote, the amount is read from: the keys typed and the
+  /// number of a paste, without the field's own grouping.
+  String _raw = '';
 
-  /// The text shown for [_typed].
-  String? _shown;
+  /// The text shown for [_raw].
+  String _shown = '';
 
-  /// Forgets what was typed: the next key edits the shown text.
-  void reset() {
-    _typed = _shown = _held = null;
-    _rawShown = incomplete = false;
+  /// [_shown] is the field's own form of the amount ("1,234.50"), not
+  /// [_raw] as written.
+  bool _formatted = true;
+
+  /// The amount [_shown] holds, or null.
+  int? held;
+
+  /// How [held] was read ([AmountReading.canonical]).
+  String _canonical = '';
+
+  /// [_raw] is in the field's own form (an amount it was given, or an
+  /// edit inside its own text): its dot is a decimal point.
+  bool _ownForm = true;
+
+  /// Why [_shown] holds no amount, or null.
+  AmountIssue? issue;
+
+  /// Takes [text], the field's own form of an amount (or empty), as shown.
+  void show(String text, Currency c) {
+    _shown = text;
+    _raw = AmountField.ungroup(text);
+    _canonical = _raw;
+    _ownForm = text.isNotEmpty;
+    _formatted = true;
+    held = AmountField.parse(text, c);
+    issue = null;
   }
 
-  /// The shown text is what was typed, as typed: digits and the dots or
-  /// commas of a no-decimal currency whose last group is not yet three
-  /// digits long ("800.5" in JPY), so its marks are not the field's own.
-  bool _rawShown = false;
+  /// The amount [text] holds: [held] when it is the text shown, else read
+  /// as the field's own form.
+  int? heldFor(String text, Currency c) =>
+      text == _shown ? held : AmountField.parse(text, c);
 
-  /// The shown text holds no amount yet: a group of a no-decimal currency
-  /// is still short ("800.5", "50."), and the field reports null until it
-  /// is complete or fixed.
-  bool incomplete = false;
-
-  /// How [_typed] was read (canonical "1234.50"): the amount the field
-  /// holds, decimals the display flags included.
-  String? _held;
+  /// The shown text and held amount after the currency changed from
+  /// [from] to [to].
+  TextEditingValue recurrency(Currency from, Currency to) {
+    if (!_formatted) return _apply(_raw, to) ?? _value(_raw, null, null, _raw);
+    // The field's own text: its dot is a decimal point in any currency
+    // (KWD 1.250 is no ¥1,250).
+    final raw = _shown.replaceAll(amountGroupMark(from), '');
+    _ownForm = true;
+    final dot = raw.indexOf('.');
+    if (dot >= 0 &&
+        (to.minorDigits == 0 || raw.length - dot - 1 > to.minorDigits)) {
+      final bare = dot == raw.length - 1;
+      return _value(raw, null, bare ? null : AmountIssue.decimals, raw);
+    }
+    return _apply(raw, to) ?? _value(raw, null, null, raw);
+  }
 
   @override
   TextEditingValue formatEditUpdate(
@@ -415,119 +434,211 @@ class _GroupingFormatter extends TextInputFormatter {
     final o = oldValue.text;
     final n = newValue.text;
     if (o == n) return newValue;
+    if (o != _shown) show(o, c); // set from outside
     final (a, b) = _replacedRange(o, n);
     final inserted = n.substring(a, n.length - (o.length - b));
 
+    if (inserted.length > 1) {
+      _ownForm = false;
+      return _paste(n, c) ?? oldValue;
+    }
+
     final String raw;
-    String? canonical;
-    // A paste (or anything else that brings more than one character at a
-    // time, or replaces all of the text) is read as written, whatever it
-    // shares with the old text: a select-all paste of "2,000,000" over
-    // "1,500,000" is two million, never "2,0" + "00,000".
-    final pasted =
-        o.isEmpty || (a == 0 && b == o.length) || inserted.length > 1;
-    final atEnd =
-        a == o.length &&
-        b == o.length &&
-        _typed != null &&
-        _held != null &&
-        _shown == o;
-    if (!pasted &&
-        c.minorDigits == 0 &&
-        (atEnd || (_rawShown && _shown == o))) {
-      // A key in a no-decimal currency, typed at the end or into the
-      // typed text it shows as typed.
-      return _noDecimalsTyped(_rawShown ? n : _typed! + inserted, c) ??
-          oldValue;
-    }
-    if (!pasted &&
-        c.minorDigits == 0 &&
-        _typed == null &&
-        a == o.length &&
-        b == o.length) {
-      // A key typed at the end of an amount the field was given (Edit
-      // expense): read as typed after the shown text, or after its digits
-      // when the shown grouping cannot take it ("1,200" then "." is
-      // "1200.", which holds no amount; never "1200" with the dot lost).
-      return _noDecimalsTyped(o + inserted, c) ??
-          _noDecimalsTyped(AmountField.ungroup(o) + inserted, c) ??
-          oldValue;
-    }
-    if (pasted) {
+    final key = inserted.isNotEmpty;
+    if (!_formatted) {
+      // The shown text is what was written: edit it as it is.
       raw = n;
-      canonical = normalizeAmountInput(raw, currency: c);
-      // More decimals than the currency has: "1.234" in EUR is a thousand
-      // written with a dot, or a typo; never keep a silently cut 1.23.
-      if (canonical != null && _fraction(canonical).length > c.minorDigits) {
-        onRefusal(AmountRefusal.decimals);
-        return oldValue;
+      _ownForm = false;
+    } else if (a == o.length && b == o.length) {
+      // A key typed at the end extends what was typed. After the field's
+      // own text a comma is its decimal point where people write a decimal
+      // comma (as the dot is), and elsewhere continues its grouping
+      // ("1,200" then ",000").
+      if (_ownForm && inserted == ',' && held != null) {
+        final comma =
+            c.minorDigits > 0 && decimalCommaCurrencies.contains(c.code);
+        if (comma) {
+          raw = _raw + (_raw.contains('.') ? ',' : '.');
+        } else {
+          raw = '$_shown,';
+          _ownForm = false;
+        }
+      } else {
+        raw = _raw + inserted;
       }
-    } else if (atEnd) {
-      // Typing at the end.
-      raw = _typed! + inserted;
-      canonical = _typedAtEnd(_typed!, _held!, inserted, c);
-      if (canonical == null) return oldValue;
+    } else if (a == 0 && b == o.length) {
+      // All of it replaced by one key.
+      _ownForm = false;
+      return _apply(inserted, c) ?? oldValue;
     } else {
-      // An edit of the shown text: its commas (or thin spaces) are our
-      // grouping and its dot the decimal point.
+      // An edit inside the field's own form: its group marks are the
+      // field's, its dot the decimal point, and there is only one.
       final before = AmountField.ungroup(o.substring(0, a));
       final after = AmountField.ungroup(o.substring(b));
       var ins = inserted;
       if (ins == ',' || ins == '.') {
-        // A separator typed into the shown amount is its decimal point (a
-        // comma too, on keyboards that offer one), and there is only one:
-        // a second one never turns "1.250" into a thousand.
         if (c.minorDigits == 0 || '$before$after'.contains('.')) {
           return oldValue;
         }
         ins = '.';
       }
-      raw = before + ins + after;
-      canonical = normalizeAmountInput(raw);
+      final edited = before + ins + after;
+      final r = readAmount(edited, c);
+      if (!r.isEmpty && r.minor == null) return oldValue;
+      raw = edited;
+      _ownForm = true;
     }
+    return _apply(raw, c, key: key) ?? oldValue;
+  }
 
-    if (canonical == null) return oldValue; // cannot be read: refuse it
-    final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');
-    final whole = big.split('.').first;
-    final frac = _fraction(canonical);
-    // A dot with more digits after it than the currency has, typed where
-    // people also group thousands with a dot (EUR "10.000", IDR "50.000"):
-    // the field cannot tell which was meant, so it shows what was typed,
-    // says why, and holds no amount until it is fixed. Elsewhere the key
-    // is refused.
-    final overDecimals = frac.length > c.minorDigits;
-    if (overDecimals &&
-        (pasted ||
-            raw.contains(',') ||
-            !decimalCommaCurrencies.contains(c.code))) {
-      return oldValue;
+  /// The field after [n] was pasted, or null to refuse it. A paste that is
+  /// an amount is shown in the field's form; one that is not, or has too
+  /// many decimals, is refused and the field says why (its text and amount
+  /// stay as they were).
+  TextEditingValue? _paste(String n, Currency c) {
+    final r = readAmount(n, c);
+    if (r.isEmpty) return _value('', null, null, '');
+    switch (r.issue) {
+      case null:
+        // The paste is shown in the field's own form, and a key typed
+        // after it extends that ("1 234" then "5" is 12,345).
+        _canonical = r.canonical!;
+        _ownForm = true;
+        return _value(r.canonical!, r.minor, null, _display(r.canonical!, c));
+      case AmountIssue.tooLarge when _wholeDigits(r.canonical!) <= 12:
+        // Kept on screen in the field's form, so it is never mistaken for
+        // a smaller amount, and said.
+        return _value(
+          r.number!,
+          null,
+          AmountIssue.tooLarge,
+          _display(r.canonical!, c),
+          formatted: true,
+        );
+      case final AmountIssue why:
+        issue = why;
+        onIssue(why);
+        return null;
     }
-    final text = overDecimals
-        ? '${AmountField.groupForDisplay(whole, c)}.$frac'
-        : AmountField.groupForDisplay(canonical, c);
-    if (AmountField.tooLarge(big, c)) {
-      // Over the largest amount: keep what was typed on screen (so it is
-      // never mistaken for a smaller amount that could be saved), say why,
-      // and report no amount until it is fixed. Past twelve digits the
-      // keystroke itself is refused.
-      onRefusal(AmountRefusal.tooLarge);
-      if (whole.length > 12) return oldValue;
-    } else if (overDecimals) {
-      onRefusal(AmountRefusal.decimals);
-    } else {
-      if (AmountField.parse(text, c) == null && text.isNotEmpty) {
-        return oldValue;
+  }
+
+  /// The field after the user wrote [raw] (typed, or edited), or null to
+  /// refuse the [key]. While the field holds an amount, a key is refused
+  /// when the text after it could never be one ("1,234,5678", "1.250,"),
+  /// or when it is a digit past the currency's decimals where a dot can
+  /// only be a decimal point ("12.345" in USD); the amount on screen stays
+  /// as it is. A key that would pass twelve whole digits is refused too.
+  /// No other key is ever dropped, so the digits after it never extend a
+  /// different number.
+  TextEditingValue? _apply(String raw, Currency c, {bool key = false}) {
+    if (raw.length > 40) return null;
+    final r = readAmount(raw, c);
+    if (r.isEmpty) return _value(raw, null, null, '');
+    if (key && held != null) {
+      final digit = RegExp(r'[0-9]$').hasMatch(raw);
+      final point = _canonical.contains('.');
+      if (digit) {
+        // A digit past the decimals where the decimal point is certain
+        // ("12.345" in USD; "1.234" after the field's own "1.23"); or one
+        // that would turn a decimal comma into a grouping where people
+        // write a decimal comma ("12,50" then "0" in EUR is never 12,500).
+        final over =
+            r.issue == AmountIssue.decimals &&
+            (!r.ambiguous || (_ownForm && point));
+        final regrouped =
+            r.minor != null &&
+            point &&
+            decimalCommaCurrencies.contains(c.code) &&
+            r.canonical != _canonical + raw[raw.length - 1];
+        if (over || regrouped) {
+          issue = AmountIssue.decimals;
+          onIssue(issue);
+          return null;
+        }
+      } else if (point &&
+          r.minor != held &&
+          (r.minor != null || _ownForm || _lastSeparator(_raw) == '.')) {
+        // A separator after a decimal point never turns that point into a
+        // grouping (TND 1.250 then "," is no 1,250 DT; a typed "1.250"
+        // then "." is no 1.250.000 on its way) or changes the amount. A
+        // decimal comma may still become a lakh group on its way ("1,00"
+        // then ",000").
+        return null;
       }
-      onRefusal(null);
+      if (r.issue == AmountIssue.unreadable && !_canBecome(raw, c)) {
+        return null;
+      }
     }
-    // A pasted "1 234" is kept as "1234": the next key typed extends it.
-    _typed = pasted ? closeDigitGroups(raw) : raw;
-    _shown = text;
-    _held = canonical;
-    _rawShown = incomplete = false;
+    switch (r.issue) {
+      case null:
+        _canonical = r.canonical!;
+        return _value(raw, r.minor, null, _display(r.canonical!, c));
+      case AmountIssue.tooLarge:
+        if (_wholeDigits(r.canonical!) > 12) {
+          issue = AmountIssue.tooLarge;
+          onIssue(issue);
+          return null;
+        }
+        return _value(
+          raw,
+          null,
+          AmountIssue.tooLarge,
+          _display(r.canonical!, c),
+          formatted: true,
+        );
+      case AmountIssue.decimals:
+        // A separator with no digit after it yet ("1200." in JPY) holds no
+        // amount; a word once a digit follows.
+        final bare = r.canonical!.endsWith('.');
+        return _value(raw, null, bare ? null : AmountIssue.decimals, raw);
+      case AmountIssue.unreadable:
+        // On its way ("1,", "1,2"), or never an amount ("1,2,"): only the
+        // second is worth a word while typing.
+        final why = _canBecome(raw, c) ? null : AmountIssue.unreadable;
+        return _value(raw, null, why, raw);
+    }
+  }
+
+  static String? _lastSeparator(String raw) {
+    final i = raw.lastIndexOf(RegExp('[.,]'));
+    return i < 0 ? null : raw[i];
+  }
+
+  /// Whether more digits typed after [raw] can make it an amount.
+  static bool _canBecome(String raw, Currency c) => [
+    '0',
+    '00',
+    '000',
+  ].any((s) => readAmount(raw + s, c).issue != AmountIssue.unreadable);
+
+  static int _wholeDigits(String canonical) =>
+      canonical.split('.').first.length;
+
+  /// The field's own form of [canonical]: grouped, its decimals as typed.
+  static String _display(String canonical, Currency c) {
+    final dot = canonical.indexOf('.');
+    final whole = dot < 0 ? canonical : canonical.substring(0, dot);
+    final grouped = AmountField.groupForDisplay(whole.isEmpty ? '0' : whole, c);
+    return dot < 0 ? grouped : '$grouped.${canonical.substring(dot + 1)}';
+  }
+
+  TextEditingValue _value(
+    String raw,
+    int? amount,
+    AmountIssue? why,
+    String shown, {
+    bool formatted = false,
+  }) {
+    _raw = raw;
+    _shown = shown;
+    if (shown.isEmpty) _ownForm = false;
+    _formatted = formatted || amount != null || shown.isEmpty;
+    held = amount;
+    issue = why;
+    onIssue(why);
     return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
+      text: shown,
+      selection: TextSelection.collapsed(offset: shown.length),
     );
   }
 
@@ -546,138 +657,4 @@ class _GroupingFormatter extends TextInputFormatter {
     }
     return (p, o.length - s);
   }
-
-  /// The field after [raw] is typed in [c], a currency with no decimals,
-  /// or null to refuse the key. Every separator there groups ("50.000" and
-  /// "1,000" are thousands, on their way while typed). While the last
-  /// group is shorter than three digits the field cannot tell a grouping
-  /// on its way from decimals typed out of habit (JPY "800.50", KRW
-  /// "5.00"): it shows what was typed, holds no amount and, once a digit
-  /// follows the separator, says the currency has no decimals. A paste of
-  /// the same text is refused, so typing never saves 100 times the amount.
-  ///
-  /// A single separator that cannot start a group (after four digits or
-  /// more, or after a 0: JPY "1200.50", "0.50") is kept the same way, with
-  /// up to three digits after it, and never dropped: the digits typed
-  /// next would otherwise extend the whole number (MONEY-R4-01).
-  TextEditingValue? _noDecimalsTyped(String raw, Currency c) {
-    final dot = raw.contains('.');
-    final comma = raw.contains(',');
-    if (dot && comma) return null;
-    String? canonical;
-    var short = false;
-    var flag = false;
-    if (!dot && !comma) {
-      canonical = normalizeAmountInput(raw, currency: c);
-    } else {
-      final sep = dot ? '.' : ',';
-      canonical = typedGroups(raw, separator: sep);
-      final last = raw.substring(raw.lastIndexOf(sep) + 1);
-      short = last.length < 3;
-      flag = short && last.isNotEmpty;
-      if (canonical == null &&
-          sep.allMatches(raw).length == 1 &&
-          RegExp(r'^[0-9]+$').hasMatch(raw.replaceFirst(sep, '')) &&
-          raw.indexOf(sep) <= 12 &&
-          last.length <= 3) {
-        // Not a grouping, and no decimals either: hold no amount and say
-        // why until it is fixed.
-        _typed = raw;
-        _shown = raw;
-        _held = null;
-        _rawShown = incomplete = true;
-        onRefusal(last.isEmpty ? null : AmountRefusal.decimals);
-        return TextEditingValue(
-          text: raw,
-          selection: TextSelection.collapsed(offset: raw.length),
-        );
-      }
-    }
-    if (canonical == null) return null;
-    final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');
-    if (AmountField.tooLarge(big, c)) {
-      if (big.length > 12) return null;
-      onRefusal(AmountRefusal.tooLarge);
-    } else {
-      onRefusal(flag ? AmountRefusal.decimals : null);
-    }
-    final text = short
-        ? raw.replaceAll(RegExp(r'[^0-9.,]'), '')
-        : AmountField.groupForDisplay(canonical, c);
-    _typed = raw;
-    _shown = text;
-    _held = canonical;
-    _rawShown = incomplete = short;
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-
-  /// Canonical text after [inserted] (one key) is typed at the end of
-  /// [typed], which the field read as [held], or null to refuse the
-  /// keystroke.
-  ///
-  /// The text is read as [normalizeAmountInput] reads it for the currency,
-  /// so the field and the split fields agree (TND "1,250" is 1.250 in
-  /// both). On top of that, a separator the field shows as the decimal
-  /// point stays the decimal point:
-  /// - another separator after it is refused ("1,250" then "," or "."
-  ///   never becomes 1,250 TND), except a second comma in a dot-decimal
-  ///   currency, which groups there on its way (KWD "1,234,567.125", INR
-  ///   "1,00,000"; USD "1,23," is no grouping and is refused);
-  /// - a digit past the currency's decimals after a decimal comma is
-  ///   refused where people write a decimal comma (EUR "12,500"); in a
-  ///   dot-decimal currency the comma groups instead, as the field itself
-  ///   writes a thousand (USD "1,234").
-  /// A digit after a decimal comma in a dot-decimal currency is read as the
-  /// reader reads the text, so the field and the split fields, the payer
-  /// sheet and a paste agree: KWD "1,25" is 1.25 on its way, and "1,250" is
-  /// a thousand two hundred and fifty, as written there (and a comma after
-  /// it groups on its way to "1,250,000", never multiplying 1.250).
-  /// Currencies with no decimals go through [_noDecimalsTyped].
-  String? _typedAtEnd(String typed, String held, String inserted, Currency c) {
-    final raw = typed + inserted;
-    final commaCountry = decimalCommaCurrencies.contains(c.code);
-    if (held.contains('.') && _fraction(held).length <= c.minorDigits) {
-      // The field shows a decimal point for the last separator typed.
-      final at = typed.lastIndexOf(RegExp('[.,]'));
-      final decimalComma = at >= 0 && typed[at] == ',';
-      final onlyCommas = decimalComma && !typed.contains('.');
-      if (inserted == '.' || inserted == ',') {
-        final groupsOnItsWay = inserted == ',' && onlyCommas && !commaCountry;
-        if (!groupsOnItsWay) return null;
-      } else if (RegExp(r'^[0-9]$').hasMatch(inserted)) {
-        final frac = _fraction(held) + inserted;
-        if (frac.length <= c.minorDigits) {
-          final mine = '${held.split('.').first}.$frac';
-          if (decimalComma && onlyCommas && !commaCountry) {
-            // One reading per currency (KWD "1,250" is 1,250 KD).
-            return normalizeAmountInput(raw, currency: c) ?? mine;
-          }
-          return mine;
-        }
-        if (decimalComma && (!onlyCommas || commaCountry)) return null;
-      }
-    }
-    final canonical = normalizeAmountInput(raw, typing: true, currency: c);
-    if (canonical == null) return null;
-    // A comma read as a decimal comma with more digits than the currency
-    // has would be cut on screen: refuse the key instead.
-    if (raw.contains(',') &&
-        !raw.contains('.') &&
-        canonical.contains('.') &&
-        _fraction(canonical).length > c.minorDigits) {
-      return null;
-    }
-    return canonical;
-  }
-
-  static String _fraction(String canonical) {
-    final dot = canonical.indexOf('.');
-    return dot < 0 ? '' : canonical.substring(dot + 1);
-  }
 }
-
-/// Why the amount field holds no amount the app can save.
-enum AmountRefusal { tooLarge, decimals }

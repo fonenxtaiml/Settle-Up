@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/money.dart';
+import '../../../core/name_text.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
 import '../../strings.dart';
@@ -53,7 +54,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Future<void> _start() async {
     final name = _name.text.trim();
-    if (name.isEmpty || _saving) return;
+    if (!NameText.isValid(name) || _saving) return;
     setState(() => _saving = true);
     await runGuarded(
       context,
@@ -81,7 +82,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               FilledButton(
-                onPressed: name.isEmpty || _saving ? null : _start,
+                onPressed: !NameText.isValid(name) || _saving ? null : _start,
                 style: KitButtonStyles.block,
                 child: const Text(S.getStarted),
               ),

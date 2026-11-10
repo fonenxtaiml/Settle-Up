@@ -151,7 +151,9 @@ void main() {
         ('4 120 zł', 'PLN', 412000),
         ('4 120 Kč', 'CZK', 412000),
         ('R 4 120', 'ZAR', 412000),
-        ("Tisch 4'500 CHF", 'CHF', 450000),
+        // A word that is no currency mark is no amount (round 7).
+        ("Tisch 4'500 CHF", 'CHF', null),
+        ("4'500 CHF", 'CHF', 450000),
       ]) {
         expect(
           parseAmountInput(s, cur(c)),
@@ -249,7 +251,11 @@ void main() {
   group('MONEY-R4-04 neighbours: minus forms', () {
     test('hyphens, words, brackets and bidi marks keep the sign', () {
       final inr = cur('INR');
-      for (final (s, want) in [
+      // Round 7, one strict grammar: only '-' and U+2212 write a minus,
+      // first or after a leading currency mark. Every other form is no
+      // amount at all, so its sign is never dropped either.
+      final minus = RegExp(r'^[-\u2212](₹|Rs\.? ?)?[0-9]|^(₹|Rs\.? ?)[-\u2212][0-9]');
+      for (final (s, read) in [
         ('\u201030', -3000),
         ('30\u2010', -3000),
         ('\u201130', -3000),
@@ -270,6 +276,7 @@ void main() {
         ('+30', 3000),
         ('Rs. 1,200/-', 120000),
       ]) {
+        final want = read > 0 || minus.hasMatch(s) ? read : null;
         expect(parseSignedMinor(s, inr), want, reason: '"${_shown(s)}"');
       }
       // Two signs, or a bracket that does not close around the number,
@@ -396,7 +403,6 @@ void main() {
           expect(v, isNot(dropped), reason: '"${_shown(s)}" in $c read as $v');
         }
       },
-      skip: true, // QA MONEY-R3-05 (reopened)
     );
 
     testWidgets(
@@ -407,7 +413,6 @@ void main() {
         expect(await f.pasted('EUR', '1.5 € million'), isNot(150));
         expect(await f.pasted('INR', '5 Rs lakh'), isNot(500));
       },
-      skip: true, // QA MONEY-R3-05 (reopened)
     );
   });
 
@@ -440,7 +445,6 @@ void main() {
           expect(p, isNot(plus), reason: 'amount "${_shown(s)}" -> $p');
         }
       },
-      skip: true, // QA MONEY-R4-04 (reopened)
     );
 
     testWidgets(
@@ -469,7 +473,6 @@ void main() {
         expect(w.group(gid).liveExpenses, isEmpty);
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R4-04 (reopened)
     );
   });
 
@@ -494,7 +497,6 @@ void main() {
           expect(typed, pasted, reason: '$c "$s" typed $typed, pasted $pasted');
         }
       },
-      skip: true, // QA MONEY-R4-01 (reopened)
     );
   });
 
@@ -524,7 +526,6 @@ void main() {
         // As commas already are.
         expect(parseAmountInput('1,200,50', cur('USD')), isNull);
       },
-      skip: true, // QA MONEY-R6-01
     );
 
     testWidgets(
@@ -547,7 +548,6 @@ void main() {
         await f.switchTo('USD');
         expect(f.reported, anyOf(isNull, 120050), reason: f.text);
       },
-      skip: true, // QA MONEY-R6-01
     );
 
     testWidgets(
@@ -571,7 +571,6 @@ void main() {
         }
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R6-01
     );
   });
 }
