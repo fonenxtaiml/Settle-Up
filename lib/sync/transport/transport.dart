@@ -86,7 +86,9 @@ final class DiscoveredPeer {
   /// or the same advert id (random per phone and window, SPEC 8.3). A
   /// transport that caches sightings by service name or endpoint shows only
   /// the newest of these, so a re-advert under a new name replaces the old
-  /// one even when its goodbye is missed (SYNC-R6-01).
+  /// one even when its goodbye is missed (SYNC-R6-01). The older ones stay
+  /// cached and hidden until their own withdrawal (SightingCache,
+  /// SYNC-R8-01).
   bool sameAdvertiserAs(DiscoveredPeer other) =>
       other.kind == kind &&
       (other.address == address ||
