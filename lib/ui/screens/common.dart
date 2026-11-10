@@ -475,11 +475,20 @@ String? duplicateName(String candidate, Iterable<String> existing) {
   return null;
 }
 
+/// The year this release was built in: a clock that reads an earlier year
+/// is wrong (reset or never set), never the real date.
+const int entryDateFloorYear = 2026;
+
 /// The date picker the expense, payment and settle-up editors open: from
 /// 2000 to the end of next year, widened to take in [initial] when the
 /// stored date lies outside that range (a phone with a reset clock writes
 /// 1970, and a peer may send any date the remote check accepts), so the
 /// user can always see the date and correct it (SECURITY-R5-01).
+///
+/// The end of the range never falls before the end of the year after
+/// [entryDateFloorYear], whatever the clock says: a phone whose clock was
+/// reset to 1970 starts a new expense dated 1970, and its user must still
+/// be able to choose the real date (SECURITY-R6-01).
 Future<DateTime?> pickEntryDate(
   BuildContext context, {
   required DateTime initial,
@@ -487,7 +496,8 @@ Future<DateTime?> pickEntryDate(
 }) {
   final day = DateTime(initial.year, initial.month, initial.day);
   final first = DateTime(2000);
-  final last = DateTime(now.year + 1, 12, 31);
+  final year = now.year < entryDateFloorYear ? entryDateFloorYear : now.year;
+  final last = DateTime(year + 1, 12, 31);
   return showDatePicker(
     context: context,
     initialDate: day,
