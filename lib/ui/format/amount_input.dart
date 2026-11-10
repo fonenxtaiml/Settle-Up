@@ -147,10 +147,10 @@ bool _joinsNumbers(String raw, Currency? currency) {
   if (first < 0) return false;
   final last = raw.lastIndexOf(RegExp('[0-9]'));
   final span = raw.substring(first, last + 1);
-  if (!RegExp(r"^[0-9.,'’ʼ\s   ]*$").hasMatch(span)) {
+  if (!RegExp(r"^[0-9.,'\u2019\u02BC\s\u00A0\u2009\u202F]*$").hasMatch(span)) {
     return true;
   }
-  final marks = RegExp(r"[\s   '’ʼ]+");
+  final marks = RegExp(r"[\s\u00A0\u2009\u202F'\u2019\u02BC]+");
   final runs = span.split(marks);
   if (runs.length == 1) return false;
   // Thousands marks: "1", then runs of three ("234"), the last of which
@@ -163,7 +163,7 @@ bool _joinsNumbers(String raw, Currency? currency) {
         : RegExp(r'^[0-9]{3}$').hasMatch(runs[i]);
     if (!ok) return true;
   }
-  final spaced = RegExp(r'[\s   ]').hasMatch(span);
+  final spaced = RegExp(r'[\s\u00A0\u2009\u202F]').hasMatch(span);
   if (spaced &&
       currency != null &&
       !spaceGroupCurrencies.contains(currency.code) &&
@@ -176,7 +176,7 @@ bool _joinsNumbers(String raw, Currency? currency) {
 /// Every way a minus is written: hyphen-minus, the minus sign, the en and
 /// em dashes and the figure dash (as text editors and chat apps turn "-"
 /// into one), and the small and full-width hyphen-minus.
-const String _minusChars = '-−–—‒﹣－';
+const String _minusChars = '-\u2212\u2013\u2014\u2012\uFE63\uFF0D';
 
 /// The sign written around the number in [raw]: -1 for a minus right
 /// before it or at the start ("-30", "–30", "USD -50", "-USD .50"), right
@@ -261,7 +261,7 @@ bool _hasUnknownWordAfter(String raw) {
   final last = raw.lastIndexOf(RegExp('[0-9]'));
   if (last < 0) return false;
   final word = RegExp(
-    r'^[\s   ]*(\p{L}+)',
+    r'^[\s\u00A0\u2009\u202F]*(\p{L}+)',
     unicode: true,
   ).firstMatch(raw.substring(last + 1));
   if (word == null) return false;
