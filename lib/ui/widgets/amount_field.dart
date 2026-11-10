@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:intl/intl.dart';
+import 'package:intl/intl.dart' show NumberFormat;
 
 import '../../core/money.dart';
 import '../../theme/app_theme.dart';
@@ -179,14 +179,83 @@ class _AmountFieldState extends State<AmountField> {
     super.dispose();
   }
 
+  /// [base] at the largest size (at most its own) at which [text] fits in
+  /// [width] with room for the caret, so a long amount is scaled down and
+  /// never scrolls out of sight (VISUAL-R4-02), as the balance heroes do.
+  static TextStyle fitted(
+    TextStyle base,
+    String text,
+    double width,
+    TextScaler scaler,
+    TextDirection direction,
+  ) {
+    if (!width.isFinite || text.isEmpty) return base;
+    final size = base.fontSize!;
+    double measure(double s) {
+      final tp = TextPainter(
+        text: TextSpan(
+          text: text,
+          style: base.copyWith(fontSize: s),
+        ),
+        textDirection: direction,
+        textScaler: scaler,
+        maxLines: 1,
+      )..layout();
+      final w = tp.width;
+      tp.dispose();
+      return w;
+    }
+
+    if (measure(size) <= width) return base;
+    // Text scaling may be nonlinear (Android 14), so search for the size.
+    var lo = 1.0;
+    var hi = size;
+    for (var i = 0; i < 12; i++) {
+      final mid = (lo + hi) / 2;
+      if (measure(mid) <= width) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return base.copyWith(fontSize: lo);
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) => ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _controller,
+      builder: (context, value, _) => _build(context, c.maxWidth, value.text),
+    ),
+  );
+
+  Widget _build(BuildContext context, double maxWidth, String text) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final amountStyle = theme.textTheme.displayMedium!.tabular;
+    final baseStyle = theme.textTheme.displayMedium!.tabular;
     final symbolStyle = theme.textTheme.displayMedium!
         .copyWith(fontSize: 32, color: scheme.onSurfaceVariant)
         .withWeight(FontWeight.w500);
+    final scaler = MediaQuery.textScalerOf(context);
+    final direction = Directionality.of(context);
+    final symbolPainter = TextPainter(
+      text: TextSpan(text: _currency.symbol, style: symbolStyle),
+      textDirection: direction,
+      textScaler: scaler,
+      maxLines: 1,
+    )..layout();
+    final symbolWidth = symbolPainter.width;
+    symbolPainter.dispose();
+    const caret = 2.0;
+    final amountStyle = fitted(
+      baseStyle,
+      text,
+      // The editable keeps a caret gap at the end; leave room for it too.
+      maxWidth - symbolWidth - 3 * caret - 6,
+      scaler,
+      direction,
+    );
+    final shrink = amountStyle.fontSize! / baseStyle.fontSize!;
     final symbol = Text(_currency.symbol, style: symbolStyle);
     final error =
         widget.errorText ??
@@ -251,14 +320,12 @@ class _AmountFieldState extends State<AmountField> {
                         textInputAction: TextInputAction.next,
                         style: amountStyle,
                         cursorColor: scheme.onSurface,
-                        cursorWidth: 2,
-                        cursorHeight: 44,
+                        cursorWidth: caret,
+                        cursorHeight: 44 * shrink,
                         inputFormatters: [_formatter],
                         decoration: InputDecoration.collapsed(
                           hintText: '0',
-                          hintStyle: amountStyle.copyWith(
-                            color: scheme.outline,
-                          ),
+                          hintStyle: baseStyle.copyWith(color: scheme.outline),
                         ),
                         onChanged: (t) => widget.onChanged(
                           _formatter.incomplete
