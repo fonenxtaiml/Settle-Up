@@ -127,6 +127,19 @@ void main() {
     });
   });
 
+  group('a key after a space-grouped paste (MONEY-R3-05)', () {
+    testWidgets('extends the last group', (t) async {
+      final f = _Field(t);
+      await f.pump('EUR');
+      await f.set('1 234');
+      expect(f.reported, 123400);
+      await f.keys('5');
+      expect((f.text, f.reported), ('12,345', 1234500));
+      await f.keys(',5');
+      expect(f.reported, 1234550);
+    });
+  });
+
   group('TND grouping (MONEY-R4-02)', () {
     testWidgets('thousands are shown with a thin space and read back', (
       t,

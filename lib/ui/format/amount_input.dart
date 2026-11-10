@@ -204,6 +204,14 @@ int? amountSign(String raw) {
   return marks == 1 ? -1 : 1;
 }
 
+/// [raw] without the spaces and apostrophes that group its digits ("1 234"
+/// is "1234"), so a key typed after a pasted amount extends its last group
+/// instead of reading as a second number.
+String closeDigitGroups(String raw) => raw.replaceAll(
+  RegExp(r"(?<=[0-9])[\s\u00A0\u2009\u202F'\u2019\u02BC]+(?=[0-9])"),
+  '',
+);
+
 /// Currencies written with a space between thousands ("1 234,50 €",
 /// "12 500 DT"). Elsewhere a space between digits groups them only in a
 /// bare number.
