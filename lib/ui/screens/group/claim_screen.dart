@@ -76,6 +76,7 @@ class ClaimScreen extends ConsumerWidget {
         helper: S.nameTakenHelper(dup),
         confirmLabel: S.addPerson,
         maxLength: kMemberNameMax,
+        isName: true,
       );
       if (other == null || !context.mounted) return;
       name = other.trim();
