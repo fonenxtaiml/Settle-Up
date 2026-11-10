@@ -12,6 +12,7 @@ import '../core/ids.dart';
 import '../core/ledger_state.dart';
 import '../core/models.dart';
 import '../core/money.dart';
+import '../core/name_text.dart';
 import 'codecs.dart';
 import 'locale_currency.dart';
 import 'repositories.dart';
@@ -42,7 +43,9 @@ final class KvSettingsRepository implements SettingsRepository {
     final deviceJson = _decode(storedDevice);
     var device = deviceFromJson(deviceJson);
     if (device == null) {
-      final name = defaultDeviceName.trim();
+      final name = NameText.isValid(defaultDeviceName)
+          ? NameText.normalize(defaultDeviceName)
+          : '';
       // A missing or unreadable row on a phone that already wrote ops
       // keeps its id (a fresh install has no hlc.last).
       final recovered = await _recoverDeviceId(store);
@@ -58,8 +61,8 @@ final class KvSettingsRepository implements SettingsRepository {
       final oldName = deviceJson is Map ? deviceJson['deviceName'] : null;
       device = DeviceIdentity(
         deviceId: recovered ?? ids.newId(),
-        deviceName: oldName is String && oldName.trim().isNotEmpty
-            ? oldName.trim()
+        deviceName: oldName is String && NameText.isValid(oldName)
+            ? NameText.normalize(oldName)
             : (name.isEmpty ? 'Phone' : name),
       );
       await store.setKv(KvKeys.device, jsonEncode(deviceToJson(device)));
@@ -248,9 +251,13 @@ final class KvSettingsRepository implements SettingsRepository {
   /// Your name and the phone name: 1..40 characters (SPEC 5.16, 8.9).
   static const int maxNameLength = 40;
 
+  /// A name as it is stored, shown and compared ([NameText.normalize]):
+  /// it must keep a letter or a number.
   static String _name(String value, String field, {bool capped = true}) {
-    final t = value.trim();
-    if (t.isEmpty) throw ArgumentError.value(value, field, 'must not be empty');
+    final t = NameText.normalize(value);
+    if (!NameText.isValid(t)) {
+      throw ArgumentError.value(value, field, 'must not be empty');
+    }
     if (capped && t.characters.length > maxNameLength) {
       throw ArgumentError.value(
           value, field, 'must be at most $maxNameLength characters');
