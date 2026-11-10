@@ -18,7 +18,6 @@ import 'package:settle_up/sync/sync_engine.dart';
 import 'package:settle_up/sync/transport/ble/ble_transport.dart';
 import 'package:settle_up/sync/transport/lan/lan_transport.dart';
 import 'package:settle_up/sync/transport/nearby/nearby_transport.dart';
-import 'package:settle_up/sync/transport/transport.dart';
 import 'package:settle_up/ui/dev/fake_settings.dart';
 import 'package:settle_up/ui/screens/common.dart';
 import 'package:settle_up/ui/screens/sync/radios.dart';
