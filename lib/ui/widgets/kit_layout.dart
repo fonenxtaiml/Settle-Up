@@ -157,3 +157,111 @@ class ButtonPair extends StatelessWidget {
     },
   );
 }
+
+/// A [Text] that never breaks a word over two lines: when its longest word
+/// (an amount: "₹1,20,000.50", "KD99,999,999.999") is wider than the room
+/// it gets, the whole text is set smaller until that word fits, as the
+/// balance heroes scale theirs (VISUAL-R4-03, VISUAL-R5-02).
+class FitWordsText extends StatelessWidget {
+  const FitWordsText(
+    this.data, {
+    super.key,
+    this.style,
+    this.maxLines,
+    this.overflow,
+  });
+
+  final String data;
+  final TextStyle? style;
+  final int? maxLines;
+  final TextOverflow? overflow;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) => Text(
+      data,
+      style: fitWordsStyle(context, data, style, c.maxWidth),
+      maxLines: maxLines,
+      overflow: overflow,
+    ),
+  );
+}
+
+/// [style] at the largest size (at most its own) at which the longest word
+/// of [text] fits [width]; [style] itself when it already fits.
+TextStyle? fitWordsStyle(
+  BuildContext context,
+  String text,
+  TextStyle? style,
+  double width,
+) {
+  if (!width.isFinite || width <= 0) return style;
+  if (longestWordWidth(context, text, style) <= width + 0.25) return style;
+  final base = effectiveTextStyle(context, style);
+  final size = base.fontSize ?? 14;
+  // Text scaling may be nonlinear (Android 14), so search for the size.
+  var lo = 1.0;
+  var hi = size;
+  for (var i = 0; i < 14; i++) {
+    final mid = (lo + hi) / 2;
+    final w = longestWordWidth(context, text, base.copyWith(fontSize: mid));
+    if (w <= width) {
+      lo = mid;
+    } else {
+      hi = mid;
+    }
+  }
+  return base.copyWith(fontSize: lo);
+}
+
+/// [text] with [trailing] (an amount, a share field) beside it, or under it
+/// when [stacked]. The children keep their places in the tree whichever
+/// layout is picked, so a focused field never loses its focus (and the
+/// keyboard never closes) when the row switches while typing
+/// (VISUAL-R5-01).
+class BesideOrUnder extends StatelessWidget {
+  const BesideOrUnder({
+    super.key,
+    required this.text,
+    required this.trailing,
+    required this.stacked,
+    this.gap = 8,
+    this.stackGap = 4,
+    this.stackedAlignment = AlignmentDirectional.centerStart,
+  });
+
+  final Widget text;
+  final Widget trailing;
+  final bool stacked;
+
+  /// Space between [text] and [trailing] beside it, and under it.
+  final double gap;
+  final double stackGap;
+
+  /// Where [trailing] sits under [text].
+  final AlignmentDirectional stackedAlignment;
+
+  @override
+  Widget build(BuildContext context) => Flex(
+    direction: stacked ? Axis.vertical : Axis.horizontal,
+    mainAxisSize: stacked ? MainAxisSize.min : MainAxisSize.max,
+    crossAxisAlignment: stacked
+        ? CrossAxisAlignment.stretch
+        : CrossAxisAlignment.center,
+    children: [
+      Flexible(
+        flex: stacked ? 0 : 1,
+        fit: stacked ? FlexFit.loose : FlexFit.tight,
+        child: Align(alignment: AlignmentDirectional.centerStart, child: text),
+      ),
+      SizedBox(width: stacked ? 0 : gap, height: stacked ? stackGap : 0),
+      Align(
+        alignment: stacked
+            ? stackedAlignment
+            : AlignmentDirectional.centerStart,
+        widthFactor: stacked ? null : 1,
+        child: trailing,
+      ),
+    ],
+  );
+}
