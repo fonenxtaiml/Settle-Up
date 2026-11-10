@@ -495,7 +495,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R3-01: Activity rows squeeze the sentence below one word '
     '(and overflow with huge amounts) at 320 dp, 1.3x to 1.59x',
-    skip: true, // QA VISUAL-R3-01
     (tester) async {
       final problems = <String>[];
       for (final build in [VisualWorld.realistic, VisualWorld.huge]) {
