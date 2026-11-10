@@ -79,6 +79,8 @@ final class SpyStore implements SyncStore {
   @override
   String get localDeviceName => inner.localDeviceName;
   @override
+  Stream<String> watchLocalDeviceName() => inner.watchLocalDeviceName();
+  @override
   Future<Map<GroupId, Uint8List>> groupKeys() => inner.groupKeys();
   @override
   Future<VersionVector> versionVector(GroupId groupId) =>
