@@ -22,3 +22,125 @@ class KitSpinner extends StatelessWidget {
     value: MediaQuery.disableAnimationsOf(context) ? 0.75 : null,
   );
 }
+
+/// [style] as a [Text] in [context] would paint it (merged over the
+/// ambient [DefaultTextStyle]).
+TextStyle effectiveTextStyle(BuildContext context, TextStyle? style) =>
+    DefaultTextStyle.of(context).style.merge(style);
+
+TextPainter _painter(
+  BuildContext context,
+  String text,
+  TextStyle? style, {
+  int? maxLines,
+}) => TextPainter(
+  text: TextSpan(text: text, style: effectiveTextStyle(context, style)),
+  textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+  textScaler: MediaQuery.textScalerOf(context),
+  locale: Localizations.maybeLocaleOf(context),
+  maxLines: maxLines,
+);
+
+/// The width [text] takes on one line in [style] at the current text scale.
+double measureTextWidth(BuildContext context, String text, TextStyle? style) {
+  final p = _painter(context, text, style)..layout();
+  final w = p.width;
+  p.dispose();
+  return w;
+}
+
+/// Whether [text] in [style] fits [maxWidth] in at most [maxLines] lines
+/// at the current text scale, with no word broken or cut. Layouts use it to
+/// stack (or give way) before a label turns into "Cas" or "borrowe/d".
+bool textFitsWords(
+  BuildContext context,
+  String text,
+  TextStyle? style,
+  double maxWidth, {
+  int maxLines = 1,
+}) {
+  if (maxWidth <= 0) return false;
+  final p = _painter(context, text, style, maxLines: maxLines)
+    ..layout(maxWidth: maxWidth);
+  final fits = !p.didExceedMaxLines && p.minIntrinsicWidth <= maxWidth + 0.5;
+  p.dispose();
+  return fits;
+}
+
+/// A segmented-button label that is never broken or clipped: one line,
+/// scaled down when its segment is narrower than the word.
+class SegmentLabel extends StatelessWidget {
+  const SegmentLabel(this.text, {super.key});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) => FittedBox(
+    fit: BoxFit.scaleDown,
+    child: Text(text, maxLines: 1, softWrap: false),
+  );
+}
+
+/// Whether the widest of [labels] fits one of [count] equal segments of
+/// [width], each losing [chrome] dp to padding, borders and any icon.
+bool segmentsFit(
+  BuildContext context,
+  Iterable<String> labels,
+  double width, {
+  required int count,
+  required double chrome,
+}) {
+  final style = Theme.of(context).textTheme.labelLarge;
+  final room = width / count - chrome;
+  for (final l in labels) {
+    if (measureTextWidth(context, l, style) > room) return false;
+  }
+  return true;
+}
+
+/// Two hero buttons side by side (Settle up | All balances). At large text,
+/// or when a label would not fit its half as one whole line, they stack
+/// full width instead, so no word is broken ("All bal/ances").
+class ButtonPair extends StatelessWidget {
+  const ButtonPair({
+    super.key,
+    required this.first,
+    required this.second,
+    required this.labels,
+  });
+
+  final Widget first;
+  final Widget second;
+
+  /// The two button labels, measured to decide the layout.
+  final List<String> labels;
+
+  /// A filled button's side padding (24 a side at 1x).
+  static const double _chrome = 48;
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, constraints) {
+      final half = (constraints.maxWidth - 8) / 2;
+      final style = Theme.of(context).textTheme.labelLarge;
+      final fits =
+          !isLargeText(context) &&
+          labels.every(
+            (l) => measureTextWidth(context, l, style) <= half - _chrome,
+          );
+      if (!fits) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [first, const SizedBox(height: 8), second],
+        );
+      }
+      return Row(
+        children: [
+          Expanded(child: first),
+          const SizedBox(width: 8),
+          Expanded(child: second),
+        ],
+      );
+    },
+  );
+}

@@ -7,6 +7,7 @@ import '../../theme/tokens.dart';
 import '../format/money_format.dart';
 import 'category_glyph.dart';
 import 'kit_strings.dart';
+import 'kit_layout.dart';
 import 'list_row.dart';
 import 'money_text.dart';
 import 'tether.dart';
@@ -222,42 +223,76 @@ class ExpenseRow extends StatelessWidget {
     if (unshared) semantics.add(KitStrings.notYetShared);
 
     final titleStyle = theme.textTheme.titleMedium!;
+    final subtitleStyle = theme.textTheme.bodySmall!;
+    // The trailing block keeps its natural width, so a direction word is
+    // never broken ("you borrowe/d"). When that leaves the text too little
+    // room, so the subline amount would be cut ("Sam paid KD1,250.7..."),
+    // the row stacks the trailing block under the text, as at large text.
+    final trailingWidth = switch (trailing) {
+      final BalanceTrailing b => b.naturalWidth(context),
+      Text(:final data?) => measureTextWidth(
+        context,
+        data,
+        AppType.amount(context),
+      ),
+      _ => 0.0,
+    };
+    Widget rowFor(bool stack) => KitListRow(
+      title: title,
+      subtitle: metaText,
+      leading: leading,
+      trailing: trailing,
+      onTap: onTap,
+      minHeight: Sizes.rowMinDense,
+      subtitleLines: 2,
+      verticalPadding: 7,
+      stackTrailing: stack,
+      titleStyle: deleted
+          ? titleStyle.copyWith(
+              decoration: TextDecoration.lineThrough,
+              decorationColor: scheme.onSurfaceVariant,
+              color: scheme.onSurfaceVariant,
+            )
+          : titleStyle,
+      subtitleTrailing: unshared ? const _WaitingMark() : null,
+    );
     return Semantics(
       container: true,
       label: semantics.join(', '),
       button: onTap != null,
       onTap: onTap,
       excludeSemantics: onRestore == null || !deleted,
-      child: KitListRow(
-        title: title,
-        subtitle: metaText,
-        leading: leading,
-        // The trailing amount scales down within about a third of the
-        // width, so the subline ("You paid ₹1,20,000.50") keeps room.
-        trailing: trailing == null
-            ? null
-            : ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.sizeOf(context).width * 0.32,
-                ),
-                child: trailing,
-              ),
-        onTap: onTap,
-        minHeight: Sizes.rowMinDense,
-        subtitleLines: 2,
-        verticalPadding: 7,
-        titleStyle: deleted
-            ? titleStyle.copyWith(
-                decoration: TextDecoration.lineThrough,
-                decorationColor: scheme.onSurfaceVariant,
-                color: scheme.onSurfaceVariant,
-              )
-            : titleStyle,
-        subtitleTrailing: unshared ? const _WaitingMark() : null,
-      ),
+      child: trailingWidth == 0 || isLargeText(context)
+          ? rowFor(false)
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                final textRoom =
+                    constraints.maxWidth -
+                    Space.rowInset * 2 -
+                    24 - // leading glyph
+                    14 - // gap after it
+                    Space.md - // gap before the trailing block
+                    trailingWidth -
+                    (unshared ? Space.sm + 8 : 0);
+                final fits =
+                    textRoom >= _minTextBeside &&
+                    textFitsWords(
+                      context,
+                      metaText,
+                      subtitleStyle,
+                      textRoom,
+                      maxLines: 2,
+                    );
+                return rowFor(!fits);
+              },
+            ),
     );
   }
 }
+
+/// The least room the title and subline keep beside the trailing block
+/// before the row stacks.
+const double _minTextBeside = 96;
 
 /// "Not yet shared": a small open point, the tether's waiting vocabulary.
 class _WaitingMark extends StatelessWidget {

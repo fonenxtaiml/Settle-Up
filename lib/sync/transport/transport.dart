@@ -13,6 +13,9 @@ enum TransportAvailability {
   needsPermission,
   permissionPermanentlyDenied,
   radioOff, // Bluetooth or Wi-Fi switched off
+  // The location switch is off where Bluetooth scans need it (Android API
+  // <= 32 for Nearby, <= 30 for BLE); Bluetooth itself may be on.
+  locationOff,
   unsupported, // platform/hardware cannot do it
 }
 

@@ -148,7 +148,6 @@ void main() {
       expect(tester.takeException(), isNull);
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R1-07
 
   testWidgets('R2 probe: an invite for a group whose name holds & # % / '
@@ -271,7 +270,6 @@ void main() {
       }
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R2-01
 
   // ----------------------------------------------------- Members rules --
@@ -426,7 +424,6 @@ void main() {
       expect(find.text(S.discardTitle), findsOneWidget);
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R1-20
 
   testWidgets(
@@ -444,7 +441,6 @@ void main() {
       expect(find.text(S.discardTitle), findsOneWidget);
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R1-20
 
   testWidgets(
@@ -473,7 +469,6 @@ void main() {
       );
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R1-01
 
   testWidgets('R2 probe: Add expense: Keep editing keeps the draft; Discard '
@@ -554,7 +549,6 @@ void main() {
       expect(misleading, isFalse, reason: 'field shows "$shown"');
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R2-02
 
   // ------------------------------------------------- Settings (R1-18 &c) --
@@ -603,7 +597,6 @@ void main() {
       expect(names.toSet().length, names.length, reason: '$names');
       await w.shutdown(tester);
     },
-    skip: true,
   ); // QA UIFLOW-R2-03
 
   testWidgets('R2 probe: CSV of a Devanagari-named group is shared as '

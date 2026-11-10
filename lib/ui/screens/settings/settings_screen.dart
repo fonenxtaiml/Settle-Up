@@ -93,6 +93,14 @@ class SettingsScreen extends ConsumerWidget {
                       maxLength: kMemberNameMax,
                     );
                     if (name == null || !context.mounted) return;
+                    // Two members with one name cannot be told apart in
+                    // Paid by or the split (the Members rule).
+                    final clash = nameClashForMe(ref, profile.personId, name);
+                    if (clash != null) {
+                      Haptics.invalid(context);
+                      showSnack(context, clash);
+                      return;
+                    }
                     await runGuarded(context, () async {
                       await repo.updateProfile(
                         profile.copyWith(displayName: name),
@@ -275,6 +283,22 @@ class SettingsScreen extends ConsumerWidget {
 
 /// SPEC 8.9: the phone name is the mDNS service name, at most 40.
 const int kDeviceNameMax = 40;
+
+/// The refusal copy when [name] is already someone else's name in a group
+/// I am in ("Rahul is already in Goa trip"), or null when it is free.
+String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
+  final ledger = ref.read(ledgerRepositoryProvider);
+  for (final g in ledger.current.state.visibleGroups) {
+    final mine = myMemberIn(g, me);
+    if (mine == null) continue;
+    final dup = duplicateName(name, [
+      for (final m in g.activeMembers)
+        if (g.resolve(m.id) != mine) m.displayName,
+    ]);
+    if (dup != null) return S.alreadyInNamedGroup(dup, g.group!.name);
+  }
+  return null;
+}
 
 /// Renames my member in every group I am in to [name] (merges followed),
 /// so friends see it after the next sync.

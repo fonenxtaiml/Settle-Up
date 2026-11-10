@@ -42,28 +42,42 @@ class PaymentMethodSelector extends StatelessWidget {
       label: KitStrings.paymentMethod,
       container: true,
       explicitChildNodes: true,
-      child: SegmentedButton<PaymentMethod>(
-        segments: [
-          for (final m in order)
-            ButtonSegment(
-              value: m,
-              label: Text(labelFor(m), maxLines: 1, softWrap: false),
-            ),
-        ],
-        selected: {value},
-        showSelectedIcon: !large,
-        selectedIcon: const Icon(Icons.check_rounded, size: 18),
-        expandedInsets: EdgeInsets.zero,
-        style: large
-            ? const ButtonStyle(
-                padding: WidgetStatePropertyAll(
-                  EdgeInsets.symmetric(horizontal: 2),
-                ),
-              )
-            : null,
-        onSelectionChanged: (s) {
-          Haptics.selection(context);
-          onChanged(s.first);
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          // The check on the selected segment costs about 54 dp (icon,
+          // gap and its wider padding); it is dropped when it would leave
+          // a label less than its word ("Cas" at 360 dp). The labels scale
+          // down as a last resort, never break.
+          final withIcon =
+              !large &&
+              segmentsFit(
+                context,
+                order.map(labelFor),
+                constraints.maxWidth,
+                count: order.length,
+                chrome: 12 + 16 + 18 + 8 + 2,
+              );
+          return SegmentedButton<PaymentMethod>(
+            segments: [
+              for (final m in order)
+                ButtonSegment(value: m, label: SegmentLabel(labelFor(m))),
+            ],
+            selected: {value},
+            showSelectedIcon: withIcon,
+            selectedIcon: const Icon(Icons.check_rounded, size: 18),
+            expandedInsets: EdgeInsets.zero,
+            style: withIcon
+                ? null
+                : const ButtonStyle(
+                    padding: WidgetStatePropertyAll(
+                      EdgeInsets.symmetric(horizontal: 2),
+                    ),
+                  ),
+            onSelectionChanged: (s) {
+              Haptics.selection(context);
+              onChanged(s.first);
+            },
+          );
         },
       ),
     );

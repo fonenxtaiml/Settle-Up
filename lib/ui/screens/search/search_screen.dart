@@ -173,6 +173,10 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
   }
 
   /// The query as the "No results for ..." headline shows it.
-  static String _shortQuery(String q) =>
-      q.length <= 40 ? q : '${q.substring(0, 39)}…';
+  /// [q] cut to 40 user-perceived characters: never inside an emoji or a
+  /// Devanagari or Tamil cluster, which would not be well-formed text.
+  static String _shortQuery(String q) {
+    final chars = q.characters;
+    return chars.length <= 40 ? q : '${chars.take(39)}…';
+  }
 }

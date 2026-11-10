@@ -96,29 +96,23 @@ class PersonScreen extends ConsumerWidget {
           ),
           const SizedBox(height: 14),
           textGutter(
-            Row(
-              children: [
-                Expanded(
-                  child: FilledButton(
-                    onPressed: settleTarget.isEmpty
-                        ? null
-                        : () => context.push(
-                            heroTarget.isNotEmpty
-                                ? heroTarget.first.settleRoute(currency)
-                                : settleTarget.first.settleRoute(),
-                          ),
-                    child: const Text(S.settleUp),
-                  ),
-                ),
-                const SizedBox(width: Space.sm),
-                Expanded(
-                  child: FilledButton.tonal(
-                    onPressed: () =>
-                        context.push(Routes.newExpense(personId: personId)),
-                    child: const Text(S.addExpense),
-                  ),
-                ),
-              ],
+            ButtonPair(
+              labels: const [S.settleUp, S.addExpense],
+              first: FilledButton(
+                onPressed: settleTarget.isEmpty
+                    ? null
+                    : () => context.push(
+                        heroTarget.isNotEmpty
+                            ? heroTarget.first.settleRoute(currency)
+                            : settleTarget.first.settleRoute(),
+                      ),
+                child: const Text(S.settleUp),
+              ),
+              second: FilledButton.tonal(
+                onPressed: () =>
+                    context.push(Routes.newExpense(personId: personId)),
+                child: const Text(S.addExpense),
+              ),
             ),
           ),
           gutter(

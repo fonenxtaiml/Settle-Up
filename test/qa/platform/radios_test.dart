@@ -310,8 +310,10 @@ void main() {
               : sdk <= 30;
           expect(
             await t.requestPermissions(),
+            // PLATFORM-R2-01: a distinct reason, so the Sync tab offers the
+            // location switch rather than Bluetooth settings.
             needsLocation
-                ? TransportAvailability.radioOff
+                ? TransportAvailability.locationOff
                 : TransportAvailability.ready,
           );
         });
@@ -602,7 +604,7 @@ void round2() {
             'Android status() says "denied" for a permanently denied '
             'permission; the wrapper must remember what request() said',
       );
-    }, skip: 'PLATFORM-R1-11: check() forgets permanentlyDenied on Android');
+    });
 
     // PLATFORM-R2-01: on API 26-30 a BLE scan needs the location service
     // switch on. With Bluetooth on and location off, availability says
@@ -639,7 +641,7 @@ void round2() {
               'Bluetooth is on; the fix is the location switch. '
               'Issues were $issues',
         );
-      }, skip: 'PLATFORM-R2-01: location off is shown as "Bluetooth is off"');
+      });
     }
 
     test('Bluetooth really off on API 34: the Sync tab says so', () async {
