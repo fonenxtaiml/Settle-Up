@@ -583,6 +583,9 @@ abstract final class S {
       "Settle Up needs permission to find friends' phones nearby.";
   static const errRadioOff =
       'Bluetooth or Wi-Fi is off. Turn it on to find nearby phones.';
+  static const errLocationOff =
+      'Location is off. Turn on location to sync over Bluetooth, or use '
+      'Wi-Fi.';
   static const errUnreachable =
       "Couldn't reach that phone. Check you're on the same Wi-Fi or hotspot.";
   static const errTimeout = 'That phone stopped answering. Try again close by.';

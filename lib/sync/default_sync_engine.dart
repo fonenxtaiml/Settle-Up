@@ -16,8 +16,11 @@
 //   id gives way and serves the other one's connection; its own Sync call
 //   resolves with that session's result. When one phone's own dial is still
 //   connecting after a handshake timeout, it answers ERROR busy "Starting
-//   its own sync" and the other phone waits for that dial to arrive and
-//   serves it, whichever id is lower;
+//   its own sync" and the other phone, if it is hosting, waits for that
+//   dial to arrive and serves it, whichever id is lower; Cancel ends that
+//   wait. When the dial is known to be for some other phone (the link's
+//   device id, or the advertised name), the answer is "Starting its own
+//   sync with someone else" and the asking phone does not wait;
 // - otherwise: ERROR busy.
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -75,9 +78,28 @@ const String _busySame = 'Already syncing with you';
 /// slower than a handshake).
 const String _busyDialing = 'Starting its own sync';
 
+/// This phone's own Sync is still connecting, and not to the phone asking
+/// (the link's device id or the advertised name says so): the asking phone
+/// need not wait for a dial that is not coming (SYNC-R3-02). Must not end
+/// with [_busyDialing].
+const String _busyDialingElsewhere = 'Starting its own sync with someone else';
+
 /// A Sync this phone started (syncWith, syncWithLink, an invite).
 final class _Outbound {
+  _Outbound({this.targetId, this.targetNames = const []});
+
+  /// The phone being dialed, when the link says (connect link, invite).
+  final DeviceId? targetId;
+
+  /// The names it advertised (cut to fit the advert); empty when unknown.
+  final List<String> targetNames;
+
+
   SyncSession? session;
+
+  /// The user tapped Cancel: this attempt stops and never gives way to an
+  /// inbound session (that would run the cancelled Sync after all).
+  bool cancelled = false;
 
   /// The inbound session from the same phone this attempt gave way to.
   _Run? yieldedTo;
@@ -172,7 +194,6 @@ final class DefaultSyncEngine implements SyncEngine {
   final Map<SyncSession, _Run> _runs = {};
   Completer<void> _changed = Completer();
   int _runSeq = 0;
-  bool _cancelRequested = false;
   bool _liveMode = false;
 
   bool get _busy => _outbound != null || _active != null;
@@ -394,8 +415,12 @@ final class DefaultSyncEngine implements SyncEngine {
         a == TransportAvailability.permissionPermanentlyDenied)) {
       return SyncFailure.permissionDenied;
     }
-    if (all.contains(TransportAvailability.radioOff) ||
-        all.contains(TransportAvailability.locationOff)) {
+    // Location off implies Bluetooth on: saying "Bluetooth or Wi-Fi is
+    // off" would send the user to the wrong switch (PLATFORM-R3-01).
+    if (all.contains(TransportAvailability.locationOff)) {
+      return SyncFailure.locationOff;
+    }
+    if (all.contains(TransportAvailability.radioOff)) {
       return SyncFailure.radioOff;
     }
     return SyncFailure.internal;
@@ -451,6 +476,8 @@ final class DefaultSyncEngine implements SyncEngine {
       await sub.cancel();
     }
     _inbound.clear();
+    // Anyone waiting for a connection to arrive here stops waiting.
+    _notify();
     if (_host != null) {
       _host = null;
       _setStatus(clearHost: true);
@@ -665,15 +692,18 @@ final class DefaultSyncEngine implements SyncEngine {
     return null;
   }
 
-  _Outbound _claim() {
+  _Outbound _claim({DeviceId? targetId, List<String> targetNames = const []}) {
     _checkAlive();
     if (_busy) {
       throw const SyncException(
           SyncFailure.internal, 'A sync is already running');
     }
-    _cancelRequested = false;
-    return _outbound = _Outbound();
+    return _outbound = _Outbound(targetId: targetId, targetNames: targetNames);
   }
+
+  /// Whether this phone can be dialed now (hosting): only then may another
+  /// phone's Sync be on its way here.
+  bool get _listening => _inbound.isNotEmpty;
 
   void _release(_Outbound out) {
     if (identical(_outbound, out)) {
@@ -684,18 +714,21 @@ final class DefaultSyncEngine implements SyncEngine {
 
   @override
   Future<SyncSummary> syncWith(NearbyPeer peer) async {
-    final out = _claim();
+    _checkAlive();
     final routes = [
       for (final r in _registry.routesFor(peer.key))
         if (peer.transports.contains(r.kind)) r,
     ];
+    final out = _claim(
+      targetNames: {peer.name, for (final r in routes) r.name}.toList(),
+    );
     return _connectAndRun(out, peer.name, routes, connectTimeout);
   }
 
   @override
   Future<SyncSummary> syncWithLink(String link) async {
     final target = await _parseSyncTarget(link);
-    final out = _claim();
+    final out = _claim(targetId: target.deviceId, targetNames: [target.name]);
     return _connectAndRun(out, target.name, target.routes, linkConnectTimeout);
   }
 
@@ -709,7 +742,8 @@ final class DefaultSyncEngine implements SyncEngine {
   }
 
   /// Hosts to try for a connect link, or an invite carrying `h`.
-  Future<({String name, List<DiscoveredPeer> routes})> _parseSyncTarget(
+  Future<({String name, DeviceId? deviceId, List<DiscoveredPeer> routes})>
+      _parseSyncTarget(
     String link,
   ) async {
     final connect = ConnectLink.tryParse(link);
@@ -723,6 +757,7 @@ final class DefaultSyncEngine implements SyncEngine {
       }
       return (
         name: connect.deviceName,
+        deviceId: connect.deviceId,
         routes: [
           for (final h in hosts)
             DiscoveredPeer(
@@ -744,6 +779,7 @@ final class DefaultSyncEngine implements SyncEngine {
     await _registerInvite(invite);
     return (
       name: invite.fromName,
+      deviceId: invite.deviceId,
       routes: [
         DiscoveredPeer(kind: TransportKind.lan, address: host, name: invite.fromName),
       ],
@@ -780,13 +816,13 @@ final class DefaultSyncEngine implements SyncEngine {
           lastError = e;
           _log('connect ${route.kind.name} ${route.address} failed', e);
         }
-        if (_cancelRequested || out.yielded) break;
+        if (out.cancelled || out.yielded) break;
       }
       if (out.yielded) {
         // The other phone's connection got here first (both tapped Sync).
         await channel?.close();
         channel = null;
-      } else if (_cancelRequested) {
+      } else if (out.cancelled) {
         await channel?.close();
         throw const SyncException(SyncFailure.cancelled, 'Cancelled');
       } else if (channel == null) {
@@ -824,9 +860,11 @@ final class DefaultSyncEngine implements SyncEngine {
       // LIVE: the caller gets the summary now; the session keeps running.
       if (!summary.isCompleted) summary.complete(r.summary);
     }));
-    unawaited(run.result.then((r) async {
+    unawaited(run.result.then((result) async {
+      var r = result;
       final peer = r.peerDeviceId;
       if (!out.yielded &&
+          !out.cancelled &&
           !r.isSuccess &&
           r.peerErrorCode == ErrorCodes.busy &&
           peer != null) {
@@ -834,17 +872,22 @@ final class DefaultSyncEngine implements SyncEngine {
           // The other phone is still dialing, maybe us: serve its
           // connection if it comes (whichever id is lower, since our own
           // attempt is over). Its dial may take a connect timeout more.
-          await _awaitYield(
-            out,
-            peer,
-            arriving: connectTimeout + timings.handshakeTimeout,
-          );
+          // Not hosting, nobody can dial us: no need to wait (SYNC-R3-02).
+          if (_listening) {
+            await _awaitYield(
+              out,
+              peer,
+              arriving: connectTimeout + timings.handshakeTimeout,
+            );
+          }
         } else if (_yieldsTo(peer) &&
             (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
           // The other phone is syncing with us the other way round: its
           // connection here is about to ask for the slot.
           await _awaitYield(out, peer);
         }
+        // Cancel tapped while waiting for the other phone (SYNC-R3-01).
+        if (!out.yielded && out.cancelled) r = _cancelledResult(r);
       }
       if (out.yielded) {
         try {
@@ -890,6 +933,34 @@ final class DefaultSyncEngine implements SyncEngine {
     );
   }
 
+  /// Whether [out], still dialing, may be dialing the phone of the inbound
+  /// session [s] (authenticated, so its HELLO is known). By device id when
+  /// a link gave one; else by name: adverts cut names (24 runes over Nearby
+  /// and BLE, 40 over mDNS) and mDNS may add " (2)", so a name that is a
+  /// prefix of the other counts as a match. Unknown counts as a match: the
+  /// asking phone then waits for the dial, as for a mutual Sync.
+  static bool _dialMayReach(_Outbound out, SyncSession s) {
+    final id = out.targetId;
+    if (id != null) return id == s.peerDeviceId;
+    final hello = _nameKey(s.peerName);
+    if (hello.isEmpty || out.targetNames.isEmpty) return true;
+    for (final n in out.targetNames) {
+      final advertised = _nameKey(n);
+      if (advertised.isEmpty ||
+          advertised == 'settle up' ||
+          hello.startsWith(advertised) ||
+          advertised.startsWith(hello)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  static final RegExp _mdnsSuffix = RegExp(r'\s*\(\d+\)$');
+
+  static String _nameKey(String name) =>
+      cleanPeerName(name).replaceFirst(_mdnsSuffix, '').trim().toLowerCase();
+
   /// In a mutual Sync the phone with the lower device id gives way.
   bool _yieldsTo(DeviceId peer) => _store.localDeviceId.compareTo(peer) < 0;
 
@@ -904,15 +975,36 @@ final class DefaultSyncEngine implements SyncEngine {
     return null;
   }
 
+  /// [r], refused while the user tapped Cancel: a cancelled Sync.
+  static SessionResult _cancelledResult(SessionResult r) => SessionResult(
+        outcome: SyncOutcome.cancelled,
+        failure: SyncFailure.cancelled,
+        message: 'Cancelled',
+        peerName: r.peerName,
+        peerDeviceId: r.peerDeviceId,
+        transport: r.transport,
+        startedAt: r.startedAt,
+        endedAt: r.endedAt,
+        sentOps: r.sentOps,
+        receivedOps: r.receivedOps,
+        receivedByGroup: r.receivedByGroup,
+        groupIds: r.groupIds,
+        receivedAnyFrame: r.receivedAnyFrame,
+        peerErrorCode: r.peerErrorCode,
+      );
+
   /// Waits until [out] gives way to an inbound session from [peer]: soon
   /// if that session is here, for [arriving] if it has not said HELLO yet.
+  /// Cancel ends the wait at once.
   Future<void> _awaitYield(
     _Outbound out,
     DeviceId peer, {
     Duration arriving = const Duration(seconds: 1),
   }) async {
     final waited = Stopwatch()..start();
-    while (!out.yielded && !_disposed) {
+    while (!out.yielded && !out.cancelled && !_disposed) {
+      // Hosting stopped: nothing more can arrive.
+      if (!_listening && _inboundFrom(peer) == null) return;
       final limit = _inboundFrom(peer) == null
           ? arriving
           : arriving + timings.handshakeTimeout;
@@ -961,6 +1053,15 @@ final class DefaultSyncEngine implements SyncEngine {
       final out = _outbound;
       if (out != null) {
         final target = out.session?.peerDeviceId;
+        if (out.cancelled) {
+          // Our own Sync was cancelled and is about to let the slot go:
+          // then this is an ordinary inbound sync. Never serve it as the
+          // cancelled Sync (SYNC-R3-01).
+          final left = timings.handshakeTimeout - waited.elapsed;
+          if (left <= Duration.zero) return _busyOther;
+          await _changed.future.timeout(left, onTimeout: () {});
+          continue;
+        }
         if (target == null) {
           // Our own Sync is still connecting or waiting for HELLO: learn
           // whom it is for before deciding (at most one handshake timeout;
@@ -968,7 +1069,9 @@ final class DefaultSyncEngine implements SyncEngine {
           final left = timings.handshakeTimeout - waited.elapsed;
           // Not "another phone": the dial may be for this very phone, which
           // then waits for it (SYNC-R2-02).
-          if (left <= Duration.zero) return _busyDialing;
+          if (left <= Duration.zero) {
+            return _dialMayReach(out, s) ? _busyDialing : _busyDialingElsewhere;
+          }
           await _changed.future.timeout(left, onTimeout: () {});
           continue;
         }
@@ -1126,7 +1229,7 @@ final class DefaultSyncEngine implements SyncEngine {
     if (host != null && !_busy && _isLinkHost(host)) {
       try {
         first = await _connectAndRun(
-          _claim(),
+          _claim(targetId: invite.deviceId, targetNames: [invite.fromName]),
           invite.fromName,
           [
             DiscoveredPeer(
@@ -1198,9 +1301,11 @@ final class DefaultSyncEngine implements SyncEngine {
 
   @override
   Future<void> cancel() async {
-    // A Sync still connecting stops after the current attempt.
-    _cancelRequested = _outbound != null;
+    // A Sync still connecting stops after the current attempt; one waiting
+    // for the other phone's dial stops now.
+    _outbound?.cancelled = true;
     final sessions = {?_outbound?.session, ?_active};
+    _notify();
     for (final s in sessions) {
       await s.cancel();
     }
