@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
+import 'kit_layout.dart';
 import 'kit_strings.dart';
 
 /// The extended ink FAB (render 1, 2): 56 dp, 16 dp radius, plus icon and
@@ -145,20 +146,29 @@ class AppBarTitle extends StatelessWidget {
                 final style = theme.textTheme.bodySmall!.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 );
-                var text = subtitle!;
                 final short = shortSubtitle;
-                if (short != null && constraints.hasBoundedWidth) {
-                  final painter = TextPainter(
-                    text: TextSpan(text: text, style: style),
-                    maxLines: 1,
-                    textDirection: Directionality.of(context),
-                    textScaler: MediaQuery.textScalerOf(context),
-                  )..layout(maxWidth: constraints.maxWidth);
-                  if (painter.didExceedMaxLines) text = short;
-                  painter.dispose();
+                if (short != null &&
+                    constraints.hasBoundedWidth &&
+                    !textFitsWords(
+                      context,
+                      subtitle!,
+                      style,
+                      constraints.maxWidth,
+                    )) {
+                  // The short form is the part worth keeping: when even it
+                  // does not fit one line ("KD999,999.999 spent" at 320 dp,
+                  // 1.3x) it scales down rather than lose its end.
+                  return Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: AlignmentDirectional.centerStart,
+                      child: Text(short, maxLines: 1, style: style),
+                    ),
+                  );
                 }
                 return Text(
-                  text,
+                  subtitle!,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: style,
