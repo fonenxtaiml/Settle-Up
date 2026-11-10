@@ -445,7 +445,6 @@ void main() {
         expect(snackText(tester), isNot(S.errGeneric));
         await w.shutdown(tester);
       },
-      skip: true, // QA UIFLOW-R8-01: a name that grows past 40 when normalised is refused with "That did not work. Try again."
     );
   }
 
@@ -469,7 +468,6 @@ void main() {
       expect(w.group(gid).activeMembers, hasLength(4));
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R8-01: a name that grows past 40 when normalised is refused with "That did not work. Try again."
   );
 
   // ------------------------------------------------- UIFLOW-R8-02 --

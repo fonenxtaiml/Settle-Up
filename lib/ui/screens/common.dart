@@ -1,6 +1,9 @@
 // Shared helpers for the screens: gutters, app bars, async states, error
 // copy, snack bars, confirmations and small ledger lookups.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -17,6 +20,9 @@ import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
 import '../widgets/widgets.dart';
+import 'name_limit.dart';
+
+export 'name_limit.dart';
 
 /// "Now" for every screen. Tests and goldens override it with a fixed time.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
@@ -273,9 +279,11 @@ class _TextPrompt extends StatefulWidget {
 
 class _TextPromptState extends State<_TextPrompt> {
   late final _controller = TextEditingController(
-    text: widget.maxLength == null
-        ? widget.initial
-        : widget.initial.characters.take(widget.maxLength!).toString(),
+    text: switch (widget.maxLength) {
+      null => widget.initial,
+      final max when widget.isName => NameLimit.fit(widget.initial, max),
+      final max => widget.initial.characters.take(max).toString(),
+    },
   );
 
   @override
@@ -286,7 +294,9 @@ class _TextPromptState extends State<_TextPrompt> {
 
   bool get _accepted {
     final text = _controller.text;
-    return widget.isName ? NameText.isValid(text) : text.trim().isNotEmpty;
+    if (!widget.isName) return text.trim().isNotEmpty;
+    final max = widget.maxLength;
+    return max == null ? NameText.isValid(text) : isSavableName(text, max);
   }
 
   void _submit() {
@@ -299,20 +309,39 @@ class _TextPromptState extends State<_TextPrompt> {
     title: Text(widget.title),
     content: ListenableBuilder(
       listenable: _controller,
-      builder: (context, _) => TextField(
-        controller: _controller,
-        autofocus: true,
-        maxLength: widget.maxLength,
-        textCapitalization: TextCapitalization.words,
-        decoration: InputDecoration(
-          hintText: widget.hint,
-          helperText: widget.helper,
-          helperMaxLines: 3,
-          errorText: widget.isName ? nameInputError(_controller.text) : null,
-          errorMaxLines: 3,
-        ),
-        onSubmitted: (_) => _submit(),
-      ),
+      builder: (context, _) {
+        final max = widget.maxLength;
+        // A name counts as it is stored ([NameLimit.length]), so the
+        // counter never says a name fits that Save would refuse.
+        final count = widget.isName && max != null
+            ? NameLimit.length(_controller.text)
+            : null;
+        return TextField(
+          controller: _controller,
+          autofocus: true,
+          maxLength: max,
+          inputFormatters: widget.isName && max != null
+              ? nameFormatters(max)
+              : null,
+          textCapitalization: TextCapitalization.words,
+          decoration: InputDecoration(
+            hintText: widget.hint,
+            helperText: widget.helper,
+            helperMaxLines: 3,
+            errorText: widget.isName
+                ? nameInputError(_controller.text, limit: max)
+                : null,
+            errorMaxLines: 3,
+            counterText: count == null ? null : '$count/$max',
+            semanticCounterText: count == null
+                ? null
+                : MaterialLocalizations.of(
+                    context,
+                  ).remainingTextFieldCharacterCount(math.max(0, max! - count)),
+          ),
+          onSubmitted: (_) => _submit(),
+        );
+      },
     ),
     actions: [
       TextButton(
@@ -470,12 +499,31 @@ Set<ExpenseId> _findDuplicatePayments(GroupState g) {
 /// SPEC 5.16: member display names are 1..40 characters.
 const int kMemberNameMax = 40;
 
+/// SPEC 5.16: group names are 1..60 characters.
+const int kGroupNameMax = 60;
+
 /// The message under a name field whose text is not empty but is no name
 /// (no letter or number once normalised, [NameText.isValid]): only
-/// spaces, symbols or characters that show nothing. Null while the field
-/// is empty or holds a name.
-String? nameInputError(String text) =>
-    text.trim().isEmpty || NameText.isValid(text) ? null : S.nameNeedsLetter;
+/// spaces, symbols or characters that show nothing; or, with a [limit],
+/// one that is longer than [limit] once stored ([NameLimit.fits]: "…" is
+/// stored as "...", UIFLOW-R8-01). Null while the field is empty or holds
+/// a name that can be saved.
+String? nameInputError(String text, {int? limit}) {
+  if (text.trim().isEmpty) return null;
+  if (!NameText.isValid(text)) return S.nameNeedsLetter;
+  if (limit != null && !NameLimit.fits(text, limit)) return S.errTooLong;
+  return null;
+}
+
+/// Whether [text] is a name that can be saved under [limit]: a letter or
+/// number once normalised, and short enough once stored.
+bool isSavableName(String text, int limit) =>
+    NameText.isValid(text) && NameLimit.fits(text, limit);
+
+/// The formatters every name field caps its text with ([NameLimit]).
+List<TextInputFormatter> nameFormatters(int limit) => [
+  NameLengthFormatter(limit),
+];
 
 /// The existing name [candidate] would duplicate, as it is shown, or null.
 /// Both sides are compared in the one form names are stored and shown in
