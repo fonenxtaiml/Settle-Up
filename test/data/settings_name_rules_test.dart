@@ -5,6 +5,7 @@
 // Settings > Edit name never leaves the profile and my members apart.
 import 'dart:convert';
 import 'dart:math';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
@@ -456,5 +457,19 @@ void main() {
         expect(s.device.deviceName, 'Phone');
       },
     );
+  });
+
+  group('names from other phones', () {
+    test('an invite hint is shown in the normalised form', () async {
+      final p = await _Phone.open();
+      const joined = '00000000-0000-7000-9000-0000000000b1';
+      final key = Uint8List.fromList(List.generate(32, (i) => i));
+      expect(
+        await p.ledger.registerJoinedGroup(
+            joined, key, '\u3164\uFF27oa\u2800trip\u200B'),
+        isTrue,
+      );
+      expect(p.ledger.current.pendingJoins, {joined: 'Goa trip'});
+    });
   });
 }

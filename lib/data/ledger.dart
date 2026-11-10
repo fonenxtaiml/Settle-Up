@@ -1331,9 +1331,11 @@ final class Ledger implements LedgerRepository, SyncStore {
           _emit();
           return false;
         }
-        var hint = TextRules.clean(nameHint);
+        // A group name from another phone's link, in the form group names
+        // are shown in ([NameText.display]).
+        var hint = NameText.display(nameHint);
         if (TextRules.tooLong(hint, TextRules.groupName) != null) {
-          hint = hint.characters.take(TextRules.groupName).toString();
+          hint = hint.characters.take(TextRules.groupName).toString().trim();
         }
         // The hint goes first: a key without a hint and without ops is
         // taken for a createGroup that never committed and dropped on open.
