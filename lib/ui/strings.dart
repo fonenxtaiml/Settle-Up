@@ -159,10 +159,11 @@ abstract final class S {
   static const youSub = 'You, on this phone';
   static const renameTitle = 'Rename';
   static const memberAdded = 'Person added';
-  static String alreadyInGroup(String name) =>
-      '$name is already in this group';
+  static String alreadyInGroup(String name) => '$name is already in this group';
   static String alreadyInNamedGroup(String name, String group) =>
       '$name is already in $group';
+  static String alreadyAFriend(String name) =>
+      'You already have a friend called $name';
   static String cannotRemoveTitle(String name) => "$name can't be removed yet";
   static String cannotRemoveBody(String name, String balance) =>
       '$name has $balance open in this group. Settle up first, then remove.';
@@ -192,6 +193,15 @@ abstract final class S {
   static const notOnList = "I'm not on the list";
   static String claimed(String name) => "You're $name in this group";
   static const claimLater = 'Not now';
+  static const claimSameNameTitle = 'Is that you?';
+  static String claimSameNameBody(String name, String group) =>
+      '$name is already in $group. If that is you, pick it so your '
+      'balances follow you.';
+  static const thatsMe = "That's me";
+  static const notMe = 'Not me';
+  static String yourNameIn(String group) => 'Your name in $group';
+  static String nameTakenHelper(String name) =>
+      '$name is already taken here. Use a name people can tell apart.';
 
   // -------------------------------------------------------- add expense --
   static const addExpenseTitle = 'Add expense';
@@ -429,6 +439,7 @@ abstract final class S {
   static const noneNearbyBody =
       'Ask your friend to open Sync and turn on Make this phone visible.';
   static const nearbyOff = 'Not looking';
+
   /// A phone in more groups than its advert lists, none of them ours.
   static const mayShareGroups = 'may share a group';
   static String sharesGroups(List<String> names) {

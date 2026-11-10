@@ -132,6 +132,19 @@ class _AmountFieldState extends State<AmountField> {
     super.didUpdateWidget(old);
     if (old.currency != widget.currency) {
       _currency = Currencies.of(widget.currency);
+      // The shown text is ours (commas group, the dot is the decimal
+      // point); what was typed is no longer read in the old currency.
+      _formatter.reset();
+      final shown = normalizeAmountInput(_controller.text) ?? '';
+      final dot = shown.indexOf('.');
+      if (dot >= 0 && shown.length - dot - 1 > _currency.minorDigits) {
+        // KWD 1.250 switched to USD: keep it on screen and say why, never
+        // a silently cut 1.25.
+        _refusal = AmountRefusal.decimals;
+        widget.onChanged(null);
+        return;
+      }
+      if (_refusal == AmountRefusal.decimals) _refusal = null;
       final text = AmountField.groupForDisplay(_controller.text, _currency);
       _controller.value = TextEditingValue(
         text: text,
@@ -277,6 +290,13 @@ class _GroupingFormatter extends TextInputFormatter {
   /// The text shown for [_typed].
   String? _shown;
 
+  /// Forgets what was typed: the next key edits the shown text.
+  void reset() => _typed = _shown = _held = null;
+
+  /// How [_typed] was read (canonical "1234.50"): the amount the field
+  /// holds, decimals the display flags included.
+  String? _held;
+
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
@@ -285,6 +305,101 @@ class _GroupingFormatter extends TextInputFormatter {
     final c = currency();
     final o = oldValue.text;
     final n = newValue.text;
+    if (o == n) return newValue;
+    final (a, b) = _replacedRange(o, n);
+    final inserted = n.substring(a, n.length - (o.length - b));
+
+    final String raw;
+    String? canonical;
+    // A paste (or anything else that brings more than one character at a
+    // time, or replaces all of the text) is read as written, whatever it
+    // shares with the old text: a select-all paste of "2,000,000" over
+    // "1,500,000" is two million, never "2,0" + "00,000".
+    final pasted =
+        o.isEmpty || (a == 0 && b == o.length) || inserted.length > 1;
+    if (pasted) {
+      raw = n;
+      canonical = normalizeAmountInput(raw, currency: c);
+      // More decimals than the currency has: "1.234" in EUR is a thousand
+      // written with a dot, or a typo; never keep a silently cut 1.23.
+      if (canonical != null && _fraction(canonical).length > c.minorDigits) {
+        onRefusal(AmountRefusal.decimals);
+        return oldValue;
+      }
+    } else if (a == o.length &&
+        b == o.length &&
+        _typed != null &&
+        _held != null &&
+        _shown == o) {
+      // Typing at the end.
+      raw = _typed! + inserted;
+      canonical = _typedAtEnd(_typed!, _held!, inserted, c);
+      if (canonical == null) return oldValue;
+    } else {
+      // An edit of the shown text: its commas are our grouping and its dot
+      // the decimal point.
+      final before = o.substring(0, a).replaceAll(',', '');
+      final after = o.substring(b).replaceAll(',', '');
+      var ins = inserted;
+      if (ins == ',' || ins == '.') {
+        // A separator typed into the shown amount is its decimal point (a
+        // comma too, on keyboards that offer one), and there is only one:
+        // a second one never turns "1.250" into a thousand.
+        if (c.minorDigits == 0 || '$before$after'.contains('.')) {
+          return oldValue;
+        }
+        ins = '.';
+      }
+      raw = before + ins + after;
+      canonical = normalizeAmountInput(raw);
+    }
+
+    if (canonical == null) return oldValue; // cannot be read: refuse it
+    final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');
+    final whole = big.split('.').first;
+    final frac = _fraction(canonical);
+    // A dot with more digits after it than the currency has, typed where
+    // people also group thousands with a dot (EUR "10.000", IDR "50.000"):
+    // the field cannot tell which was meant, so it shows what was typed,
+    // says why, and holds no amount until it is fixed. Elsewhere the key
+    // is refused.
+    final overDecimals = frac.length > c.minorDigits;
+    if (overDecimals &&
+        (pasted ||
+            raw.contains(',') ||
+            !decimalCommaCurrencies.contains(c.code))) {
+      return oldValue;
+    }
+    final text = overDecimals
+        ? '${AmountField.groupForDisplay(whole, c)}.$frac'
+        : AmountField.groupForDisplay(canonical, c);
+    if (AmountField.tooLarge(big, c)) {
+      // Over the largest amount: keep what was typed on screen (so it is
+      // never mistaken for a smaller amount that could be saved), say why,
+      // and report no amount until it is fixed. Past twelve digits the
+      // keystroke itself is refused.
+      onRefusal(AmountRefusal.tooLarge);
+      if (whole.length > 12) return oldValue;
+    } else if (overDecimals) {
+      onRefusal(AmountRefusal.decimals);
+    } else {
+      if (AmountField.parse(text, c) == null && text.isNotEmpty) {
+        return oldValue;
+      }
+      onRefusal(null);
+    }
+    _typed = raw;
+    _shown = text;
+    _held = canonical;
+    return TextEditingValue(
+      text: text,
+      selection: TextSelection.collapsed(offset: text.length),
+    );
+  }
+
+  /// The range of [o] that [n] replaces, as (start, end): what is left
+  /// once the common prefix and suffix are taken off.
+  static (int, int) _replacedRange(String o, String n) {
     var p = 0;
     while (p < o.length && p < n.length && o[p] == n[p]) {
       p++;
@@ -295,101 +410,55 @@ class _GroupingFormatter extends TextInputFormatter {
         o[o.length - 1 - s] == n[n.length - 1 - s]) {
       s++;
     }
-    final inserted = n.substring(p, n.length - s);
-    final removed = o.substring(p, o.length - s);
-
-    final String raw;
-    String? canonical;
-    final pasted = o.isEmpty || (p == 0 && s == 0);
-    if (pasted) {
-      // Fresh or replaced text (a paste): read it as written.
-      raw = n;
-      canonical = normalizeAmountInput(raw);
-      // More decimals than the currency has: "1.234" in EUR is a thousand
-      // written with a dot, or a typo; never keep a silently cut 1.23.
-      if (canonical != null && _fraction(canonical).length > c.minorDigits) {
-        onRefusal(AmountRefusal.decimals);
-        return oldValue;
-      }
-    } else if (s == 0 && removed.isEmpty && _typed != null && _shown == o) {
-      // Typing at the end.
-      raw = _typed! + inserted;
-      canonical = _typedAtEnd(_typed!, inserted, c);
-      if (canonical == null) return oldValue;
-    } else {
-      // An edit of the shown text: its commas are our grouping.
-      final before = o.substring(0, p).replaceAll(',', '');
-      final after = o.substring(o.length - s).replaceAll(',', '');
-      var ins = inserted;
-      // A comma typed as the decimal separator on keyboards that offer one.
-      if (ins == ',' && !before.contains('.') && !after.contains('.')) {
-        ins = '.';
-      }
-      raw = before + ins + after;
-      canonical = normalizeAmountInput(raw);
-    }
-
-    if (canonical == null) return oldValue; // cannot be read: refuse it
-    final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');
-    final whole = big.split('.').first;
-    final text = AmountField.groupForDisplay(canonical, c);
-    if (AmountField.tooLarge(big, c)) {
-      // Over the largest amount: keep what was typed on screen (so it is
-      // never mistaken for a smaller amount that could be saved), say why,
-      // and report no amount until it is fixed. Past twelve digits the
-      // keystroke itself is refused.
-      onRefusal(AmountRefusal.tooLarge);
-      if (whole.length > 12) return oldValue;
-    } else {
-      if (AmountField.parse(text, c) == null && text.isNotEmpty) {
-        return oldValue;
-      }
-      onRefusal(null);
-    }
-    _typed = raw;
-    _shown = text;
-    return TextEditingValue(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
+    return (p, o.length - s);
   }
 
-  /// Canonical text after [inserted] is typed at the end of [typed], or null
-  /// to refuse the keystroke.
+  /// Canonical text after [inserted] (one key) is typed at the end of
+  /// [typed], which the field read as [held], or null to refuse the
+  /// keystroke.
   ///
-  /// A comma the field shows as the decimal point ("1,25" as "1.25") stays
-  /// the decimal point while the currency has room for the digit: TND
-  /// "1,250" is 1.250. Past that, a decimal-comma currency (EUR "12,500")
-  /// refuses the digit, and a dot-decimal one (USD "1,234") reads the
-  /// comma as grouping, as the field itself writes a thousand; a second
-  /// comma there groups too ("1,234,567", INR "1,00,000").
-  String? _typedAtEnd(String typed, String inserted, Currency c) {
+  /// The text is read as [normalizeAmountInput] reads it for the currency,
+  /// so the field and the split fields agree (TND "1,250" is 1.250 in
+  /// both). On top of that, a separator the field shows as the decimal
+  /// point stays the decimal point:
+  /// - another separator after it is refused ("1,250" then "," or "."
+  ///   never becomes 1,250 TND), except a second comma in a dot-decimal
+  ///   currency, which groups there on its way (KWD "1,234,567.125", INR
+  ///   "1,00,000"; USD "1,23," is no grouping and is refused);
+  /// - a digit past the currency's decimals after a decimal comma is
+  ///   refused where people write a decimal comma (EUR "12,500"); in a
+  ///   dot-decimal currency the comma groups instead, as the field itself
+  ///   writes a thousand (USD "1,234").
+  /// With no decimals at all (JPY, VND), every separator typed groups on
+  /// its way: "1,0" or "50.0" is the digits so far, on the way to "1,000"
+  /// or "50.000".
+  String? _typedAtEnd(String typed, String held, String inserted, Currency c) {
     final raw = typed + inserted;
-    final before = normalizeAmountInput(typed, typing: true);
-    final commaShownAsDecimal =
-        c.minorDigits > 0 &&
-        before != null &&
-        before.contains('.') &&
-        !typed.contains('.') &&
-        ','.allMatches(typed).length == 1;
-    // No decimals at all (JPY): every comma typed is grouping on its way,
-    // "1,0" is ten on the way to "1,000".
-    if (c.minorDigits == 0 && raw.contains(',') && !raw.contains('.')) {
-      return typedCommaGroups(raw);
+    if (c.minorDigits == 0) {
+      final dot = raw.contains('.');
+      final comma = raw.contains(',');
+      if (dot && comma) return null;
+      if (!dot && !comma) return normalizeAmountInput(raw, currency: c);
+      return typedGroups(raw, separator: dot ? '.' : ',');
     }
     final commaCountry = decimalCommaCurrencies.contains(c.code);
-    if (commaShownAsDecimal) {
-      if (RegExp(r'^[0-9]+$').hasMatch(inserted)) {
-        final frac = _fraction(before) + inserted;
+    if (held.contains('.') && _fraction(held).length <= c.minorDigits) {
+      // The field shows a decimal point for the last separator typed.
+      final at = typed.lastIndexOf(RegExp('[.,]'));
+      final decimalComma = at >= 0 && typed[at] == ',';
+      final onlyCommas = decimalComma && !typed.contains('.');
+      if (inserted == '.' || inserted == ',') {
+        final groupsOnItsWay = inserted == ',' && onlyCommas && !commaCountry;
+        if (!groupsOnItsWay) return null;
+      } else if (RegExp(r'^[0-9]$').hasMatch(inserted)) {
+        final frac = _fraction(held) + inserted;
         if (frac.length <= c.minorDigits) {
-          return '${before.split('.').first}.$frac';
+          return '${held.split('.').first}.$frac';
         }
-        if (commaCountry) return null;
-      } else if (inserted.contains(',') && commaCountry) {
-        return null; // a second decimal comma
+        if (decimalComma && (!onlyCommas || commaCountry)) return null;
       }
     }
-    final canonical = normalizeAmountInput(raw, typing: true);
+    final canonical = normalizeAmountInput(raw, typing: true, currency: c);
     if (canonical == null) return null;
     // A comma read as a decimal comma with more digits than the currency
     // has would be cut on screen: refuse the key instead.

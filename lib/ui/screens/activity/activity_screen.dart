@@ -324,11 +324,12 @@ class ActivityRow extends ConsumerWidget {
             isMe: g != null && g.resolve(actorId) == myId,
           );
 
-    return KitListRow(
+    Widget rowFor(bool stack) => KitListRow(
       title: sentence,
       subtitle: subtitle,
       leading: leading,
       trailing: trailing,
+      stackTrailing: stack,
       onTap: expense == null
           ? (g?.group == null
                 ? null
@@ -337,8 +338,47 @@ class ActivityRow extends ConsumerWidget {
               Routes.expense(expense.id, groupId: expense.groupId),
             ),
     );
+
+    // The trailing block keeps its natural width (as on ExpenseRow), so on
+    // a small phone at 1.3x to 1.6x, or with a huge amount, the sentence
+    // beside it could get less room than one word, or none. Then the row
+    // stacks the trailing block under the text, as at large text.
+    final theme = Theme.of(context);
+    final trailingWidth = switch (trailing) {
+      final BalanceTrailing b => b.naturalWidth(context),
+      TextButton() =>
+        measureTextWidth(context, S.restore, theme.textTheme.labelLarge) +
+            _textButtonPadding,
+      _ => 0.0,
+    };
+    if (trailingWidth == 0 || isLargeText(context)) return rowFor(false);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final textRoom =
+            constraints.maxWidth -
+            Space.rowInset * 2 -
+            Sizes.avatar -
+            14 - // gap after the avatar
+            Space.md - // gap before the trailing block
+            trailingWidth;
+        bool wordsFit(String text, TextStyle? style) =>
+            textFitsWords(context, text, style, textRoom, maxLines: 1 << 10);
+        final fits =
+            textRoom >= _minTextBeside &&
+            wordsFit(sentence, theme.textTheme.titleMedium) &&
+            wordsFit(subtitle, theme.textTheme.bodySmall);
+        return rowFor(!fits);
+      },
+    );
   }
 }
+
+/// The least room the sentence keeps beside the trailing block before the
+/// row stacks (the same as on ExpenseRow).
+const double _minTextBeside = 96;
+
+/// A TextButton's side padding around its label.
+const double _textButtonPadding = 24;
 
 /// A sync session in the feed.
 class SyncRecordRow extends StatelessWidget {

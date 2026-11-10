@@ -24,8 +24,19 @@ String csvFileName(String title) {
       .replaceAll(RegExp(r'^\.+'), '');
   final hasWord = RegExp(r'[\p{L}\p{N}]', unicode: true).hasMatch(kept);
   final base = hasWord ? kept : kCsvFallbackName;
-  final short = base.length > 80 ? base.substring(0, 80).trim() : base;
-  return '$short.csv';
+  return '${_cut(base, 80).trim()}.csv';
+}
+
+/// [s] cut to at most [units] UTF-16 units on a character boundary, so a
+/// letter outside the BMP or a cluster is never split (DATA-R3-02).
+String _cut(String s, int units) {
+  if (s.length <= units) return s;
+  final out = StringBuffer();
+  for (final ch in s.characters) {
+    if (out.length + ch.length > units) break;
+    out.write(ch);
+  }
+  return out.toString();
 }
 
 /// The CSV bytes with a UTF-8 byte order mark, so Excel reads non-Latin
