@@ -134,16 +134,18 @@ void main() {
 
   testWidgets('UIFLOW-R2-02: an amount over the cap stays on screen as typed '
       'and reports no amount', (t) async {
-    final (v, shown) = await _type(t, 'IDR', '12000000');
-    expect(shown, '12,000,000');
+    // UIFLOW-R2-04 lifted the cap to Rp 999,999,999.99, so 1200000000 is
+    // the over-cap amount.
+    final (v, shown) = await _type(t, 'IDR', '1200000000');
+    expect(shown, '1,200,000,000');
     expect(v, isNull);
     expect(find.textContaining('Enter an amount up to'), findsOneWidget);
     // Deleting the extra digit makes it an amount again.
     final state = t.state<EditableTextState>(find.byType(EditableText));
     state.updateEditingValue(
       const TextEditingValue(
-        text: '12,000,00',
-        selection: TextSelection.collapsed(offset: 9),
+        text: '1,200,000,00',
+        selection: TextSelection.collapsed(offset: 12),
       ),
     );
     await t.pump();
