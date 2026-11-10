@@ -136,21 +136,30 @@ String? typedGroups(String raw, {String separator = ','}) {
       : null;
 }
 
+/// The spaces that may group digits: the space, the no-break, figure,
+/// thin and narrow no-break spaces. A tab or a line break never does: it
+/// is what lies between two copied spreadsheet cells or two lines.
+const String _groupSpaces = ' \u00A0\u2007\u2009\u202F';
+
 /// Whether [raw] holds more than one number: digit runs apart by anything
 /// but separators, spaces and apostrophes ("Rs 500 paid at Cafe 21" is 500
-/// and 21, never 50,021; "1e3" is not 13), or apart by a space or an
-/// apostrophe that cannot be a thousands mark ("Dinner for 4 1,200",
-/// "Rs 500 21"). A space groups only in a currency written with space
-/// groups ("1 234,50 €"), or in a bare number with no words around it.
+/// and 21, never 50,021; "1e3" is not 13; two spreadsheet cells "500" and
+/// "210" copied with a tab between them are never 500,210), or
+/// apart by a space or an apostrophe that cannot be a thousands mark
+/// ("Dinner for 4 1,200", "Rs 500 21"). A space groups only in a currency
+/// written with space groups ("1 234,50 €", "1 234,50 EUR"), or in a bare
+/// number, and never with a word around it that is not a currency
+/// ("Dinner for 4 120 €" and "Table 12 340" are two numbers in every
+/// currency).
 bool _joinsNumbers(String raw, Currency? currency) {
   final first = raw.indexOf(RegExp('[0-9]'));
   if (first < 0) return false;
   final last = raw.lastIndexOf(RegExp('[0-9]'));
   final span = raw.substring(first, last + 1);
-  if (!RegExp(r"^[0-9.,'\u2019\u02BC\s\u00A0\u2009\u202F]*$").hasMatch(span)) {
+  if (!RegExp("^[0-9.,'\u2019\u02BC$_groupSpaces]*\$").hasMatch(span)) {
     return true;
   }
-  final marks = RegExp(r"[\s\u00A0\u2009\u202F'\u2019\u02BC]+");
+  final marks = RegExp("[$_groupSpaces'\u2019\u02BC]+");
   final runs = span.split(marks);
   if (runs.length == 1) return false;
   // Thousands marks: "1", then runs of three ("234"), the last of which
@@ -163,27 +172,46 @@ bool _joinsNumbers(String raw, Currency? currency) {
         : RegExp(r'^[0-9]{3}$').hasMatch(runs[i]);
     if (!ok) return true;
   }
-  final spaced = RegExp(r'[\s\u00A0\u2009\u202F]').hasMatch(span);
-  if (spaced &&
-      currency != null &&
-      !spaceGroupCurrencies.contains(currency.code) &&
-      RegExp(r'\p{L}', unicode: true).hasMatch(raw)) {
-    return true;
+  final spaced = RegExp('[$_groupSpaces]').hasMatch(span);
+  if (!spaced) return false;
+  final words = RegExp(r'\p{L}+', unicode: true).allMatches(raw);
+  if (currency != null && !spaceGroupCurrencies.contains(currency.code)) {
+    return words.isNotEmpty;
   }
-  return false;
+  return words.any((w) => !_isCurrencyWord(w.group(0)!));
+}
+
+/// Whether [word] may stand next to an amount because it names its
+/// currency ("EUR", "Rs", "kr"), and cannot change it ("k", "m" and "p"
+/// are symbols too, but also multiply or divide).
+bool _isCurrencyWord(String word) {
+  final w = word.toLowerCase();
+  return !_multipliers.contains(w) &&
+      !_cjkMultiplier.hasMatch(w) &&
+      _currencyWords.contains(w);
 }
 
 /// Every way a minus is written: hyphen-minus, the minus sign, the en and
 /// em dashes and the figure dash (as text editors and chat apps turn "-"
-/// into one), and the small and full-width hyphen-minus.
-const String _minusChars = '-\u2212\u2013\u2014\u2012\uFE63\uFF0D';
+/// into one), the hyphen and the non-breaking hyphen (text copied from
+/// PDFs and web pages often carries one for a minus), and the small and
+/// full-width hyphen-minus.
+const String _minusChars = '-\u2212\u2013\u2014\u2012\u2010\u2011\uFE63\uFF0D';
+
+/// Words that write a minus before a number ("minus 30").
+const Set<String> _minusWords = {
+  'minus', 'negative', 'neg', 'moins', 'menos', 'meno', 'минус', 'мінус', //
+  'eksi', 'mínus',
+};
 
 /// The sign written around the number in [raw]: -1 for a minus right
-/// before it or at the start ("-30", "–30", "USD -50", "-USD .50"), right
-/// after it ("30-", as accounting writes it) or for brackets around it
-/// ("(30)"); 1 otherwise ("+30", "Rs. 1,200/-", "1.250,- €", "Fr. 30.–"
-/// are not negative). Null when the text holds more than one sign
-/// ("-(30)", "+30-"): it cannot be read without guessing.
+/// before it or at the start ("-30", "–30", "‐30", "USD -50", "-USD .50"),
+/// for a minus word before it ("minus 30"), right after it ("30-", as
+/// accounting writes it) or for brackets around it ("(30)"); 1 otherwise
+/// ("+30", "Rs. 1,200/-", "1.250,- €", "Fr. 30.–" are not negative). Null
+/// when the text holds more than one sign ("-(30)", "+30-") or a bracket
+/// that does not close around the number ("(30", "30)", "500 (approx)"):
+/// it cannot be read without guessing.
 int? amountSign(String raw) {
   final first = raw.indexOf(RegExp('[0-9]'));
   if (first < 0) return 1;
@@ -197,8 +225,22 @@ int? amountSign(String raw) {
   final doubleLead =
       atStart && beforeDigits && RegExp(m).allMatches(lead).length > 1;
   final trailMinus = RegExp('^[\\s\\u00A0]*$m').hasMatch(trail);
-  final brackets = lead.contains('(') && trail.contains(')');
-  final marks = [leadMinus, trailMinus, brackets].where((b) => b).length;
+  final opens = '('.allMatches(raw).length;
+  final brackets =
+      opens == 1 &&
+      ')'.allMatches(raw).length == 1 &&
+      lead.contains('(') &&
+      trail.contains(')');
+  if (!brackets && (raw.contains('(') || raw.contains(')'))) return null;
+  final wordMinus = RegExp(r'\p{L}+', unicode: true)
+      .allMatches(lead)
+      .any((w) => _minusWords.contains(w.group(0)!.toLowerCase()));
+  final marks = [
+    leadMinus,
+    wordMinus,
+    trailMinus,
+    brackets,
+  ].where((b) => b).length;
   if (doubleLead || marks > 1) return null;
   if (marks == 1 && lead.contains('+')) return null;
   return marks == 1 ? -1 : 1;
@@ -208,7 +250,7 @@ int? amountSign(String raw) {
 /// is "1234"), so a key typed after a pasted amount extends its last group
 /// instead of reading as a second number.
 String closeDigitGroups(String raw) => raw.replaceAll(
-  RegExp(r"(?<=[0-9])[\s\u00A0\u2009\u202F'\u2019\u02BC]+(?=[0-9])"),
+  RegExp("(?<=[0-9])[$_groupSpaces'\u2019\u02BC]+(?=[0-9])"),
   '',
 );
 
@@ -232,8 +274,22 @@ const Set<String> _multipliers = {
   'billions', 'trillion', 'grand', 'tsd', 'tys', 'tyś', 'tysięcy', //
   'mille', 'mila', 'miljoen', 'miljon', 'millones', 'millón', 'milhões', //
   'тыс', 'тысяч', 'тысячи', 'тис', 'млн', 'млрд', 'хил', 'e', //
-  'cent', 'cents', 'paise', 'paisa', 'ct', 'cts', 'c',
+  'cent', 'cents', 'paise', 'paisa', 'ct', 'cts', 'c', 'p', 'pence', //
+  'penny', 'pennies', 'centavo', 'centavos', 'céntimo', 'céntimos', //
+  'centime', 'centimes', 'centesimi', 'kop', 'коп', 'копеек', 'копейки', //
+  'копійок', 'gr', 'grosz', 'groszy', 'haléř', 'haléřů', 'öre', 'øre', //
+  'fils', 'halala', 'halalas', 'sen', 'satang', 'pct', 'percent',
 };
+
+/// Marks that divide a number or change its unit: the cent and mill signs,
+/// percent and per mille, vulgar fractions, the fraction and division
+/// slashes, and superscript and subscript digits ("99¢", "15%", "1½",
+/// "10²"). Text that holds one is never read with it dropped.
+final RegExp _unitMarks = RegExp(
+  '[\u00A2\uFFE0\u20A5\u20B0%\u066A\uFE6A\uFF05\u2030\u2031'
+  '\u00BC-\u00BE\u2150-\u215F\u2189\u2044\u2215'
+  '\u00B2\u00B3\u00B9\u2070-\u209F]',
+);
 
 /// Numerals that open a CJK word after a number ("5万", "3千円", "5만원"):
 /// ten thousand, thousand, hundred, hundred million and so on.
@@ -263,19 +319,20 @@ final Set<String> _currencyWords = () {
 }();
 
 /// Whether a word that is not a currency follows the number: it may be a
-/// multiplier ("2.5k", "1.5 mln", "5万") or start another phrase, and the
-/// number without it could be a different amount.
+/// multiplier ("2.5k", "1.5 mln", "5万") or a smaller unit ("50p", "50
+/// cents"), or start another phrase, and the number without it could be a
+/// different amount. A mark that divides the number or changes its unit
+/// ("99¢", "15%", "1½"; [_unitMarks]) anywhere in the text counts too.
 bool _hasUnknownWordAfter(String raw) {
   final last = raw.lastIndexOf(RegExp('[0-9]'));
   if (last < 0) return false;
+  if (_unitMarks.hasMatch(raw)) return true;
   final word = RegExp(
     r'^[\s\u00A0\u2009\u202F]*(\p{L}+)',
     unicode: true,
   ).firstMatch(raw.substring(last + 1));
   if (word == null) return false;
-  final w = word.group(1)!.toLowerCase();
-  if (_multipliers.contains(w) || _cjkMultiplier.hasMatch(w)) return true;
-  return !_currencyWords.contains(w);
+  return !_isCurrencyWord(word.group(1)!);
 }
 
 /// [raw] without the '.' and ',' that belong to words rather than to the

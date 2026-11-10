@@ -15,8 +15,13 @@ const Currency _percentUnits = Currency(
   name: 'percent',
 );
 
-/// "12.5" -> 1250 basis points; null for bad input.
-int? parsePercent(String text) => parseAmountInput(text, _percentUnits);
+/// "12.5" -> 1250 basis points; null for bad input. One percent sign after
+/// the number names the unit of this field ("12.5 %"); anywhere else, the
+/// reader refuses it, as it changes what an amount means (MONEY-R5-01).
+int? parsePercent(String text) => parseAmountInput(
+  text.replaceFirst(RegExp(r'(?<=[0-9.,])\s*[%\u066A\uFE6A\uFF05]\s*$'), ''),
+  _percentUnits,
+);
 
 /// "1250" basis points -> "12.5".
 String formatPercent(int bp) {
@@ -31,7 +36,8 @@ String formatPercent(int bp) {
 /// "1,000", "1.234,50". A sign on its own (being typed) is zero.
 int? parseSignedMinor(String text, Currency c) {
   final t = text.trim();
-  if (t.isEmpty || RegExp(r'^[+\-\u2212\u2013\u2014()\s]*$').hasMatch(t)) {
+  if (t.isEmpty ||
+      RegExp(r'^[+\-\u2212\u2013\u2014\u2010\u2011()\s]*$').hasMatch(t)) {
     return 0;
   }
   return parseSignedAmountInput(t, c);
