@@ -36,6 +36,11 @@ void main() {
       await syncBoth(p, q, g);
       final members = t.m.values.toList();
 
+      // Random.nextInt stops at 2^32; Money.maxMinor is above it.
+      int below(int n) => n <= 1 << 32
+          ? r.nextInt(n)
+          : (r.nextDouble() * n).floor().clamp(0, n - 1);
+
       SplitSpec randomSpec(int total, {bool payer = false}) {
         final who = (members.toList()..shuffle(r))
             .take(1 + r.nextInt(5))
@@ -55,7 +60,7 @@ void main() {
             final v = <MemberId, int>{};
             var left = total;
             for (var i = 0; i < who.length; i++) {
-              final x = i == who.length - 1 ? left : r.nextInt(left + 1);
+              final x = i == who.length - 1 ? left : below(left + 1);
               v[who[i]] = x;
               left -= x;
             }
@@ -77,8 +82,7 @@ void main() {
           case SplitMethod.adjustment:
             final cap = total ~/ (2 * who.length);
             return SplitSpec(SplitMethod.adjustment, {
-              for (final m in who)
-                m: cap == 0 ? 0 : r.nextInt(cap + 1) - cap ~/ 3,
+              for (final m in who) m: cap == 0 ? 0 : below(cap + 1) - cap ~/ 3,
             });
         }
       }

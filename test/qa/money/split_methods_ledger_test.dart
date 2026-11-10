@@ -175,11 +175,12 @@ void main() {
         );
         final shares = p.owed(id);
         expect(shares.values.fold(0, (x, y) => x + y), Money.maxMinor);
-        // 999,999,999 / 50 = 19,999,999 r 49: the 49 lowest ids get +1.
+        // 99,999,999,999 / 50 = 1,999,999,999 r 49: the 49 lowest ids
+        // get +1.
         for (var i = 0; i < 49; i++) {
-          expect(shares[ids[i]], 20000000);
+          expect(shares[ids[i]], 2000000000);
         }
-        expect(shares[ids[49]], 19999999);
+        expect(shares[ids[49]], 1999999999);
 
         final pct = await p.add(
           t.g,
@@ -238,7 +239,10 @@ void main() {
       expect(await owed(1001, s), {a: 1000, b: 1});
       expect(await owed(1000, s), {a: 999, b: 1});
       expect(await owed(1, s), {a: 1});
-      expect(await owed(Money.maxMinor, s), {a: 999000998, b: 999001});
+      // 99,999,999,999 x 1000 / 1001 = 99,900,099,899 r 101 and
+      // 99,999,999,999 / 1001 = 99,900,099 r 900: b has the larger
+      // remainder and takes the leftover unit.
+      expect(await owed(Money.maxMinor, s), {a: 99900099899, b: 99900100});
     });
 
     test('adjustment that makes rest exactly 0', () async {
@@ -323,7 +327,11 @@ void main() {
       final r = Random(20261109);
       final members = [me, a, b, c];
       for (var i = 0; i < 150; i++) {
-        final total = 1 + r.nextInt(r.nextBool() ? 1000 : Money.maxMinor);
+        final total =
+            1 +
+            (r.nextBool()
+                ? r.nextInt(1000)
+                : (r.nextDouble() * Money.maxMinor).floor());
         final who = (members.toList()..shuffle(r)).take(1 + r.nextInt(4));
         final method = SplitMethod.values[r.nextInt(5)];
         final values = <MemberId, int>{};
@@ -345,7 +353,7 @@ void main() {
           case SplitMethod.adjustment:
             for (final m in who) {
               values[m] =
-                  r.nextInt(total ~/ (who.length * 2) + 1) *
+                  _below(r, total ~/ (who.length * 2) + 1) *
                   (r.nextBool() ? 1 : -1);
             }
             if (values.values.fold(0, (x, y) => x + y) > total) continue;
@@ -373,3 +381,7 @@ Map<MemberId, int> _apportion(int total, Map<MemberId, int> w) {
   }
   return out;
 }
+
+/// Random.nextInt stops at 2^32; Money.maxMinor is above it.
+int _below(Random r, int n) =>
+    n <= 1 << 32 ? r.nextInt(n) : (r.nextDouble() * n).floor().clamp(0, n - 1);

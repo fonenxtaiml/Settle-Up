@@ -81,8 +81,9 @@ void main() {
       expect(Money.parseMinor('1e3', usd), isNull);
       expect(Money.parseMinor('', usd), isNull);
       expect(Money.parseMinor('.', usd), isNull);
-      expect(Money.parseMinor('9999999.99', usd), Money.maxMinor);
-      expect(Money.parseMinor('10000000', usd), isNull);
+      // UIFLOW-R2-04 lifted the cap to the overflow budget.
+      expect(Money.parseMinor('999999999.99', usd), Money.maxMinor);
+      expect(Money.parseMinor('1000000000', usd), isNull);
       expect(Money.parseMinor('99999999999999999999', usd), isNull);
     });
 
@@ -223,22 +224,22 @@ void main() {
     test('integer-exact for every amount the app can hold', () {
       expect(
         MoneyFormat.format(Money.maxMinor, 'USD', locale: 'en_US'),
-        '\$9,999,999.99',
+        '\$999,999,999.99',
       );
       expect(
         MoneyFormat.format(Money.maxMinor, 'KWD', locale: 'en_US'),
-        contains('999,999.999'),
+        contains('99,999,999.999'),
       );
       expect(
         MoneyFormat.format(Money.maxMinor, 'JPY', locale: 'en_US'),
-        contains('999,999,999'),
+        contains('99,999,999,999'),
       );
       expect(MoneyFormat.format(-1, 'USD', locale: 'en_US'), '−\$0.01');
       expect(MoneyFormat.format(1, 'KWD', locale: 'en_US'), contains('0.001'));
       // A group net of 50 x maxMinor still prints to the unit.
       expect(
         MoneyFormat.format(50 * Money.maxMinor, 'USD', locale: 'en_US'),
-        '\$499,999,999.50',
+        '\$49,999,999,999.50',
       );
     });
 
