@@ -16,14 +16,14 @@ void main() {
       expect(MoneyFormat.format(500, 'JPY'), '¥500');
       expect(MoneyFormat.format(1234567, 'JPY'), '¥1,234,567');
       expect(MoneyFormat.format(-500, 'JPY'), '−¥500');
-      expect(MoneyFormat.format(Money.maxMinor, 'JPY'), '¥999,999,999');
+      expect(MoneyFormat.format(Money.maxMinor, 'JPY'), '¥99,999,999,999');
     });
 
     test('KWD has three decimals', () {
       expect(MoneyFormat.format(1250, 'KWD'), 'KD1.250');
       expect(MoneyFormat.format(1, 'KWD'), 'KD0.001');
       expect(MoneyFormat.format(-1250750, 'KWD'), '−KD1,250.750');
-      expect(MoneyFormat.format(Money.maxMinor, 'KWD'), 'KD999,999.999');
+      expect(MoneyFormat.format(Money.maxMinor, 'KWD'), 'KD99,999,999.999');
     });
 
     test('USD and EUR use two decimals and western grouping', () {
@@ -37,7 +37,7 @@ void main() {
       expect(MoneyFormat.format(12000000, 'INR'), '₹1,20,000');
       expect(MoneyFormat.format(12000050, 'INR'), '₹1,20,000.50');
       expect(MoneyFormat.format(425050, 'INR'), '₹4,250.50');
-      expect(MoneyFormat.format(Money.maxMinor, 'INR'), '₹99,99,999.99');
+      expect(MoneyFormat.format(Money.maxMinor, 'INR'), '₹99,99,99,999.99');
       expect(MoneyFormat.format(1000000000, 'INR'), '₹1,00,00,000');
     });
 

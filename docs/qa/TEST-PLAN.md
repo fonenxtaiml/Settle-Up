@@ -147,7 +147,7 @@ Through the real `Ledger(MemoryOpStore)` + providers, not only `lib/core`.
 
 - Every split method (equal, exact, percent, shares, adjustment) with the SPEC
   6.1 vectors re-run through `Ledger.addExpense`, plus: total 1 minor unit over
-  3 people, 999,999,999 (`Money.maxMinor`) with 50 members, percent 3333/3333/3334,
+  3 people, 99,999,999,999 (`Money.maxMinor`) with 50 members, percent 3333/3333/3334,
   shares 1000:1, adjustment that makes `rest` exactly 0, adjustment negative
   but valid, zero-weight participants dropped.
 - Rounding: ties go to lowest member id regardless of insertion order; JPY

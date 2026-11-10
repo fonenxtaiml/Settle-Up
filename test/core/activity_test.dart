@@ -37,13 +37,15 @@ void main() {
         groupId: groupId,
       );
 
-  List<ActivityEntry> history(List<Operation> all, String entityId) =>
+  List<ActivityEntry> history(List<Operation> all, String entityId,
+          {String? groupId}) =>
       ActivityBuilder.historyOf(
         ops: all,
         state: reduce(all).state,
         localDeviceId: 'dev-alex',
         unsharedOpIds: const {},
         entityId: entityId,
+        groupId: groupId,
       );
 
   test('kinds for every op type, newest first', () {
@@ -208,14 +210,21 @@ void main() {
       schemaVersion: kSchemaVersion + 1,
     );
     final badGroupOp = alex.op(g, EntityType.group, 'g2', OpKind.update, {'name': 'x'});
-    final stolen = priya.addMember('g2', 'a', 'Impostor');
-    final all = [...ops, other, future, badGroupOp, stolen, ops.first];
+    final reused = priya.addMember('g2', 'a', 'Impostor');
+    final all = [...ops, other, future, badGroupOp, reused, ops.first];
     expect(build(all, groupId: g).map((e) => e.op.id),
         ops.reversed.map((o) => o.id));
+    // Ids are scoped by group (SECURITY-R1-04): the reused id is g2's own
+    // member, listed in g2 only.
+    expect(build(all, groupId: 'g2').map((e) => e.op.id),
+        [reused.id, other.id]);
     expect(build(all).map((e) => e.op.id),
-        [other.id, ...ops.reversed.map((o) => o.id)]);
+        [reused.id, other.id, ...ops.reversed.map((o) => o.id)]);
     expect(build(all, groupId: 'none'), isEmpty);
-    expect(history(all, 'a').map((e) => e.op.id), [ops[1].id]);
+    expect(history(all, 'a', groupId: g).map((e) => e.op.id), [ops[1].id]);
+    expect(history(all, 'a', groupId: 'g2').map((e) => e.op.id),
+        [reused.id]);
+    expect(history(all, 'a').map((e) => e.op.id), [ops[1].id, reused.id]);
   });
 
   test('history of an unknown entity is empty', () {

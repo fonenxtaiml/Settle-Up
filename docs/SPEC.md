@@ -415,8 +415,13 @@ final class Money implements Comparable<Money> {
 
   static Money zero(String currency) => Money(0, currency);
 
-  /// Max absolute amount accepted from user input: 9,999,999.99 (2 digits).
-  static const int maxMinor = 999999999;
+  /// Largest amount the ledger holds, in minor units of any currency:
+  /// 999,999,999.99 with 2 digits (99,999,999,999 JPY, 99,999,999.999 KWD).
+  /// One cap for every currency, set by the overflow budget (SPEC 6.1:
+  /// total x 10,000 basis points stays below 2^53), so low-value currencies
+  /// still hold everyday amounts: Rp 999,999,999.99 is about 60,000 USD
+  /// (QA UIFLOW-R2-04; it was 9,999,999.99, about 630 USD in IDR).
+  static const int maxMinor = 99999999999;
 
   bool get isZero => minor == 0;
   bool get isPositive => minor > 0;
@@ -1227,13 +1232,15 @@ final class LedgerState {
   Iterable<GroupState> get visibleGroups => groups.values
       .where((g) => g.group != null && !g.group!.isDeleted);
 
-  Expense? expense(ExpenseId id) {
-    for (final g in groups.values) {
-      final e = g.expenses[id];
-      if (e != null) return e;
-    }
-    return null;
-  }
+  /// The expense [id] of [groupId]. Prefer this when the group is known:
+  /// entity ids are scoped by group (7.2), so hostile input can put the
+  /// same id in two groups.
+  Expense? expenseIn(GroupId groupId, ExpenseId id) =>
+      groups[groupId]?.expenses[id];
+
+  /// The expense [id] in any group. If hostile input put the id in several
+  /// groups, the one in the lowest group id (the same on every replica).
+  Expense? expense(ExpenseId id) => throw UnimplementedError();
 
   /// Canonical, key-sorted JSON of everything materialized (including
   /// tombstones). Two replicas converge iff these are deeply equal.
@@ -1567,13 +1574,16 @@ abstract final class ActivityBuilder {
   }) =>
       throw UnimplementedError();
 
-  /// Edit history of one entity, oldest first.
+  /// Edit history of one entity, oldest first. Entity ids are scoped by
+  /// group (7.2): pass [groupId] to read one group's entity only;
+  /// null = that id in every group.
   static List<ActivityEntry> historyOf({
     required List<Operation> ops,
     required LedgerState state,
     required DeviceId localDeviceId,
     required Set<OpId> unsharedOpIds,
     required String entityId,
+    GroupId? groupId,
   }) =>
       throw UnimplementedError();
 }
@@ -1941,8 +1951,13 @@ abstract interface class LedgerRepository {
 
   /// Writes only fields that differ; money is written as one block.
   Future<void> updateExpense(ExpenseId expenseId, ExpenseDraft draft);
-  Future<void> deleteExpense(ExpenseId expenseId);
-  Future<void> restoreExpense(ExpenseId expenseId);
+
+  /// [groupId] names the group the expense is in. Pass it whenever it is
+  /// known: entity ids are scoped by group (7.2), and with it the call can
+  /// only touch that group's expense. Null = look the id up anywhere.
+  /// updateExpense / updatePayment look the id up in `draft.groupId`.
+  Future<void> deleteExpense(ExpenseId expenseId, {GroupId? groupId});
+  Future<void> restoreExpense(ExpenseId expenseId, {GroupId? groupId});
 
   Future<ExpenseId> recordPayment(PaymentDraft draft);
   Future<void> updatePayment(ExpenseId expenseId, PaymentDraft draft);
@@ -2627,15 +2642,17 @@ final activityProvider =
       ),
 );
 
+/// Keyed by (group, expense): entity ids are scoped by group (7.2).
 final expenseHistoryProvider =
-    Provider.family<AsyncValue<List<ActivityEntry>>, ExpenseId>(
-  (ref, expenseId) => ref.watch(ledgerProvider).whenData(
+    Provider.family<AsyncValue<List<ActivityEntry>>, (GroupId, ExpenseId)>(
+  (ref, key) => ref.watch(ledgerProvider).whenData(
         (s) => ActivityBuilder.historyOf(
           ops: s.ops,
           state: s.state,
           localDeviceId: s.localDeviceId,
           unsharedOpIds: s.unsharedOpIds,
-          entityId: expenseId,
+          groupId: key.$1,
+          entityId: key.$2,
         ),
       ),
 );
@@ -2988,7 +3005,7 @@ the first `leftover` members get base_i + 1
 drop zero entries
 ```
 
-Overflow is impossible: total ≤ 999,999,999 and weights ≤ 10,000 (percent) or ≤ 1,000 (shares) keep products below 2^53.
+Overflow is impossible: total ≤ `Money.maxMinor` = 99,999,999,999 and weights ≤ 10,000 (percent) or ≤ 1,000 (shares) keep products ≤ 10^15, below 2^53 (about 9.007 × 10^15). That budget is what sets `maxMinor`, one cap for every currency (QA UIFLOW-R2-04: a cap of 999,999,999 minor refused everyday IDR, COP or UZS bills). A group net of 50 × `maxMinor` (5 × 10^12 minor) still prints to the last minor digit: `MoneyFormat` divides it into a double whose error is below 10^-5 of a major unit.
 
 | Method | `values` meaning | Validation (`SplitError`) | Computation |
 |---|---|---|---|
@@ -3089,11 +3106,11 @@ Every expense carries its own currency, and balances are computed and shown **pe
 
 ### 7.2 Reducer rules (`LedgerReducer.apply`)
 
-State per entity key `(entityType, entityId)`: `created: bool`, and `fields: Map<field, (Hlc hlc, Object? value)>`. Also kept: a set of applied op ids.
+State per entity key `(groupId, entityType, entityId)`: `created: bool`, and `fields: Map<field, (Hlc hlc, Object? value)>`. Also kept: a set of applied op ids.
 
 1. If the op id was already applied, return false. Record it.
 2. If `op.isFromNewerSchema`, return false. The op is stored and relayed, but not applied.
-3. For `EntityType.group`, if `entityId != groupId`, ignore the op. Member and expense entities belong to `op.groupId`. When the same member or expense id has ops in several groups (ids are UUIDs, so this only happens with malicious input), it is visible in one owner group only: a group holding a `create` op for the id beats groups holding only updates, deletes or restores for it, whatever their HLC; among groups with a create, the earliest create HLC wins; with no create anywhere, the earliest op; ties by group id. The owner depends only on the op set, so all replicas agree (QA SECURITY-R1-04). A forged `create` with an earlier HLC in another group still wins; that needs the attacker to know the id.
+3. For `EntityType.group`, if `entityId != groupId`, ignore the op. Member and expense entities belong to `op.groupId`, and their ids are scoped by group: an op only ever reads and writes the entity `(op.groupId, entityType, entityId)`. When the same member or expense id has ops in several groups (ids are UUIDs, so this only happens with malicious input), each group materializes its own, separate entity from its own ops. Nothing written in one group (whatever its kind or HLC) can hide, move or change the entity of another group (QA SECURITY-R1-04): a member of one group can forge any HLC and op kind, so no cross-group ownership rule over them is safe. Code that looks an entity up by id passes the group whenever it knows it (`LedgerState.expenseIn`, `deleteExpense(groupId:)`, `/expense/:eid?gid=`).
 4. For each `(field, value)` in the payload: if there is no current value, or `op.hlc > current.hlc`, set `(op.hlc, value)`. Equal HLCs from different ops cannot happen (the device id is inside the HLC). If they do, keep the current value.
 5. If `op.kind == create`, set `created = true`.
 6. Rebuild the materialized entity. It is **visible** only if `created`, every required field is present with the right JSON type, and (expenses) `MoneyBlock.fromJson` succeeds with `isConsistent == true` and currency == `money.currency`. Fields with a wrong JSON type are treated as absent. Unknown fields are kept in `fields` (forward compatibility) but ignored by the builders.
@@ -3436,8 +3453,8 @@ DESIGN.md is the visual source of truth. Copy `lib/theme/tokens.dart` and `lib/t
 | `/groups/:gid/invite` | Full-screen invite QR, 2 min auto-hide | `inviteLinkFor(includeHost: true)` |
 | `/groups/:gid/claim` | "Which one are you?" after joining | `claimMember`, `addMember` |
 | `/expense/new?gid=&pid=` | Add expense (6.4), with the split editor sheet (6.5) | `addExpense`, `directGroupWith` (when started from a person) |
-| `/expense/:eid` | Expense detail + history | `expenseHistoryProvider`, `deleteExpense`, `restoreExpense` |
-| `/expense/:eid/edit` | Edit expense | `updateExpense` / `updatePayment` |
+| `/expense/:eid?gid=` | Expense detail + history. Every in-app link passes `gid` (the expense's group; ids are scoped by group, 7.2); without it the id is looked up in any group | `expenseHistoryProvider`, `deleteExpense`, `restoreExpense` |
+| `/expense/:eid/edit?gid=` | Edit expense | `updateExpense` / `updatePayment` |
 | `/settle?gid=&from=&to=` | Settle up (6.6) with the bubble moment | `groupTransfersProvider`, `recordPayment` |
 | `/people/:pid` | Person: balance per group, settle per group | `peopleBalancesProvider` |
 | `/search` | Local search | `ledgerProvider` (filter in memory) |

@@ -6,7 +6,6 @@ import 'ledger_state.dart';
 import 'models.dart';
 import 'ops.dart';
 import 'reducer/canonical.dart';
-import 'reducer/reducer_engine.dart';
 
 enum ActivityKind {
   groupCreated,
@@ -72,9 +71,8 @@ abstract final class ActivityBuilder {
   /// Newest first. [ops] = every stored op (any order). Merge-only ops of
   /// newer schema are skipped. [groupId] null = all groups.
   ///
-  /// Ops the reducer ignores (a group op whose entityId is not its groupId,
-  /// or a member/expense op in a group that does not own that id) are
-  /// skipped too.
+  /// Ops the reducer ignores (a group op whose entityId is not its groupId)
+  /// are skipped too.
   static List<ActivityEntry> build({
     required List<Operation> ops,
     required LedgerState state,
@@ -92,20 +90,25 @@ abstract final class ActivityBuilder {
     return entries.reversed.toList();
   }
 
-  /// Edit history of one entity, oldest first.
+  /// Edit history of one entity, oldest first. Entity ids are scoped by
+  /// group (SPEC 7.2): pass [groupId] to read one group's entity only;
+  /// null = that id in every group.
   static List<ActivityEntry> historyOf({
     required List<Operation> ops,
     required LedgerState state,
     required DeviceId localDeviceId,
     required Set<OpId> unsharedOpIds,
     required String entityId,
+    GroupId? groupId,
   }) =>
       _entries(
         ops: ops,
         state: state,
         localDeviceId: localDeviceId,
         unsharedOpIds: unsharedOpIds,
-        include: (op) => op.entityId == entityId,
+        include: (op) =>
+            op.entityId == entityId &&
+            (groupId == null || op.groupId == groupId),
       );
 
   /// Entries for the ops accepted by [include], oldest first (HLC order).
@@ -128,18 +131,12 @@ abstract final class ActivityBuilder {
       valid.add(op);
     }
     valid.sort(_byHlc);
-    final owners = EntityOwnership();
-    for (final op in valid) {
-      if (op.entityType != EntityType.group) owners.record(op);
-    }
-    bool owned(Operation op) =>
-        op.entityType == EntityType.group ||
-        owners.ownerOf(op.entityType, op.entityId) == op.groupId;
 
-    // Only entities that have an included op need replaying.
+    // Only entities that have an included op need replaying. Entities are
+    // keyed by group, as in the reducer.
     final wanted = <(GroupId, EntityType, String)>{
       for (final op in valid)
-        if (owned(op) && include(op)) (op.groupId, op.entityType, op.entityId),
+        if (include(op)) (op.groupId, op.entityType, op.entityId),
     };
     final byEntity = <(GroupId, EntityType, String), List<Operation>>{};
     for (final op in valid) {

@@ -311,7 +311,7 @@ void main() {
         final total = switch (rnd.nextInt(4)) {
           0 => 1 + rnd.nextInt(10),
           1 => 1 + rnd.nextInt(10000),
-          2 => 1 + rnd.nextInt(Money.maxMinor),
+          2 => 1 + _below(rnd, Money.maxMinor),
           _ => Money.maxMinor,
         };
         final n = 1 + rnd.nextInt(ids.length);
@@ -335,7 +335,7 @@ void main() {
           case SplitMethod.adjustment:
             values = {
               for (final m in members)
-                m: rnd.nextInt(3) == 0 ? 0 : rnd.nextInt(total ~/ n + 1) - total ~/ (4 * n),
+                m: rnd.nextInt(3) == 0 ? 0 : _below(rnd, total ~/ n + 1) - total ~/ (4 * n),
             };
         }
         final spec = SplitSpec(method, values);
@@ -393,3 +393,8 @@ void main() {
     });
   });
 }
+
+/// A random int in 0..n-1 for any n (Random.nextInt stops at 2^32, below
+/// Money.maxMinor).
+int _below(math.Random rnd, int n) =>
+    math.min(n - 1, (rnd.nextDouble() * n).floor());
