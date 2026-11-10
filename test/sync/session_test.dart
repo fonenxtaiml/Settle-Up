@@ -57,6 +57,33 @@ void main() {
     expect((await alex.peerKnowledge(s.g))[alex.deviceId], 8);
   });
 
+  test('DATA-R5-02: a HELLO name with nothing to show (only hidden '
+      'characters) falls back to the advert or link name', () async {
+    final s = await alex.seedGroup(expenses: 1);
+    await priya.join(alex, s.g);
+    // Settings only trims, so a zero-width space is a 1-character name;
+    // the peer cleans it to ''.
+    await priya.settings.setDeviceName('\u200B');
+    final (ci, cr) = await channelPair();
+    final si = SyncSession(
+      channel: ci,
+      store: alex.store,
+      role: SessionRole.initiator,
+      timings: fastTimings,
+      peerNameHint: "Priya's Pixel",
+    );
+    final sr = SyncSession(
+      channel: cr,
+      store: priya.store,
+      role: SessionRole.responder,
+      timings: fastTimings,
+    );
+    final results = await Future.wait([si.run(), sr.run()]);
+    expect(results[0].outcome, SyncOutcome.completed);
+    expect(results[0].peerName, "Priya's Pixel");
+    expect(results[1].peerName, "Alex's Pixel");
+  });
+
   test('concurrent edits on both sides are equal after one session', () async {
     final s = await alex.seedGroup(expenses: 2);
     await priya.join(alex, s.g);

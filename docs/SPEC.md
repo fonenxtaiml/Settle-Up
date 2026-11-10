@@ -3261,6 +3261,8 @@ Properties: confidentiality and integrity from AES-GCM; forward secrecy from the
 | 11/12 | `BLOB_REQ`/`BLOB` | reserved (receipts, v1.1) | A receiver of an unknown type sends `ERROR bad_frame`. |
 | 20-29 | reserved for pairing (P1, 8.7.3) | | |
 
+**Device names sent** (HELLO at most 100 UTF-16 units; the advert limits in 8.7): cut to the longest prefix of whole characters (grapheme clusters) that fits, so the other phone never shows half a flag or a conjunct without its last letter (QA DATA-R4-03, DATA-R5-01; `cutName` in `lib/sync/name_cut.dart`). A first character longer than the limit is cut by code points (the base letter and the marks that fit), never sent empty, and a HELLO name with nothing to show after cleaning falls back to the advert or link name (QA DATA-R5-02).
+
 **Batching:** add ops to a batch until the encoded JSON would exceed `0.75 × maxFrame` or 500 ops. If a sealed frame still exceeds `maxFrame`, split the batch in half and retry. A single op over `maxFrame` (impossible under the limits in 5.16) gives `ERROR too_large`. At most **4 un-ACKed batches** in flight per session.
 
 ### 8.6 Links and QR payloads (frozen in `lib/sync/pairing/links.dart`)
@@ -3315,7 +3317,7 @@ CLOSING ──recv BYE, 2 s, or the link drops──► CLOSED (success; SyncRec
 **LAN (`LanTransport`, kind `lan`, maxFrame 1 MiB)**
 - Server: `ServerSocket.bind(InternetAddress.anyIPv4, 52741)`, falling back to port 0 if busy. The actual port goes into mDNS and the QR. `tcpNoDelay = true`.
 - Framing on the socket: `len:u32be | channel frame`. Reject `len > 1 MiB` or `len == 0` (close). Reassemble across reads (tests must cover split and coalesced reads).
-- mDNS (`bonsoir`): type `_settleup._tcp`, service name = device name (≤ 40 chars). TXT: `v=2`, `d=<advertId>`, `w=<windowTag>`, `t`, `t1`, `t2`, `t3` = up to 60 sorted tokens each, back to back (≤ 243 bytes per TXT string, about 1000 bytes for the record, under Android's 1300), and `m=1` when more groups were left out (8.3). Readers also accept comma-separated tokens. Discovery resolves to `host:port` (prefer IPv4, bracket IPv6).
+- mDNS (`bonsoir`): type `_settleup._tcp`, service name = device name (≤ 40 UTF-16 units and ≤ 63 UTF-8 bytes, one DNS label). TXT: `v=2`, `d=<advertId>`, `w=<windowTag>`, `t`, `t1`, `t2`, `t3` = up to 60 sorted tokens each, back to back (≤ 243 bytes per TXT string, about 1000 bytes for the record, under Android's 1300), and `m=1` when more groups were left out (8.3). Readers also accept comma-separated tokens. Discovery resolves to `host:port` (prefer IPv4, bracket IPv6).
 - Gateway probe (hotspot case, mDNS is unreliable there): while `discover()` is listened to, every 5 s read `NetworkInfo().getWifiGatewayIP()`. If it is non-null and not one of our addresses, try `Socket.connect(gw, 52741, timeout: 1.5 s)`. On success close it immediately and emit `DiscoveredPeer(kind: lan, address: 'gw:52741', name: 'Phone sharing its hotspot')`. The server ignores connections that close before a frame.
 - `HostInfo.addresses` from `NetworkInterface.list(type: IPv4)` without loopback; tethering interfaces first.
 
