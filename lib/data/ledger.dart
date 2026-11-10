@@ -1075,6 +1075,10 @@ final class Ledger implements LedgerRepository, SyncStore {
   String get localDeviceName => _settings.device.deviceName;
 
   @override
+  Stream<String> watchLocalDeviceName() =>
+      _settings.watchDevice().map((d) => d.deviceName).distinct();
+
+  @override
   Future<Map<GroupId, Uint8List>> groupKeys() async => {
         for (final e in _keyCache.entries) e.key: Uint8List.fromList(e.value),
       };

@@ -1,12 +1,14 @@
 // Regression tests around a phone whose own Sync is still dialing when
 // another phone asks (SYNC-R3-01, SYNC-R3-02): Cancel during the wait for
 // the other phone's dial, and a third phone that is not the one dialed.
-// Also Cancel while the own dial is still connecting (SYNC-R4-01).
+// Also Cancel while the own dial is still connecting (SYNC-R4-01), and a
+// phone renamed while visible (SYNC-R5-01).
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/sync/pairing/links.dart';
 import 'package:settle_up/sync/sync_engine.dart';
 import 'package:settle_up/sync/transport/hosting_details.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
@@ -35,9 +37,14 @@ final class _SlowTransport implements SyncTransport, HostingDetails {
   @override
   Future<TransportAvailability> requestPermissions() =>
       inner.requestPermissions();
+  /// Every advert this phone started, in order.
+  final List<AdvertiseInfo> adverts = [];
+
   @override
-  Future<void> startAdvertising(AdvertiseInfo info) =>
-      inner.startAdvertising(info);
+  Future<void> startAdvertising(AdvertiseInfo info) {
+    adverts.add(info);
+    return inner.startAdvertising(info);
+  }
   @override
   Future<void> stopAdvertising() => inner.stopAdvertising();
   @override
@@ -230,9 +237,10 @@ void main() {
         isA<SyncException>().having(
           (e) => e.message,
           'message',
-          endsWith('Starting its own sync'),
+          endsWith('Starting its own sync with someone else'),
         ),
-        reason: 'the names match, so Priya cannot rule Carol out',
+        reason: 'the names match, but the advert id Priya sends is not '
+            "Carol's (SYNC-R5-01: names do not decide when ids are known)",
       );
       expect(took, lessThan(const Duration(milliseconds: 2800)));
       expect(during, isNot(isA<SessionActive>()));
@@ -256,7 +264,11 @@ void main() {
         c,
         isA<SyncException>()
             .having((e) => e.failure, 'failure', SyncFailure.peerUnreachable)
-            .having((e) => e.message, 'message', endsWith('its own sync')),
+            .having(
+              (e) => e.message,
+              'message',
+              endsWith('Starting its own sync with someone else'),
+            ),
       );
       expect(took, lessThan(const Duration(milliseconds: 2800)));
       expect(during, isNot(isA<SessionActive>()));
@@ -464,6 +476,88 @@ void main() {
           .syncWith(toAlex)
           .timeout(const Duration(seconds: 5));
       expect(s, isA<SyncSummary>());
+      expect(priya.opCount(g), alex.opCount(g));
+    });
+  });
+
+  group('SYNC-R5-01: a phone renamed while visible', () {
+    test('re-advertises the new name at once (same advert id), and the '
+        'connect link carries it', () async {
+      final transports = <_SlowTransport>[];
+      final (alex, priya, _, _) = await phonesFor(
+        priyaDelay: Duration.zero,
+        onPriya: transports.add,
+      );
+      await priya.engine.startHosting();
+      final before = await alex.find(priya);
+      final advertsBefore = transports.first.adverts.length;
+      await priya.settings.setDeviceName('Priya phone');
+      final list = await alex.engine
+          .watchNearby()
+          .firstWhere((l) => l.any((p) => p.name == 'Priya phone'))
+          .timeout(const Duration(seconds: 2));
+      expect(list, hasLength(1));
+      expect(list.single.advertId, before.advertId);
+      expect(transports.first.adverts.length, advertsBefore + 1);
+      expect(transports.first.adverts.last.deviceName, 'Priya phone');
+      final link = ConnectLink.tryParse(
+        priya.engine.status.host!.connectLink,
+      );
+      expect(link!.deviceName, 'Priya phone');
+    });
+
+    test('the same name again, or a rename after hosting stopped, '
+        'advertises nothing', () async {
+      final transports = <_SlowTransport>[];
+      final (_, priya, _, _) = await phonesFor(
+        priyaDelay: Duration.zero,
+        onPriya: transports.add,
+      );
+      await priya.engine.startHosting();
+      final n = transports.first.adverts.length;
+      await priya.settings.setDeviceName(priya.deviceName);
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(transports.first.adverts.length, n);
+      await priya.engine.stopHosting();
+      await priya.settings.setDeviceName('Priya phone');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      expect(transports.first.adverts.length, n);
+      expect(priya.engine.status.host, isNull);
+    });
+
+    test('a sighting whose name is stale (renamed, not re-advertised yet) '
+        'still lets a mutual Sync with a slow dial complete: the advert id '
+        'decides, not the name', () async {
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        // Priya sees Alex under a name his HELLO no longer says.
+        onPriya: (t) => t.rewrite = (p) => DiscoveredPeer(
+          kind: p.kind,
+          address: p.address,
+          name: 'Pixel 8',
+          advertId: p.advertId,
+          groupTokens: p.groupTokens,
+          windowTag: p.windowTag,
+          moreGroups: p.moreGroups,
+        ),
+      );
+      await alex.engine.startHosting();
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      await priya.engine.startDiscovery();
+      final toAlex = await priya.engine
+          .watchNearby()
+          .firstWhere((l) => l.isNotEmpty)
+          .timeout(const Duration(seconds: 3))
+          .then((l) => l.first);
+      expect(toAlex.name, 'Pixel 8');
+      expect(toAlex.advertId, isNotNull);
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final fa = tap(alex, toPriya);
+      final results = await Future.wait([fa, fp])
+          .timeout(const Duration(seconds: 20));
+      expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
       expect(priya.opCount(g), alex.opCount(g));
     });
   });

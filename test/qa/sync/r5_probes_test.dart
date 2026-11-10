@@ -473,6 +473,6 @@ void main() {
         reason: 'advertised as "${toAlex.name}" after the rename: $results',
       );
       expect(toAlex.name, "Alex's phone");
-    }, skip: 'SYNC-R5-01');
+    });
   });
 }
