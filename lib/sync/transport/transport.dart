@@ -81,6 +81,17 @@ final class DiscoveredPeer {
   /// when no token matches.
   final bool moreGroups;
 
+  /// Whether [other] is the same advertiser on the same transport: the same
+  /// connect handle (a LAN phone runs one server, kept across re-adverts)
+  /// or the same advert id (random per phone and window, SPEC 8.3). A
+  /// transport that caches sightings by service name or endpoint keeps only
+  /// the newest of these, so a re-advert under a new name replaces the old
+  /// one even when its goodbye is missed (SYNC-R6-01).
+  bool sameAdvertiserAs(DiscoveredPeer other) =>
+      other.kind == kind &&
+      (other.address == address ||
+          (advertId != null && other.advertId == advertId));
+
   @override
   bool operator ==(Object other) =>
       other is DiscoveredPeer && other.kind == kind && other.address == address;
