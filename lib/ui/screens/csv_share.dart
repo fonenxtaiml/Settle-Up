@@ -20,8 +20,9 @@ String csvFileName(String title) {
   final kept = title
       .replaceAll(RegExp(r'[^\p{L}\p{M}\p{N} _\-.()]', unicode: true), '')
       .replaceAll(RegExp(r'\s+'), ' ')
-      .trim()
-      .replaceAll(RegExp(r'^\.+'), '');
+      // A leading dot hides the file, also after a space (". .Goa trip").
+      .replaceAll(RegExp(r'^[\s.]+'), '')
+      .trim();
   final word = RegExp(r'[\p{L}\p{N}]', unicode: true);
   // The fallback is chosen after the cut: a first character longer than
   // the budget (a letter with a hundred combining marks) leaves nothing,

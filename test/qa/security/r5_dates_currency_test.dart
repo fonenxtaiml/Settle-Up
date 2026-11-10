@@ -196,7 +196,6 @@ void main() {
         expect(tester.takeException(), isNull);
         expect(find.byType(DatePickerDialog), findsOneWidget);
       },
-      skip: true, // SECURITY-R5-01
     );
   }
 
@@ -228,6 +227,5 @@ void main() {
       expect(tester.takeException(), isNull);
       expect(find.byType(DatePickerDialog), findsOneWidget);
     },
-    skip: true, // SECURITY-R5-01
   );
 }

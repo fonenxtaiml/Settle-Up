@@ -318,6 +318,13 @@ class _AmountFieldState extends State<AmountField> {
                           decimal: true,
                         ),
                         textInputAction: TextInputAction.next,
+                        // Two lines allowed so a pasted line break reaches
+                        // the reader: a one-line field drops it first and
+                        // "500" and "210" on two lines would read 500210
+                        // (MONEY-R3-05). The text never wraps: the reader
+                        // refuses a break, and the amount is scaled to fit.
+                        minLines: 1,
+                        maxLines: 2,
                         style: amountStyle,
                         cursorColor: scheme.onSurface,
                         cursorWidth: caret,
@@ -433,6 +440,19 @@ class _GroupingFormatter extends TextInputFormatter {
       return _noDecimalsTyped(_rawShown ? n : _typed! + inserted, c) ??
           oldValue;
     }
+    if (!pasted &&
+        c.minorDigits == 0 &&
+        _typed == null &&
+        a == o.length &&
+        b == o.length) {
+      // A key typed at the end of an amount the field was given (Edit
+      // expense): read as typed after the shown text, or after its digits
+      // when the shown grouping cannot take it ("1,200" then "." is
+      // "1200.", which holds no amount; never "1200" with the dot lost).
+      return _noDecimalsTyped(o + inserted, c) ??
+          _noDecimalsTyped(AmountField.ungroup(o) + inserted, c) ??
+          oldValue;
+    }
     if (pasted) {
       raw = n;
       canonical = normalizeAmountInput(raw, currency: c);
@@ -535,6 +555,11 @@ class _GroupingFormatter extends TextInputFormatter {
   /// "5.00"): it shows what was typed, holds no amount and, once a digit
   /// follows the separator, says the currency has no decimals. A paste of
   /// the same text is refused, so typing never saves 100 times the amount.
+  ///
+  /// A single separator that cannot start a group (after four digits or
+  /// more, or after a 0: JPY "1200.50", "0.50") is kept the same way, with
+  /// up to three digits after it, and never dropped: the digits typed
+  /// next would otherwise extend the whole number (MONEY-R4-01).
   TextEditingValue? _noDecimalsTyped(String raw, Currency c) {
     final dot = raw.contains('.');
     final comma = raw.contains(',');
@@ -550,6 +575,23 @@ class _GroupingFormatter extends TextInputFormatter {
       final last = raw.substring(raw.lastIndexOf(sep) + 1);
       short = last.length < 3;
       flag = short && last.isNotEmpty;
+      if (canonical == null &&
+          sep.allMatches(raw).length == 1 &&
+          RegExp(r'^[0-9]+$').hasMatch(raw.replaceFirst(sep, '')) &&
+          raw.indexOf(sep) <= 12 &&
+          last.length <= 3) {
+        // Not a grouping, and no decimals either: hold no amount and say
+        // why until it is fixed.
+        _typed = raw;
+        _shown = raw;
+        _held = null;
+        _rawShown = incomplete = true;
+        onRefusal(last.isEmpty ? null : AmountRefusal.decimals);
+        return TextEditingValue(
+          text: raw,
+          selection: TextSelection.collapsed(offset: raw.length),
+        );
+      }
     }
     if (canonical == null) return null;
     final big = canonical.replaceFirst(RegExp(r'^0+(?=\d)'), '');

@@ -29,6 +29,20 @@ void main() {
     expect(csvFileName('b' * 80), '${'b' * 80}.csv');
   });
 
+  test('a name led by dots and spaces never exports as a hidden file', () {
+    // DATA-R5-03.
+    for (final (name, want) in [
+      ('. .Goa trip', 'Goa trip.csv'),
+      ('.. . Goa trip', 'Goa trip.csv'),
+      ('\u{1F389}. .party', 'party.csv'),
+      (' . . ', '$kCsvFallbackName.csv'),
+      ('...', '$kCsvFallbackName.csv'),
+      ('Goa. trip.', 'Goa. trip..csv'),
+    ]) {
+      expect(csvFileName(name), want, reason: name);
+    }
+  });
+
   test('the CSV starts with a UTF-8 BOM and keeps non-Latin text', () async {
     final p = await QaPhone.create(home: 'INR');
     final t = await p.group(['Zoë']);

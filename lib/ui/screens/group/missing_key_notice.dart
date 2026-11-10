@@ -39,8 +39,10 @@ class MissingKeyNotice extends StatelessWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(S.missingKeyTitle,
-                            style: theme.textTheme.titleSmall),
+                        Text(
+                          S.missingKeyTitle,
+                          style: theme.textTheme.titleSmall,
+                        ),
                         Text(
                           S.missingKeyBody,
                           style: theme.textTheme.bodySmall!.copyWith(
