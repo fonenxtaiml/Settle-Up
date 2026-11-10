@@ -72,6 +72,11 @@ abstract final class TextRules {
   static bool isBlank(String value) =>
       value.runes.every((r) => _isSpace(r) || isHidden(r) || _isBlankMark(r));
 
+  /// Whether [r] draws nothing after a letter although a name keeps it
+  /// (see [isBlank]): soft hyphen, joiners, variation selectors, invisible
+  /// operators and the like.
+  static bool isBlankMark(int r) => _isBlankMark(r);
+
   /// The characters String.trim removes (a fixed list, so the remote check
   /// does not depend on the Dart version).
   static bool _isSpace(int r) =>
