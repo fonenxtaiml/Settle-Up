@@ -154,15 +154,27 @@ void main() {
     for (final r in _everyBlankMark) {
       expect(TextClean.isBlankMark(r), isTrue, reason: _hex(r));
       final m = String.fromCharCode(r);
-      for (final c in ['Rahul$m', '${m}Rahul', 'Ra${m}hul', ' RAHUL$m$m ']) {
+      // The space-wide fillers inside a name are a space (UIFLOW-R6-01):
+      // "Ra" + U+3164 + "hul" looks like "Ra hul".
+      final spaceWide = _spaceLikeFillers.contains(r);
+      for (final c in [
+        'Rahul$m',
+        '${m}Rahul',
+        if (!spaceWide) 'Ra${m}hul',
+        ' RAHUL$m$m ',
+      ]) {
         expect(duplicateName(c, existing), isNotNull, reason: '${_hex(r)} $c');
         expect(duplicateName(c, existing), 'Rahul', reason: '${_hex(r)} $c');
       }
-      expect(duplicateName('rahul', ['Ra${m}hul']), isNotNull, reason: _hex(r));
+      expect(
+        duplicateName('rahul', ['Ra${m}hul']),
+        spaceWide ? isNull : isNotNull,
+        reason: _hex(r),
+      );
       // Hidden code points and blank marks mixed.
       expect(
         duplicateName('‎Ra${m}hul​$m', existing),
-        'Rahul',
+        spaceWide ? isNull : 'Rahul',
         reason: _hex(r),
       );
     }
@@ -182,7 +194,10 @@ void main() {
     final gid = await w.seedGroup(people: const ['Priya', 'Rahul']);
     await pumpReal(tester, w, location: Routes.members(gid));
     final saved = <String>[];
-    for (final r in _everyBlankMark) {
+    // The space-wide fillers inside a name are a space: UIFLOW-R6-01.
+    for (final r in _everyBlankMark.where(
+      (r) => !_spaceLikeFillers.contains(r),
+    )) {
       final m = String.fromCharCode(r);
       await tester.enterText(fieldLabeled(S.personName), 'ra${m}hul$m');
       await tester.pump();
@@ -381,7 +396,6 @@ void main() {
       );
       await w.shutdown(tester);
     },
-    skip: true, // UIFLOW-R6-01
   );
 
   test(
@@ -404,7 +418,6 @@ void main() {
         );
       }
     },
-    skip: true, // UIFLOW-R6-01
   );
 }
 

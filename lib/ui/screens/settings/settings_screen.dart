@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
+import '../../../core/name_text.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
 import '../../strings.dart';
@@ -309,7 +310,7 @@ String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
 /// so friends see it after the next sync.
 Future<void> renameMeEverywhere(WidgetRef ref, PersonId me, String name) async {
   final ledger = ref.read(ledgerRepositoryProvider);
-  final trimmed = name.trim();
+  final trimmed = NameText.normalize(name);
   for (final g in ledger.current.state.visibleGroups) {
     final mine = myMemberIn(g, me);
     if (mine == null) continue;
