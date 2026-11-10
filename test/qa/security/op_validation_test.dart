@@ -1138,7 +1138,7 @@ void main() {
       ]);
       expect(error?.code, ErrorCodes.badOp);
       expect(fromMallory(), isEmpty);
-    }, skip: 'SECURITY-R4-01');
+    });
 
     test('an update moving an expense to the very start of the DateTime '
         'range is refused', () async {
@@ -1150,7 +1150,7 @@ void main() {
       ]);
       expect(error?.code, ErrorCodes.badOp);
       expect(fromMallory(), isEmpty);
-    }, skip: 'SECURITY-R4-01');
+    });
 
     // SECURITY-R4-02. The local Ledger only writes ISO-shaped codes
     // (^[A-Z]{3}$, Ledger._currency), but the remote check holds a group
@@ -1181,7 +1181,7 @@ void main() {
         final error = await sendBatch([op()]);
         expect(error?.code, ErrorCodes.badOp);
         expect(fromMallory(), isEmpty);
-      }, skip: 'SECURITY-R4-02');
+      });
     }
   });
 }
