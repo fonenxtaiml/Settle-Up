@@ -520,8 +520,7 @@ void main() {
             'the device id and the local address; paragraphs about it: '
             '${paragraphs.toList()}',
       );
-    }, skip: 'PLATFORM-R3-02: the policy omits that the sync QR carries the '
-        'device id');
+    });
   });
 }
 
