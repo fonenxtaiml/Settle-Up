@@ -61,18 +61,8 @@ final class _Field {
 
   Future<void> backspace() => set(text.substring(0, text.length - 1));
 
-  /// [s] replaces the text; with [selectAll], the old text was selected
-  /// first, as a select-all paste does on a phone.
-  Future<void> set(String s, {bool selectAll = false}) async {
-    if (selectAll) {
-      _state.userUpdateTextEditingValue(
-        _state.textEditingValue.copyWith(
-          selection: TextSelection(baseOffset: 0, extentOffset: text.length),
-        ),
-        SelectionChangedCause.keyboard,
-      );
-      await t.pump();
-    }
+  /// [s] replaces the text (typed over, or pasted over a selection).
+  Future<void> set(String s) async {
     _state.updateEditingValue(
       TextEditingValue(
         text: s,
@@ -88,7 +78,7 @@ void main() {
     testWidgets('a select-all paste is read as written', (t) async {
       final f = _Field(t);
       await f.pump('IDR', initial: 150000000);
-      await f.set('2,000,000', selectAll: true);
+      await f.set('2,000,000');
       expect(f.reported, 200000000);
       expect(f.text, '2,000,000');
       // Over one shared digit, without the selection either.

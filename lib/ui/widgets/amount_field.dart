@@ -306,14 +306,15 @@ class _GroupingFormatter extends TextInputFormatter {
     final o = oldValue.text;
     final n = newValue.text;
     if (o == n) return newValue;
-    final (a, b) = _replacedRange(oldValue, n);
+    final (a, b) = _replacedRange(o, n);
     final inserted = n.substring(a, n.length - (o.length - b));
 
     final String raw;
     String? canonical;
     // A paste (or anything else that brings more than one character at a
-    // time) is read as written, whatever it shares with the old text: a
-    // select-all paste of "2,000,000" over "1,500,000" is two million.
+    // time, or replaces all of the text) is read as written, whatever it
+    // shares with the old text: a select-all paste of "2,000,000" over
+    // "1,500,000" is two million, never "2,0" + "00,000".
     final pasted =
         o.isEmpty || (a == 0 && b == o.length) || inserted.length > 1;
     if (pasted) {
@@ -396,25 +397,9 @@ class _GroupingFormatter extends TextInputFormatter {
     );
   }
 
-  /// The range of [old]'s text that [n] replaces, as (start, end). The old
-  /// selection gives it when [n] fits it (a select-all paste replaces all of
-  /// the text even when it happens to share digits with it); otherwise the
-  /// common prefix and suffix do.
-  static (int, int) _replacedRange(TextEditingValue old, String n) {
-    final o = old.text;
-    final sel = old.selection;
-    if (sel.isValid &&
-        !sel.isCollapsed &&
-        sel.start >= 0 &&
-        sel.end <= o.length) {
-      final head = o.substring(0, sel.start);
-      final tail = o.substring(sel.end);
-      if (n.length >= head.length + tail.length &&
-          n.startsWith(head) &&
-          n.endsWith(tail)) {
-        return (sel.start, sel.end);
-      }
-    }
+  /// The range of [o] that [n] replaces, as (start, end): what is left
+  /// once the common prefix and suffix are taken off.
+  static (int, int) _replacedRange(String o, String n) {
     var p = 0;
     while (p < o.length && p < n.length && o[p] == n[p]) {
       p++;
