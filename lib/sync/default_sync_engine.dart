@@ -18,11 +18,14 @@
 //   connecting after a handshake timeout, it answers ERROR busy "Starting
 //   its own sync" and the other phone, if it is hosting, waits for that
 //   dial to arrive and serves it, whichever id is lower; Cancel ends that
-//   wait. When the dial is known to be for some other phone (the link's
-//   device id, or the advertised name), the answer is "Starting its own
-//   sync with someone else" and the asking phone does not wait. Else the
-//   answer carries the dialed phone's advert ids (ERROR.to), and the
-//   asking phone waits only if one is its own;
+//   wait. When the dial was picked from the nearby list, the answer carries
+//   the dialed phone's advert ids (ERROR.to) and the asking phone waits
+//   only if one is its own (else it reads "with someone else"); names do
+//   not decide then, since an advert can carry a name from before a
+//   rename. Without advert ids, when the dial is known to be for some
+//   other phone (the link's device id, or the advertised name), the answer
+//   is "Starting its own sync with someone else" and the asking phone does
+//   not wait;
 // - otherwise: ERROR busy.
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -190,6 +193,16 @@ final class DefaultSyncEngine implements SyncEngine {
   final Set<SyncTransport> _advertising = {};
   Timer? _hostExpiry;
   Timer? _tokenRefresh;
+
+  /// Renames (Settings) while visible: re-advertise the new name at once.
+  StreamSubscription<String>? _renames;
+
+  /// The device name the adverts carry now.
+  String? _advertisedName;
+
+  /// Re-advertising runs one at a time, so an older advert never lands
+  /// after a newer one.
+  Future<void> _readvertising = Future.value();
   Future<HostInfo>? _hostStart;
   int _hostStartGen = -1;
 
@@ -377,6 +390,7 @@ final class DefaultSyncEngine implements SyncEngine {
 
   Future<HostInfo> _startHosting(Duration duration, int gen) async {
     final info = await _advertiseInfo();
+    _advertisedName = info.deviceName;
     final availabilities = <TransportAvailability>[];
     for (final t in _transports) {
       final a = await _availabilityOf(t);
@@ -415,11 +429,7 @@ final class DefaultSyncEngine implements SyncEngine {
     }
     final now = _clock.now();
     final host = HostInfo(
-      connectLink: ConnectLink(
-        hosts: addresses,
-        deviceId: _store.localDeviceId,
-        deviceName: _store.localDeviceName,
-      ).encode(),
+      connectLink: _connectLinkFor(addresses),
       addresses: List.unmodifiable(addresses),
       expiresAt: now.add(duration),
       transports: {for (final t in _advertising) t.kind},
@@ -429,7 +439,37 @@ final class DefaultSyncEngine implements SyncEngine {
     _hostExpiry = Timer(duration, () => unawaited(stopHosting()));
     _scheduleTokenRefresh();
     _setStatus(host: host);
+    // Emits the current name first: a rename while hosting was starting
+    // is caught here too.
+    _renames = _store.watchLocalDeviceName().listen(
+      _onRenamed,
+      onError: (Object e, StackTrace st) => _log('device name', e, st),
+    );
     return host;
+  }
+
+  String _connectLinkFor(List<String> addresses) => ConnectLink(
+        hosts: addresses,
+        deviceId: _store.localDeviceId,
+        deviceName: _store.localDeviceName,
+      ).encode();
+
+  /// The phone was renamed in Settings while visible: nearby phones see
+  /// the new name now, not at the next token window up to 10 minutes on
+  /// (QA SYNC-R5-01), and the connect link (QR) carries it.
+  void _onRenamed(String name) {
+    final host = _host;
+    if (host == null || _disposed || name == _advertisedName) return;
+    final updated = HostInfo(
+      connectLink: _connectLinkFor(host.addresses),
+      addresses: host.addresses,
+      expiresAt: host.expiresAt,
+      transports: host.transports,
+      wifiName: host.wifiName,
+    );
+    _host = updated;
+    _setStatus(host: updated);
+    unawaited(_refreshAdvertising());
   }
 
   static SyncFailure _failureFor(List<TransportAvailability> all) {
@@ -457,10 +497,20 @@ final class DefaultSyncEngine implements SyncEngine {
         () => unawaited(_refreshAdvertising()));
   }
 
-  /// Re-announces with tokens for the current window and group set.
-  Future<void> _refreshAdvertising() async {
+  /// Re-announces with tokens for the current window and group set, and
+  /// the current device name.
+  Future<void> _refreshAdvertising() {
+    final next = _readvertising.then((_) => _readvertise()).catchError(
+        (Object e, StackTrace st) => _log('re-advertise failed', e, st));
+    _readvertising = next;
+    return next;
+  }
+
+  Future<void> _readvertise() async {
     if (_host == null) return;
     final info = await _advertiseInfo();
+    if (_host == null) return;
+    _advertisedName = info.deviceName;
     for (final t in _advertising.toList()) {
       try {
         await t.startAdvertising(info);
@@ -486,6 +536,10 @@ final class DefaultSyncEngine implements SyncEngine {
     _tokenRefresh?.cancel();
     _hostExpiry = null;
     _tokenRefresh = null;
+    final renames = _renames;
+    _renames = null;
+    _advertisedName = null;
+    await renames?.cancel();
     final advertising = _advertising.toList();
     _advertising.clear();
     for (final t in advertising) {
@@ -910,12 +964,17 @@ final class DefaultSyncEngine implements SyncEngine {
           // attempt is over). Its dial may take a connect timeout more.
           // Not hosting, nobody can dial us; dialing an advert that is not
           // ours, it is not for us: no need to wait (SYNC-R3-02).
-          if (_listening && await _mayBeDialingUs(r.peerDialing)) {
-            await _awaitYield(
-              out,
-              peer,
-              arriving: connectTimeout + timings.handshakeTimeout,
-            );
+          if (await _mayBeDialingUs(r.peerDialing)) {
+            if (_listening) {
+              await _awaitYield(
+                out,
+                peer,
+                arriving: connectTimeout + timings.handshakeTimeout,
+              );
+            }
+          } else {
+            // ERROR.to names the phone being dialed, and it is not us.
+            r = _dialingElsewhereResult(r);
           }
         } else if (_yieldsTo(peer) &&
             (r.message.endsWith(_busySame) || _inboundFrom(peer) != null)) {
@@ -996,7 +1055,8 @@ final class DefaultSyncEngine implements SyncEngine {
   }
 
   /// Whether [out], still dialing, may be dialing the phone of the inbound
-  /// session [s] (authenticated, so its HELLO is known). By device id when
+  /// session [s] (authenticated, so its HELLO is known), for a dial without
+  /// advert ids (those let the asking phone decide). By device id when
   /// a link gave one; else by name: adverts cut names (24 runes over Nearby
   /// and BLE, 40 over mDNS) and mDNS may add " (2)", so a name that is a
   /// prefix of the other counts as a match. Unknown counts as a match: the
@@ -1052,6 +1112,28 @@ final class DefaultSyncEngine implements SyncEngine {
     }
     return null;
   }
+
+  /// [r], refused with "Starting its own sync" by a phone whose ERROR.to
+  /// says it is dialing another phone: told so, as the refusing phone
+  /// would say by name when it has no advert ids.
+  static SessionResult _dialingElsewhereResult(SessionResult r) =>
+      SessionResult(
+        outcome: r.outcome,
+        failure: r.failure,
+        message: '${ErrorCodes.busy}: $_busyDialingElsewhere',
+        peerName: r.peerName,
+        peerDeviceId: r.peerDeviceId,
+        transport: r.transport,
+        startedAt: r.startedAt,
+        endedAt: r.endedAt,
+        sentOps: r.sentOps,
+        receivedOps: r.receivedOps,
+        receivedByGroup: r.receivedByGroup,
+        groupIds: r.groupIds,
+        receivedAnyFrame: r.receivedAnyFrame,
+        peerErrorCode: r.peerErrorCode,
+        peerDialing: r.peerDialing,
+      );
 
   /// [r], refused while the user tapped Cancel: a cancelled Sync.
   static SessionResult _cancelledResult(SessionResult r) => SessionResult(
@@ -1149,8 +1231,15 @@ final class DefaultSyncEngine implements SyncEngine {
           // Not "another phone": the dial may be for this very phone, which
           // then waits for it (SYNC-R2-02).
           if (left <= Duration.zero) {
+            // With the dialed phone's advert ids the asking phone decides
+            // by its own id: names can be stale (renamed while visible)
+            // or cut differently, so they would only add false "someone
+            // else" answers (QA SYNC-R5-01).
+            if (out.targetAdverts.isNotEmpty) {
+              run.dialing = out.targetAdverts;
+              return _busyDialing;
+            }
             if (!_dialMayReach(out, s)) return _busyDialingElsewhere;
-            run.dialing = out.targetAdverts;
             return _busyDialing;
           }
           await _changed.future.timeout(left, onTimeout: () {});
