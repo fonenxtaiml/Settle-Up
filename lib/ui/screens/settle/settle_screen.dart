@@ -155,7 +155,9 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
       context,
       S.paymentRecorded,
       actionLabel: id == null ? null : S.undo,
-      onAction: id == null ? null : () => ledger.deleteExpense(id),
+      onAction: id == null
+          ? null
+          : () => ledger.deleteExpense(id, groupId: widget.groupId),
     );
     if (context.canPop()) {
       context.pop();

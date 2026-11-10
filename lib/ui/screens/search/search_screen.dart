@@ -165,7 +165,8 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
               resolve: g.resolve,
               possibleDuplicate: duplicates.contains(e.id),
               unshared: unshared.contains(e.id),
-              onTap: () => context.push(Routes.expense(e.id)),
+              onTap: () =>
+                  context.push(Routes.expense(e.id, groupId: e.groupId)),
             ),
         ],
       ),

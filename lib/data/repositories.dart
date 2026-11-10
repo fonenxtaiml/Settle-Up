@@ -296,8 +296,12 @@ abstract interface class LedgerRepository {
 
   /// Writes only fields that differ; money is written as one block.
   Future<void> updateExpense(ExpenseId expenseId, ExpenseDraft draft);
-  Future<void> deleteExpense(ExpenseId expenseId);
-  Future<void> restoreExpense(ExpenseId expenseId);
+
+  /// [groupId] names the group the expense is in. Pass it whenever it is
+  /// known: entity ids are scoped by group (SPEC 7.2), and with it the call
+  /// can only touch that group's expense. Null = look the id up anywhere.
+  Future<void> deleteExpense(ExpenseId expenseId, {GroupId? groupId});
+  Future<void> restoreExpense(ExpenseId expenseId, {GroupId? groupId});
 
   Future<ExpenseId> recordPayment(PaymentDraft draft);
   Future<void> updatePayment(ExpenseId expenseId, PaymentDraft draft);

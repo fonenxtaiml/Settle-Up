@@ -10,6 +10,7 @@ import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/ledger_state.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
+import 'package:settle_up/core/split.dart';
 import 'package:settle_up/core/version_vector.dart';
 import 'package:settle_up/data/kv_settings_repository.dart';
 import 'package:settle_up/data/ledger.dart';
@@ -1198,6 +1199,93 @@ void main() {
       await a.restart();
       expect((await a.ledger.watchSyncRecords().first).map((r) => r.id),
           ['r2', 'r1']);
+    });
+  });
+
+  // QA SECURITY-R1-04: entity ids are scoped by group. A peer of Goa trip
+  // reuses a Private expense id; every command on the Private expense must
+  // stay inside Private, and the Goa copy is a separate entity.
+  group('expense ids scoped by group', () {
+    late ({GroupId g, MemberId me, MemberId sam, MemberId priya}) goa;
+    late GroupId private;
+    late MemberId me2;
+    late ExpenseId x;
+
+    setUp(() async {
+      goa = await trip();
+      private = await a.ledger.createGroup(const NewGroup(
+        name: 'Private',
+        type: GroupType.home,
+        currency: 'INR',
+        newMemberNames: ['Ravi'],
+      ));
+      final ps = a.group(private);
+      me2 = ps.members.values.firstWhere((m) => m.deviceId != null).id;
+      final ravi = ps.members.values.firstWhere((m) => m.id != me2).id;
+      x = await a.ledger.addExpense(
+          draft(private, [me2, ravi], description: 'Rent', total: 9000));
+      final create = a.opsOf(private).last;
+      const mallory = 'eeeeeeee-0000-7000-8000-000000000001';
+      final forged = Operation(
+        id: 'forged-create',
+        groupId: goa.g,
+        deviceId: mallory,
+        counter: 1,
+        hlc: const Hlc(1, 0, mallory),
+        entityType: EntityType.expense,
+        entityId: x,
+        kind: OpKind.create,
+        payload: {
+          ...create.payload,
+          ExpenseFields.description: 'Forged',
+          ExpenseFields.money: SplitCalculator.paymentBlock(
+            from: goa.me,
+            to: goa.sam,
+            amount: 100,
+            currency: 'INR',
+          ).toJson(),
+        },
+      );
+      expect(await a.ledger.applyRemote(goa.g, [forged]), hasLength(1));
+    });
+
+    Expense? inGroup(GroupId g) => a.snap.state.expenseIn(g, x);
+
+    test('the Private expense stays in Private', () {
+      expect(inGroup(private)!.description, 'Rent');
+      expect(inGroup(goa.g)!.description, 'Forged');
+    });
+
+    test('delete and restore with a group touch only that group', () async {
+      await a.ledger.deleteExpense(x, groupId: private);
+      expect(inGroup(private)!.isDeleted, isTrue);
+      expect(inGroup(goa.g)!.isDeleted, isFalse);
+      expect(a.opsOf(goa.g).where((o) => o.deviceId == a.deviceId),
+          everyElement(predicate<Operation>((o) => o.entityId != x)));
+      await a.ledger.restoreExpense(x, groupId: private);
+      expect(inGroup(private)!.isDeleted, isFalse);
+      await a.ledger.deleteExpense(x, groupId: goa.g);
+      expect(inGroup(goa.g)!.isDeleted, isTrue);
+      expect(inGroup(private)!.isDeleted, isFalse);
+    });
+
+    test('an edit goes to the group named by the draft', () async {
+      final ps = a.group(private);
+      final members = ps.members.keys.toList();
+      await a.ledger.updateExpense(x,
+          draft(private, [me2, ...members.where((m) => m != me2)],
+              description: 'Rent, March', total: 9000));
+      expect(inGroup(private)!.description, 'Rent, March');
+      expect(inGroup(goa.g)!.description, 'Forged');
+      expect(a.opsOf(private).last.entityId, x);
+      expect(a.opsOf(goa.g).where((o) => o.entityId == x).map((o) => o.id),
+          ['forged-create']);
+    });
+
+    test('a group without that id is not found', () async {
+      final other = await trip();
+      await expectLater(a.ledger.deleteExpense(x, groupId: other.g),
+          throwsLedger(LedgerErrorCode.expenseNotFound));
     });
   });
 }

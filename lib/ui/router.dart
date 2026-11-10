@@ -50,8 +50,17 @@ abstract final class Routes {
     path: '/expense/new',
     queryParameters: {'gid': ?groupId, 'pid': ?personId},
   ).toString();
-  static String expense(String eid) => '/expense/$eid';
-  static String editExpense(String eid) => '/expense/$eid/edit';
+
+  /// [groupId] names the expense's group. Pass it when known: entity ids
+  /// are scoped by group (SPEC 7.2), so only it picks the right one if
+  /// hostile input reused the id in another group.
+  static String expense(String eid, {String? groupId}) =>
+      _withGroup('/expense/$eid', groupId);
+  static String editExpense(String eid, {String? groupId}) =>
+      _withGroup('/expense/$eid/edit', groupId);
+  static String _withGroup(String path, String? groupId) => groupId == null
+      ? path
+      : Uri(path: path, queryParameters: {'gid': groupId}).toString();
   static String settle({
     required String groupId,
     String? from,
@@ -231,13 +240,17 @@ final routerProvider = Provider<GoRouter>((ref) {
       ),
       GoRoute(
         path: '/expense/:eid',
-        builder: (context, state) =>
-            ExpenseDetailScreen(expenseId: state.pathParameters['eid']!),
+        builder: (context, state) => ExpenseDetailScreen(
+          expenseId: state.pathParameters['eid']!,
+          groupId: state.uri.queryParameters['gid'],
+        ),
         routes: [
           GoRoute(
             path: 'edit',
-            builder: (context, state) =>
-                ExpenseEditScreen(expenseId: state.pathParameters['eid']),
+            builder: (context, state) => ExpenseEditScreen(
+              expenseId: state.pathParameters['eid'],
+              groupId: state.uri.queryParameters['gid'],
+            ),
           ),
         ],
       ),
