@@ -125,7 +125,8 @@ final class QaPhone {
       connectTimeout: connectTimeout,
       linkConnectTimeout: linkConnectTimeout,
     );
-    return QaPhone._(letter, opStore, ledger, spy, skew, transports, engine);
+    return QaPhone._(letter, opStore, ledger, spy, skew, transports, engine)
+      ..settings = settings;
   }
 
   final String letter;
@@ -135,6 +136,9 @@ final class QaPhone {
   final SkewedClock clock;
   final Map<TransportKind, MemoryTransport> transports;
   final DefaultSyncEngine engine;
+
+  /// The phone's settings (device name, onboarding).
+  late final KvSettingsRepository settings;
 
   MemoryTransport get lan => transports[TransportKind.lan]!;
   MemoryTransport get ble => transports[TransportKind.ble]!;
