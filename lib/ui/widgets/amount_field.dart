@@ -500,7 +500,8 @@ class _GroupingFormatter extends TextInputFormatter {
       }
       onRefusal(null);
     }
-    _typed = raw;
+    // A pasted "1 234" is kept as "1234": the next key typed extends it.
+    _typed = pasted ? closeDigitGroups(raw) : raw;
     _shown = text;
     _held = canonical;
     _rawShown = incomplete = false;
