@@ -234,7 +234,7 @@ abstract final class TextRules {
     EntityType.group: {
       GroupFields.name: _Kind.text,
       GroupFields.type: _Kind.text,
-      GroupFields.currency: _Kind.id,
+      GroupFields.currency: _Kind.currency,
       GroupFields.simplifyDebts: _Kind.flag,
       GroupFields.emoji: _Kind.optionalText,
       GroupFields.archived: _Kind.flag,
@@ -266,14 +266,41 @@ abstract final class TextRules {
   /// Largest |ms| a DateTime accepts.
   static const int maxDateMs = 8640000000000000;
 
+  /// Earliest date a payload field may hold: 1900-01-01 00:00 UTC.
+  ///
+  /// The whole DateTime range is not enough: near its ends toLocal() and
+  /// the local calendar (DateTime(y, m, d), month and year labels) cannot
+  /// represent the date, so one such peer expense would break the group
+  /// screen on every phone outside UTC (SECURITY-R4-01). An honest phone
+  /// writes dates from its date picker (2000 on) or its clock (a reset
+  /// clock reads 1970), so this window never refuses one of its ops.
+  static const int minModelDateMs = -2208988800000;
+
+  /// Latest date a payload field may hold: the end of 9999-12-31 UTC.
+  static const int maxModelDateMs = 253402300799999;
+
+  /// True when [ms] lies in [minModelDateMs]..[maxModelDateMs], the dates
+  /// every phone can show in its own time zone.
+  static bool isModelDate(int ms) =>
+      ms >= minModelDateMs && ms <= maxModelDateMs;
+
+  /// The only currency code shape a Ledger writes: three upper-case
+  /// ASCII letters (ISO 4217 form). Peers are held to it too, so a group
+  /// never carries a code that overflows the screen or an 'inr' that
+  /// balances keep apart from 'INR' (SECURITY-R4-02).
+  static final RegExp currencyPattern = RegExp(r'^[A-Z]{3}$');
+
+  static bool _isCurrency(Object? value) =>
+      value is String && currencyPattern.hasMatch(value);
+
   static bool _hasKind(Object? value, _Kind kind) => switch (kind) {
     _Kind.text => value is String,
     _Kind.optionalText => value == null || value is String,
     _Kind.id => value is String && value.isNotEmpty,
     _Kind.flag => value is bool,
-    _Kind.date => value is int && value.abs() <= maxDateMs,
-    _Kind.optionalDate =>
-      value == null || (value is int && value.abs() <= maxDateMs),
+    _Kind.date => value is int && isModelDate(value),
+    _Kind.optionalDate => value == null || (value is int && isModelDate(value)),
+    _Kind.currency => _isCurrency(value),
     _Kind.money => _isMoneyBlock(value),
   };
 
@@ -288,8 +315,8 @@ abstract final class TextRules {
   static const Set<String> _specKeys = {'method', 'values'};
 
   /// True for exactly the block MoneyBlock.toJson writes: the known keys
-  /// only (no room for padding), member id -> int maps, and amounts the
-  /// reducer accepts (parseMoney).
+  /// only (no room for padding), an ISO-shaped currency, member id -> int
+  /// maps, and amounts the reducer accepts (parseMoney).
   static bool _isMoneyBlock(Object? value) {
     bool keys(Map<Object?, Object?> m, Set<String> known) =>
         m.length == known.length && m.keys.every(known.contains);
@@ -303,7 +330,7 @@ abstract final class TextRules {
     return value is Map &&
         keys(value, _moneyKeys) &&
         value['total'] is int &&
-        value['currency'] is String &&
+        _isCurrency(value['currency']) &&
         spec(value['paidBy']) &&
         spec(value['owedBy']) &&
         ints(value['paid']) &&
@@ -347,8 +374,9 @@ enum _Kind {
   optionalText('a string or null'),
   id('a non-empty string'),
   flag('true or false'),
-  date('a date in milliseconds'),
-  optionalDate('a date in milliseconds or null'),
+  date('a date in milliseconds from 1900 to 9999'),
+  optionalDate('a date in milliseconds from 1900 to 9999 or null'),
+  currency('a three-letter upper-case currency code'),
   money('a money block');
 
   const _Kind(this.what);

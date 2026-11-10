@@ -120,6 +120,13 @@ final class Ledger implements LedgerRepository, SyncStore {
   /// Highest own counter some peer is known to hold, per group.
   final Map<GroupId, int> _acked = {};
 
+  /// Groups whose stored peer knowledge still claims more of my ops than I
+  /// had written, because the cut at open failed (a full or read-only
+  /// disk), with the counter it must be cut to. The cut is retried before
+  /// the next own op of that group is stored, so a later open never judges
+  /// that row against edits written after it (DATA-R4-01).
+  final Map<GroupId, int> _uncut = {};
+
   final Map<GroupId, Uint8List> _keyCache = {};
 
   /// Name hints of groups joined by invite (kv `pending.<groupId>`).
@@ -357,6 +364,9 @@ final class Ledger implements LedgerRepository, SyncStore {
   Future<void> _commit(OpBatch batch) async {
     if (batch.isEmpty) return;
     final ops = batch.ops;
+    if (_uncut.isNotEmpty) {
+      await _retryCuts([for (final op in ops) op.groupId], strict: true);
+    }
     final List<Operation> added;
     try {
       added = await _store.insertAll(ops);
@@ -494,11 +504,10 @@ final class Ledger implements LedgerRepository, SyncStore {
         LedgerInputIssue.groupFull,
       );
 
-  static final RegExp _currencyPattern = RegExp(r'^[A-Z]{3}$');
 
   static String _currency(String code) {
     final c = code.trim().toUpperCase();
-    if (!_currencyPattern.hasMatch(c)) {
+    if (!TextRules.currencyPattern.hasMatch(c)) {
       _fail(LedgerErrorCode.invalidInput, 'Bad currency "$code"');
     }
     return c;
@@ -520,7 +529,15 @@ final class Ledger implements LedgerRepository, SyncStore {
     return t;
   }
 
-  static int _ms(DateTime date) => date.toUtc().millisecondsSinceEpoch;
+  /// [date] as stored: UTC milliseconds within the window peers accept
+  /// (TextRules.isModelDate), so every phone can show it in local time.
+  static int _ms(DateTime date) {
+    final ms = date.toUtc().millisecondsSinceEpoch;
+    if (!TextRules.isModelDate(ms)) {
+      _fail(LedgerErrorCode.invalidInput, 'date $date is out of range');
+    }
+    return ms;
+  }
 
   static MoneyBlock _money(
     GroupState gs, {
@@ -1152,13 +1169,40 @@ final class Ledger implements LedgerRepository, SyncStore {
         await _store.capPeerKnowledge(groupId, _me, written);
       } catch (e) {
         // A read-only or full disk must not stop the app; the clamp below
-        // still holds for this session.
+        // still holds for this session, and the cut is retried before any
+        // new own op of this group is stored (_retryCuts).
         developer.log('Could not fix stored peer knowledge: $e',
             name: _logName);
+        _uncut[groupId] = written;
       }
     }
     final acked = math.min(known, written);
     if (acked > 0) _acked[groupId] = acked;
+  }
+
+  /// Retries the open-time cuts of [groups] that failed (DATA-R4-01).
+  ///
+  /// With [strict], a cut that fails again throws
+  /// [LedgerErrorCode.storageFailed]: an own op stored past the uncut row
+  /// would be shown as shared by the next open, which cuts that row to
+  /// what was written by then. The store is failing anyway, so the op
+  /// would most likely not have been stored either.
+  Future<void> _retryCuts(Iterable<GroupId> groups,
+      {required bool strict}) async {
+    for (final g in groups.toSet()) {
+      final max = _uncut[g];
+      if (max == null) continue;
+      try {
+        await _store.capPeerKnowledge(g, _me, max);
+        _uncut.remove(g);
+      } catch (e) {
+        developer.log('Could not fix stored peer knowledge of $g: $e',
+            name: _logName);
+        if (strict) {
+          throw LedgerException(LedgerErrorCode.storageFailed, '$e');
+        }
+      }
+    }
   }
 
   /// Highest counter this phone has written in [groupId]: stored ops, or
@@ -1237,6 +1281,9 @@ final class Ledger implements LedgerRepository, SyncStore {
             report = vv.withEntry(_me, written);
           }
         }
+        // The merge keeps the larger value, so an uncut row would outlast
+        // any honest report.
+        if (_uncut.isNotEmpty) await _retryCuts([groupId], strict: false);
         await _store.recordPeerKnowledge(peer, groupId, report);
         final before = _acked[groupId] ?? 0;
         final acked = math.max(before, report[_me]);
