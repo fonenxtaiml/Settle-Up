@@ -3,9 +3,10 @@
 //
 // - serviceId 'app.settleup.sync', Strategy.P2P_CLUSTER (every phone may
 //   advertise and discover at once).
-// - The endpoint name carries the device id prefix, device name and up to
-//   4 discovery tokens (NearbyEndpointName). Discovery parses it into a
-//   DiscoveredPeer without connecting.
+// - The endpoint name carries the rotating advert id (never the device
+//   id), the window tag, the device name and up to 24 discovery tokens
+//   (NearbyEndpointName). Discovery parses it into a DiscoveredPeer
+//   without connecting.
 // - Every connection is accepted automatically; authentication happens in
 //   the session layer (SPEC 8.4).
 // - One channel frame = one BYTES payload. Nearby delivers BYTES payloads
