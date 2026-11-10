@@ -169,15 +169,19 @@ void main() {
   });
 
   group('SYNC-R3-02: a third phone asks a phone that is dialing', () {
+    /// [beforeTap] runs once both phones found whom they tap (Carol starts
+    /// hosting there when she shares Alex's name, so Priya finds Alex).
     Future<(Object, Duration, SessionStatus)> carolTaps(
       QaPhone carol,
       QaPhone priya,
-      QaPhone alex,
-    ) async {
+      QaPhone alex, {
+      Future<void> Function()? beforeTap,
+    }) async {
       await alex.engine.startHosting();
       await priya.engine.startHosting();
       final toAlex = await priya.find(alex);
       final toPriya = await carol.find(priya);
+      await beforeTap?.call();
       final fp = tap(priya, toAlex);
       await Future<void>.delayed(const Duration(milliseconds: 5));
       final watch = Stopwatch()..start();
@@ -232,6 +236,101 @@ void main() {
       );
       expect(took, lessThan(const Duration(milliseconds: 2800)));
       expect(during, isNot(isA<SessionActive>()));
+    });
+
+    test('Carol has the same (default model) name as the phone being '
+        'dialed: Priya\'s answer carries that phone\'s advert id, which is '
+        'not Carol\'s, so she is told at once', () async {
+      final (alex, priya, carol, _) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        alexName: 'Pixel 8',
+        carolName: 'Pixel 8',
+      );
+      final (c, took, during) = await carolTaps(
+        carol!,
+        priya,
+        alex,
+        beforeTap: () => carol.engine.startHosting(),
+      );
+      expect(
+        c,
+        isA<SyncException>()
+            .having((e) => e.failure, 'failure', SyncFailure.peerUnreachable)
+            .having((e) => e.message, 'message', endsWith('its own sync')),
+      );
+      expect(took, lessThan(const Duration(milliseconds: 2800)));
+      expect(during, isNot(isA<SessionActive>()));
+      expect(carol.engine.status.session, isNot(isA<SessionActive>()));
+    });
+
+    test('a prefix name ("Pixel 8" and "Pixel 8 Pro"): told at once too',
+        () async {
+      final (alex, priya, carol, _) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        alexName: 'Pixel 8 Pro',
+        carolName: 'Pixel 8',
+      );
+      final (c, took, _) = await carolTaps(
+        carol!,
+        priya,
+        alex,
+        beforeTap: () => carol.engine.startHosting(),
+      );
+      expect(c, isA<SyncException>());
+      expect(took, lessThan(const Duration(milliseconds: 2800)));
+    });
+
+    test('mutual Sync where the dialed phone keeps its model name: the '
+        'advert id is the asking phone\'s own, so it waits and serves the '
+        'slow dial', () async {
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        alexName: 'Pixel 8',
+      );
+      await alex.engine.startHosting();
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      final toAlex = await priya.find(alex);
+      expect(toAlex.advertId, isNotNull);
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final fa = tap(alex, toPriya);
+      final results = await Future.wait([fa, fp])
+          .timeout(const Duration(seconds: 20));
+      expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+      expect(priya.opCount(g), alex.opCount(g));
+    });
+
+    test('mutual Sync where the advert has no advert id: unknown counts as '
+        'maybe, so the slow dial is still waited for and served', () async {
+      final (alex, priya, _, g) = await phonesFor(
+        priyaDelay: const Duration(seconds: 3),
+        onPriya: (t) => t.rewrite = (p) => DiscoveredPeer(
+          kind: p.kind,
+          address: p.address,
+          name: p.name,
+          groupTokens: p.groupTokens,
+          windowTag: p.windowTag,
+          moreGroups: p.moreGroups,
+        ),
+      );
+      await alex.engine.startHosting();
+      await priya.engine.startHosting();
+      final toPriya = await alex.find(priya);
+      await priya.engine.startDiscovery();
+      final toAlex = await priya.engine
+          .watchNearby()
+          .firstWhere((l) => l.isNotEmpty)
+          .timeout(const Duration(seconds: 3))
+          .then((l) => l.first);
+      expect(toAlex.advertId, isNull);
+      final fp = tap(priya, toAlex);
+      await Future<void>.delayed(const Duration(milliseconds: 5));
+      final fa = tap(alex, toPriya);
+      final results = await Future.wait([fa, fp])
+          .timeout(const Duration(seconds: 20));
+      expect(results, everyElement(isA<SyncSummary>()), reason: '$results');
+      expect(priya.opCount(g), alex.opCount(g));
     });
 
     test('a mutual Sync whose advert cut the dialed phone\'s long name '

@@ -20,7 +20,9 @@
 //   dial to arrive and serves it, whichever id is lower; Cancel ends that
 //   wait. When the dial is known to be for some other phone (the link's
 //   device id, or the advertised name), the answer is "Starting its own
-//   sync with someone else" and the asking phone does not wait;
+//   sync with someone else" and the asking phone does not wait. Else the
+//   answer carries the dialed phone's advert ids (ERROR.to), and the
+//   asking phone waits only if one is its own;
 // - otherwise: ERROR busy.
 import 'dart:async';
 import 'dart:developer' as developer;
@@ -86,13 +88,22 @@ const String _busyDialingElsewhere = 'Starting its own sync with someone else';
 
 /// A Sync this phone started (syncWith, syncWithLink, an invite).
 final class _Outbound {
-  _Outbound({this.targetId, this.targetNames = const []});
+  _Outbound({
+    this.targetId,
+    this.targetNames = const [],
+    this.targetAdverts = const [],
+  });
 
   /// The phone being dialed, when the link says (connect link, invite).
   final DeviceId? targetId;
 
   /// The names it advertised (cut to fit the advert); empty when unknown.
   final List<String> targetNames;
+
+  /// The advert ids (SPEC 8.3) it was seen with; empty when unknown (a
+  /// link). Sent with "Starting its own sync" so the refused phone can
+  /// tell whether this dial may be for it (SYNC-R3-02).
+  final List<String> targetAdverts;
 
 
   SyncSession? session;
@@ -135,6 +146,9 @@ final class _Run {
 
   /// Lost the slot to a newer session from the same phone.
   bool superseded = false;
+
+  /// Sent with a refusal as `ERROR.to` (see [_Outbound.targetAdverts]).
+  List<String> dialing = const [];
 }
 
 final class DefaultSyncEngine implements SyncEngine {
@@ -701,13 +715,21 @@ final class DefaultSyncEngine implements SyncEngine {
     return null;
   }
 
-  _Outbound _claim({DeviceId? targetId, List<String> targetNames = const []}) {
+  _Outbound _claim({
+    DeviceId? targetId,
+    List<String> targetNames = const [],
+    List<String> targetAdverts = const [],
+  }) {
     _checkAlive();
     if (_busy) {
       throw const SyncException(
           SyncFailure.internal, 'A sync is already running');
     }
-    return _outbound = _Outbound(targetId: targetId, targetNames: targetNames);
+    return _outbound = _Outbound(
+      targetId: targetId,
+      targetNames: targetNames,
+      targetAdverts: targetAdverts,
+    );
   }
 
   /// Whether this phone can be dialed now (hosting): only then may another
@@ -730,6 +752,10 @@ final class DefaultSyncEngine implements SyncEngine {
     ];
     final out = _claim(
       targetNames: {peer.name, for (final r in routes) r.name}.toList(),
+      targetAdverts: {
+        ?peer.advertId,
+        for (final r in routes) ?r.advertId,
+      }.toList(),
     );
     return _connectAndRun(out, peer.name, routes, connectTimeout);
   }
@@ -882,8 +908,9 @@ final class DefaultSyncEngine implements SyncEngine {
           // The other phone is still dialing, maybe us: serve its
           // connection if it comes (whichever id is lower, since our own
           // attempt is over). Its dial may take a connect timeout more.
-          // Not hosting, nobody can dial us: no need to wait (SYNC-R3-02).
-          if (_listening) {
+          // Not hosting, nobody can dial us; dialing an advert that is not
+          // ours, it is not for us: no need to wait (SYNC-R3-02).
+          if (_listening && await _mayBeDialingUs(r.peerDialing)) {
             await _awaitYield(
               out,
               peer,
@@ -996,6 +1023,22 @@ final class DefaultSyncEngine implements SyncEngine {
   static String _nameKey(String name) =>
       cleanPeerName(name).replaceFirst(_mdnsSuffix, '').trim().toLowerCase();
 
+  /// Whether a phone that refused us with "Starting its own sync" while
+  /// dialing a phone seen with the advert ids [dialing] may be dialing us:
+  /// only if one of them is ours (this launch's, for the windows around
+  /// now, as the registry counts them). Unknown (none sent: a link, or an
+  /// advert without an id) counts as maybe. The name alone cannot tell:
+  /// phones keep their model name by default, so friends share one.
+  Future<bool> _mayBeDialingUs(List<String> dialing) async {
+    if (dialing.isEmpty) return true;
+    final w = DiscoveryTokens.windowAt(_clock.now());
+    for (final d in const [-1, 0, 1]) {
+      final own = await DiscoveryTokens.advertId(_advertSecret, w + d);
+      if (dialing.contains(own)) return true;
+    }
+    return false;
+  }
+
   /// In a mutual Sync the phone with the lower device id gives way.
   bool _yieldsTo(DeviceId peer) => _store.localDeviceId.compareTo(peer) < 0;
 
@@ -1026,6 +1069,7 @@ final class DefaultSyncEngine implements SyncEngine {
         groupIds: r.groupIds,
         receivedAnyFrame: r.receivedAnyFrame,
         peerErrorCode: r.peerErrorCode,
+        peerDialing: r.peerDialing,
       );
 
   /// Waits until [out] gives way to an inbound session from [peer]: soon
@@ -1105,7 +1149,9 @@ final class DefaultSyncEngine implements SyncEngine {
           // Not "another phone": the dial may be for this very phone, which
           // then waits for it (SYNC-R2-02).
           if (left <= Duration.zero) {
-            return _dialMayReach(out, s) ? _busyDialing : _busyDialingElsewhere;
+            if (!_dialMayReach(out, s)) return _busyDialingElsewhere;
+            run.dialing = out.targetAdverts;
+            return _busyDialing;
           }
           await _changed.future.timeout(left, onTimeout: () {});
           continue;
@@ -1169,7 +1215,14 @@ final class DefaultSyncEngine implements SyncEngine {
         if (role == SessionRole.responder) _limitHandshakes(s);
         _notify();
       },
-      admit: (_) => out == null ? _admitInbound(run) : _admitOutbound(run, out),
+      admit: (_) async {
+        final refusal = await (out == null
+            ? _admitInbound(run)
+            : _admitOutbound(run, out));
+        return refusal == null
+            ? null
+            : SlotRefusal(refusal, dialing: run.dialing);
+      },
     );
     run = _Run(session, _runSeq++);
     _runs[session] = run;
