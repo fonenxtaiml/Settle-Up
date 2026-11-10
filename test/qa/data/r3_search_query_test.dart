@@ -19,7 +19,7 @@ void main() {
     await qaTap(tester, find.byTooltip(S.searchExpenses));
     expect(w.location, Routes.search);
 
-    const family = '\u{1F468}‍\u{1F469}‍\u{1F467}';
+    const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
     const flag = '\u{1F1EE}\u{1F1F3}';
     const taxi = '\u{1F695}';
     final cases = <String, String>{
@@ -30,7 +30,7 @@ void main() {
       // A ZWJ family (8 units) right at the cut stays whole or goes whole.
       '${'x' * 38}$family${'y' * 2}': '${'x' * 38}$family…',
       // Flags are two regional indicators.
-      '$flag' * 41: '${'$flag' * 39}…',
+      flag * 41: '${flag * 39}…',
       // Devanagari clusters (consonant + virama + consonant).
       'क्ष' * 41: '${'क्ष' * 39}…',
       // Exactly 40 characters of emoji: not cut at all.
