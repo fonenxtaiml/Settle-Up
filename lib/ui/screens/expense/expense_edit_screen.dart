@@ -1308,8 +1308,11 @@ class _SharesStepper extends StatelessWidget {
 
   static const max = 1000;
 
-  /// Two 48 dp buttons around the 36 dp number.
-  static const double width = 48 + 36 + 48;
+  /// The Android minimum tap target, for the number as for the buttons.
+  static const double minTarget = 48;
+
+  /// Two 48 dp buttons around the 48 dp number (VISUAL-R9-01).
+  static const double width = minTarget * 3;
 
   final int value;
   final bool enabled;
@@ -1335,17 +1338,16 @@ class _SharesStepper extends StatelessWidget {
           onPressed: enabled && value > 1 ? () => onChanged(value - 1) : null,
           icon: const Icon(Icons.remove_rounded),
         ),
-        Semantics(
-          button: enabled,
+        ButtonSemantics(
           label: label,
           value: '$value',
-          excludeSemantics: true,
+          onTap: enabled ? () => _type(context) : null,
           child: InkWell(
             onTap: enabled ? () => _type(context) : null,
             borderRadius: BorderRadius.circular(Radii.sm),
             child: SizedBox(
-              width: 36,
-              height: 48,
+              width: minTarget,
+              height: minTarget,
               child: Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -1413,8 +1415,7 @@ class _WeightPromptState extends State<_WeightPrompt> {
         // whole: a paste of "1 2" or "1e3" is never joined into 12 or 13
         // (the digits-only filter dropped the rest and joined them).
         TextInputFormatter.withFunction(
-          (old, next) =>
-              RegExp(r'^[0-9]*$').hasMatch(next.text) ? next : old,
+          (old, next) => RegExp(r'^[0-9]*$').hasMatch(next.text) ? next : old,
         ),
         LengthLimitingTextInputFormatter(4),
       ],

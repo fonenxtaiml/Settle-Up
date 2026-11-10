@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
+import 'button_semantics.dart';
 import 'category_glyph.dart';
 import 'kit_strings.dart';
 
@@ -104,7 +105,14 @@ class LabeledTextField extends StatelessWidget {
               if (trailing != null) ...[
                 const SizedBox(width: Space.md),
                 Padding(
-                  padding: const EdgeInsets.symmetric(vertical: _fieldPad),
+                  // A CategoryChip brings its own 48 dp target (8 dp above
+                  // and below its 32 dp chip), so the field stays 56 dp
+                  // with the chip where it was (VISUAL-R9-01).
+                  padding: EdgeInsets.symmetric(
+                    vertical: trailing is CategoryChip
+                        ? _fieldPad - CategoryChip.targetPad / 2
+                        : _fieldPad,
+                  ),
                   child: trailing,
                 ),
               ],
@@ -137,6 +145,9 @@ class CategoryChip extends StatelessWidget {
     this.onTap,
   });
 
+  /// Above and below the 32 dp chip, for a 48 dp target.
+  static const double targetPad = 8;
+
   final String categoryId;
   final String label;
   final VoidCallback? onTap;
@@ -145,36 +156,43 @@ class CategoryChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return Semantics(
-      button: true,
+    return ButtonSemantics(
       label: KitStrings.changeCategory(label),
-      excludeSemantics: true,
-      child: Material(
-        color: scheme.surfaceContainer,
-        borderRadius: BorderRadius.circular(Radii.sm),
-        child: InkWell(
-          onTap: onTap,
+      onTap: onTap,
+      // 32 dp visual chip inside a 48 dp tap target (VISUAL-R9-01).
+      child: TapTargetPadding(
+        padding: const EdgeInsets.symmetric(vertical: CategoryChip.targetPad),
+        onTap: onTap,
+        child: Material(
+          color: scheme.surfaceContainer,
           borderRadius: BorderRadius.circular(Radii.sm),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: 32),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CategoryGlyph(
-                    categoryId: categoryId,
-                    size: 18,
-                    color: scheme.onSurface,
-                  ),
-                  const SizedBox(width: 6),
-                  Text(
-                    label,
-                    style: theme.textTheme.labelMedium!.withWeight(
-                      FontWeight.w600,
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(Radii.sm),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(minHeight: 32),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 10,
+                  vertical: 4,
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CategoryGlyph(
+                      categoryId: categoryId,
+                      size: 18,
+                      color: scheme.onSurface,
                     ),
-                  ),
-                ],
+                    const SizedBox(width: 6),
+                    Text(
+                      label,
+                      style: theme.textTheme.labelMedium!.withWeight(
+                        FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -205,10 +223,9 @@ class PickerTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    return Semantics(
-      button: true,
+    return ButtonSemantics(
       label: '$label, $value',
-      excludeSemantics: true,
+      onTap: onTap,
       child: Material(
         color: scheme.surfaceContainerLowest,
         borderRadius: BorderRadius.circular(Radii.md),
@@ -284,10 +301,10 @@ class KeyValueRow extends StatelessWidget {
     final scheme = theme.colorScheme;
     final shown = value ?? placeholder ?? '';
     final keyWidth = MediaQuery.textScalerOf(context).scale(72);
-    return Semantics(
-      button: onTap != null,
+    return ButtonSemantics(
+      alwaysButton: false,
       label: '$label, $shown',
-      excludeSemantics: true,
+      onTap: onTap,
       child: InkWell(
         onTap: onTap,
         child: ConstrainedBox(

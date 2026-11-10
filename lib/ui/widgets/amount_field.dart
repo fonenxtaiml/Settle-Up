@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:intl/intl.dart' show NumberFormat;
@@ -7,6 +9,7 @@ import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/amount_input.dart';
 import '../format/money_format.dart';
+import 'button_semantics.dart';
 import 'kit_strings.dart';
 
 /// The large amount field on Add expense (render 3): a small "Amount"
@@ -158,6 +161,9 @@ class AmountField extends StatefulWidget {
 }
 
 class _AmountFieldState extends State<AmountField> {
+  /// The expand chevron after a tappable currency symbol.
+  static const double _chevron = 20;
+
   late final TextEditingController _controller;
   late Currency _currency = Currencies.of(widget.currency);
 
@@ -229,13 +235,20 @@ class _AmountFieldState extends State<AmountField> {
       maxLines: 1,
     )..layout();
     final symbolWidth = symbolPainter.width;
+    final symbolHeight = symbolPainter.height;
     symbolPainter.dispose();
+    // A tappable symbol is a button: it shows an expand chevron (as the
+    // group chip does) and takes at least a 48 x 48 dp tap (VISUAL-R9-01).
+    final tappable = widget.onCurrencyTap != null;
+    final symbolBox = tappable
+        ? math.max(Sizes.minTap, symbolWidth + _chevron)
+        : symbolWidth;
     const caret = 2.0;
     final amountStyle = AmountField.fitted(
       baseStyle,
       text,
       // The editable keeps a caret gap at the end; leave room for it too.
-      maxWidth - symbolWidth - 3 * caret - 6,
+      maxWidth - symbolBox - 3 * caret - 6,
       scaler,
       direction,
     );
@@ -282,14 +295,41 @@ class _AmountFieldState extends State<AmountField> {
                 if (widget.onCurrencyTap == null)
                   ExcludeSemantics(child: symbol)
                 else
-                  Semantics(
-                    button: true,
+                  // Its own node: merged into the field's label it would
+                  // make the field a button with no tap action.
+                  ButtonSemantics(
+                    container: true,
                     label: widget.currencyName ?? _currency.code,
-                    excludeSemantics: true,
+                    onTap: widget.onCurrencyTap,
                     child: InkWell(
                       onTap: widget.onCurrencyTap,
                       borderRadius: BorderRadius.circular(Radii.sm),
-                      child: symbol,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(minWidth: symbolBox),
+                        child: Padding(
+                          // Centred in the 48 dp; the padding keeps the
+                          // symbol's baseline for the row.
+                          padding: EdgeInsets.symmetric(
+                            vertical: math.max(
+                              0,
+                              (Sizes.minTap - symbolHeight) / 2,
+                            ),
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.baseline,
+                            textBaseline: TextBaseline.alphabetic,
+                            children: [
+                              symbol,
+                              Icon(
+                                Icons.expand_more_rounded,
+                                size: _chevron,
+                                color: scheme.onSurfaceVariant,
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 // The symbol's own side bearing gives the reference gap.

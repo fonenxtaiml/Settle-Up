@@ -4,6 +4,7 @@ import '../../core/models.dart';
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/money_format.dart';
+import 'button_semantics.dart';
 import 'haptics.dart';
 import 'kit_layout.dart';
 import 'kit_strings.dart';
@@ -86,15 +87,15 @@ class _MethodChip extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     const radius = BorderRadius.all(Radius.circular(Radii.chip));
-    return Semantics(
+    return ButtonSemantics(
       inMutuallyExclusiveGroup: true,
       checked: selected,
-      button: true,
       label: label,
-      excludeSemantics: true,
+      onTap: onTap,
       // 34 dp visual chip inside a 48 dp tap target.
-      child: Padding(
+      child: TapTargetPadding(
         padding: const EdgeInsets.symmetric(vertical: 7),
+        onTap: onTap,
         child: Material(
           color: selected ? scheme.primary : Colors.transparent,
           shape: RoundedRectangleBorder(

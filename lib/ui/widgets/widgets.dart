@@ -10,6 +10,7 @@ export 'amount_field.dart' show AmountField;
 export 'app_chrome.dart';
 export 'balance_hero.dart';
 export 'balance_row.dart';
+export 'button_semantics.dart';
 export 'category_glyph.dart';
 export 'empty_state.dart';
 export 'expense_row.dart';
