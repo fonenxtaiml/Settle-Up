@@ -27,9 +27,8 @@ RenderEditable? _editableIn(RenderObject r) {
 /// Amount text fields whose value is partly out of sight.
 List<String> _hidden(String where) => [
   for (final e in find.byType(EditableText).evaluate())
-    if (RegExp(r'^[\d.,]+$').hasMatch(
-      (e.widget as EditableText).controller.text,
-    ))
+    if (RegExp(r'^[\d.,]+$')
+        .hasMatch((e.widget as EditableText).controller.text))
       ...() {
         final t = (e.widget as EditableText).controller.text;
         final re = _editableIn(e.renderObject!)!;

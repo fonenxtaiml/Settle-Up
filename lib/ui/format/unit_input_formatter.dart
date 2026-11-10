@@ -26,7 +26,7 @@ class UnitInputFormatter extends TextInputFormatter {
   final bool signed;
 
   RegExp get _plain =>
-      signed ? RegExp(r'^[0-9.,+\-−]*$') : RegExp(r'^[0-9.,]*$');
+      signed ? RegExp(r'^[0-9.,+\-\u2212]*$') : RegExp(r'^[0-9.,]*$');
 
   @override
   TextEditingValue formatEditUpdate(

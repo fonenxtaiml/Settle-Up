@@ -4,7 +4,6 @@
 // (MONEY-R4-01), TND grouping (MONEY-R4-02), the small split and payer
 // fields (MONEY-R4-03) and the ways a minus is written (MONEY-R4-04).
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/theme/app_theme.dart';
@@ -133,19 +132,19 @@ void main() {
       t,
     ) async {
       final tnd = cur('TND');
-      expect(AmountField.groupForDisplay('12500', tnd), '12 500');
-      expect(AmountField.textFor(1234567890, tnd), '1 234 567.890');
-      expect(AmountField.parse('12 500.250', tnd), 12500250);
-      expect(parseAmountInput('12 500', tnd), 12500000);
+      expect(AmountField.groupForDisplay('12500', tnd), '12\u2009500');
+      expect(AmountField.textFor(1234567890, tnd), '1\u2009234\u2009567.890');
+      expect(AmountField.parse('12\u2009500.250', tnd), 12500250);
+      expect(parseAmountInput('12\u2009500', tnd), 12500000);
       // Other currencies keep the comma.
       expect(AmountField.groupForDisplay('12500', cur('KWD')), '12,500');
       expect(AmountField.groupForDisplay('12500', cur('EUR')), '12,500');
       final f = _Field(t);
       await f.pump('TND', initial: 12345000);
-      expect(f.text, '12 345');
+      expect(f.text, '12\u2009345');
       // Deleting a digit in the middle keeps the grouping reading.
-      await f.set('12 45');
-      expect((f.text, f.reported), ('1 245', 1245000));
+      await f.set('12\u200945');
+      expect((f.text, f.reported), ('1\u2009245', 1245000));
     });
   });
 
@@ -198,9 +197,9 @@ void main() {
       final inr = cur('INR');
       for (final s in [
         '-30',
-        '−30',
-        '–30',
-        '—30',
+        '\u221230',
+        '\u201330',
+        '\u201430',
         '(30)',
         '30-',
         '30 -',
@@ -217,7 +216,7 @@ void main() {
       expect(parseSignedMinor('+30', inr), 3000);
       expect(parseSignedMinor('Rs. 1,200/-', inr), 120000);
       expect(parseSignedMinor('1.250,- €', cur('EUR')), 125000);
-      expect(parseSignedMinor('Fr. 30.–', cur('CHF')), 3000);
+      expect(parseSignedMinor('Fr. 30.\u2013', cur('CHF')), 3000);
       expect(parseSignedMinor('-', inr), 0);
       expect(parseSignedMinor('', inr), 0);
     });
@@ -256,7 +255,7 @@ void main() {
         write: (v) => minorToInput(v, inr),
         signed: true,
       );
-      expect(apply(f, '', '–30').text, '-30');
+      expect(apply(f, '', '\u201330').text, '-30');
       expect(apply(f, '', '(30)').text, '-30');
       expect(apply(f, '', '30-').text, '30-');
       expect(parseSignedMinor('30-', inr), -3000);
