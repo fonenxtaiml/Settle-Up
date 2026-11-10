@@ -1258,6 +1258,10 @@ class _UnitField extends StatelessWidget {
         decimal: true,
         signed: signed,
       ),
+      // See AmountField: a pasted line break must reach the reader, and
+      // UnitInputFormatter keeps the text on one line.
+      minLines: 1,
+      maxLines: 2,
       inputFormatters: [
         UnitInputFormatter(read: read, write: write, signed: signed),
       ],
