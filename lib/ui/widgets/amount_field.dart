@@ -578,6 +578,7 @@ class _GroupingFormatter extends TextInputFormatter {
       if (canonical == null &&
           sep.allMatches(raw).length == 1 &&
           RegExp(r'^[0-9]+$').hasMatch(raw.replaceFirst(sep, '')) &&
+          raw.indexOf(sep) <= 12 &&
           last.length <= 3) {
         // Not a grouping, and no decimals either: hold no amount and say
         // why until it is fixed.
