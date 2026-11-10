@@ -81,12 +81,53 @@ abstract final class TextRules {
       (r >= 0x202A && r <= 0x202E) ||
       (r >= 0x2066 && r <= 0x2069);
 
-  /// True when [value] shows nothing: only spaces and joiners left.
-  static bool isBlank(String value) => value.runes.every((r) =>
-      r == 0x200C ||
-      r == 0x200D ||
-      (r >= 0xFE00 && r <= 0xFE0F) ||
-      String.fromCharCode(r).trim().isEmpty);
+  /// True when [value] shows nothing: every character is a space, one
+  /// [clean] drops, or one that renders as blank on its own (joiners,
+  /// variation selectors, Hangul fillers, the braille blank, soft hyphen,
+  /// invisible operators, tag characters and similar). Such characters
+  /// stay inside a name (emoji, Hangul and flags need some of them), but a
+  /// name made only of them is refused. Code points only, no Unicode
+  /// tables, so every phone decides the same.
+  static bool isBlank(String value) =>
+      value.runes.every((r) => _isSpace(r) || isHidden(r) || _isBlankMark(r));
+
+  /// The characters String.trim removes (a fixed list, so the remote check
+  /// does not depend on the Dart version).
+  static bool _isSpace(int r) =>
+      (r >= 0x09 && r <= 0x0D) ||
+      r == 0x20 ||
+      r == 0x85 ||
+      r == 0xA0 ||
+      r == 0x1680 ||
+      (r >= 0x2000 && r <= 0x200A) ||
+      r == 0x2028 ||
+      r == 0x2029 ||
+      r == 0x202F ||
+      r == 0x205F ||
+      r == 0x3000 ||
+      r == 0xFEFF;
+
+  /// Characters that render as nothing (or as blank space) by themselves.
+  static bool _isBlankMark(int r) =>
+      r == 0x00AD || // soft hyphen
+      r == 0x034F || // combining grapheme joiner
+      r == 0x115F || // Hangul choseong filler
+      r == 0x1160 || // Hangul jungseong filler
+      r == 0x17B4 || // Khmer inherent vowels
+      r == 0x17B5 ||
+      (r >= 0x180B && r <= 0x180F) || // Mongolian selectors and separator
+      r == 0x200C || // ZWNJ
+      r == 0x200D || // ZWJ
+      (r >= 0x2061 && r <= 0x2064) || // invisible operators
+      (r >= 0x206A && r <= 0x206F) || // deprecated format characters
+      r == 0x2800 || // braille blank
+      r == 0x3164 || // Hangul filler
+      (r >= 0xFE00 && r <= 0xFE0F) || // variation selectors
+      r == 0xFFA0 || // halfwidth Hangul filler
+      (r >= 0x1BCA0 && r <= 0x1BCA3) || // shorthand format controls
+      (r >= 0x1D173 && r <= 0x1D17A) || // musical format controls
+      (r >= 0xE0000 && r <= 0xE007F) || // tag characters
+      (r >= 0xE0100 && r <= 0xE01EF); // variation selectors supplement
 
   /// Number of user-perceived characters in [value].
   static int length(String value) => value.characters.length;

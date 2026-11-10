@@ -447,7 +447,7 @@ void main() {
         } on LedgerException catch (e) {
           expect(e.code, LedgerErrorCode.invalidInput);
         }
-      }, skip: 'SECURITY-R1-06');
+      });
     }
 
     test('U+2028 / U+2029 inside a one-line name become spaces', () async {
