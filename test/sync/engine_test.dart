@@ -2,10 +2,13 @@ import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/data/repositories.dart';
+import 'package:settle_up/sync/crypto/tokens.dart';
 import 'package:settle_up/sync/default_sync_engine.dart';
 import 'package:settle_up/sync/pairing/links.dart';
 import 'package:settle_up/sync/sync_engine.dart';
 import 'package:settle_up/sync/transport/memory_transport.dart';
+import 'package:settle_up/sync/transport/nearby/nearby_endpoint_name.dart';
 import 'package:settle_up/sync/transport/transport.dart';
 
 import '../qa/sync/qa_phone.dart' show SlowConnectTransport;
@@ -83,6 +86,41 @@ final class Phone {
         .timeout(const Duration(seconds: 2));
     return list.firstWhere(match);
   }
+}
+
+/// Records what the engine advertises.
+final class CapturingTransport implements SyncTransport {
+  CapturingTransport(this.inner);
+  final MemoryTransport inner;
+  AdvertiseInfo? info;
+
+  @override
+  TransportKind get kind => inner.kind;
+  @override
+  Future<TransportAvailability> availability() => inner.availability();
+  @override
+  Future<TransportAvailability> requestPermissions() =>
+      inner.requestPermissions();
+  @override
+  Future<void> startAdvertising(AdvertiseInfo info) {
+    this.info = info;
+    return inner.startAdvertising(info);
+  }
+
+  @override
+  Future<void> stopAdvertising() => inner.stopAdvertising();
+  @override
+  Stream<FrameChannel> get inbound => inner.inbound;
+  @override
+  Stream<DiscoveredPeer> discover() => inner.discover();
+  @override
+  Future<FrameChannel> connect(
+    DiscoveredPeer peer, {
+    Duration timeout = const Duration(seconds: 10),
+  }) =>
+      inner.connect(peer, timeout: timeout);
+  @override
+  Future<void> dispose() => inner.dispose();
 }
 
 void main() {
@@ -519,6 +557,50 @@ void main() {
         .timeout(const Duration(seconds: 3));
     expect(empty, isEmpty);
     await carol.dispose();
+  });
+
+  test(
+      'adverts list recently synced groups first, so a phone in more groups '
+      'than Nearby holds keeps advertising them (SYNC-R2-01)', () async {
+    // 30 newer groups push the seed group out of the first 24.
+    for (var i = 0; i < 30; i++) {
+      await priya.phone.ledger.createGroup(NewGroup(
+        name: 'Trip $i',
+        type: GroupType.trip,
+        currency: 'INR',
+        newMemberNames: const ['X'],
+      ));
+    }
+    final capture = CapturingTransport(
+      MemoryTransport(hub, kind: TransportKind.nearby, address: 'b-nearby'),
+    );
+    final host = DefaultSyncEngine(
+      store: priya.phone.ledger,
+      transports: [capture],
+      timings: fastTimings,
+    );
+    addTearDown(host.dispose);
+    Future<bool> advertisesSeed() async {
+      final info = capture.info!;
+      final w = info.tokenWindow!;
+      final mine = await DiscoveryTokens.token(
+        (await priya.phone.ledger.groupKeys())[seed.g]!,
+        w,
+      );
+      final nearby = NearbyEndpointName.tryParse(
+        NearbyEndpointName.of(info).encode(),
+      )!;
+      expect(nearby.moreGroups, isTrue);
+      return nearby.groupTokens.contains(mine);
+    }
+
+    await host.startHosting();
+    expect(await advertisesSeed(), isFalse);
+    await host.stopHosting();
+    await alex.engine.startHosting();
+    await priya.engine.syncWith(await priya.find(alex));
+    await host.startHosting();
+    expect(await advertisesSeed(), isTrue);
   });
 
   test('watchStatus and watchNearby emit the current value first', () async {
