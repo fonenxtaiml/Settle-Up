@@ -308,7 +308,9 @@ class ActivityRow extends ConsumerWidget {
       trailing = TextButton(
         onPressed: () => runGuarded(
           context,
-          () => ref.read(ledgerRepositoryProvider).restoreExpense(expense.id),
+          () => ref
+              .read(ledgerRepositoryProvider)
+              .restoreExpense(expense.id, groupId: expense.groupId),
         ),
         child: const Text(S.restore),
       );
@@ -331,7 +333,9 @@ class ActivityRow extends ConsumerWidget {
           ? (g?.group == null
                 ? null
                 : () => context.push(Routes.group(entry.groupId)))
-          : () => context.push(Routes.expense(expense.id)),
+          : () => context.push(
+              Routes.expense(expense.id, groupId: expense.groupId),
+            ),
     );
   }
 }

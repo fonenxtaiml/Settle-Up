@@ -288,7 +288,9 @@ class _GroupBody extends ConsumerWidget {
                       resolve: g.resolve,
                       unshared: unshared.contains(e.id),
                       possibleDuplicate: duplicates.contains(e.id),
-                      onTap: () => context.push(Routes.expense(e.id)),
+                      onTap: () => context.push(
+                        Routes.expense(e.id, groupId: e.groupId),
+                      ),
                     ),
                 ],
               ],

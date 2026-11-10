@@ -51,7 +51,7 @@ void main() {
     w.push(Routes.group(gid));
     await qaSettle(tester);
     await qaTap(tester, find.text('Groceries at Nature Basket'));
-    expect(w.location, Routes.expense(eid));
+    expect(w.location, Routes.expense(eid, groupId: gid));
 
     await qaTap(tester, find.byTooltip(S.moreOptions));
     await qaTap(tester, find.text(S.deleteExpense));

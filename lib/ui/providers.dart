@@ -129,9 +129,11 @@ final activityProvider =
           ),
     );
 
+/// History of one expense, keyed by (group, expense): entity ids are scoped
+/// by group (SPEC 7.2).
 final expenseHistoryProvider =
-    Provider.family<AsyncValue<List<ActivityEntry>>, ExpenseId>(
-      (ref, expenseId) => ref
+    Provider.family<AsyncValue<List<ActivityEntry>>, (GroupId, ExpenseId)>(
+      (ref, key) => ref
           .watch(ledgerProvider)
           .whenData(
             (s) => ActivityBuilder.historyOf(
@@ -139,7 +141,8 @@ final expenseHistoryProvider =
               state: s.state,
               localDeviceId: s.localDeviceId,
               unsharedOpIds: s.unsharedOpIds,
-              entityId: expenseId,
+              groupId: key.$1,
+              entityId: key.$2,
             ),
           ),
     );
