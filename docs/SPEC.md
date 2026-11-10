@@ -190,7 +190,7 @@ Balances, simplified debts and summaries are **never stored or synced**. They ar
 
 | Directory | May import | Must not import |
 |---|---|---|
-| `lib/core/**` | `dart:core`, `dart:math`, `dart:convert`, `dart:collection`, `dart:typed_data`, `package:meta`, `package:collection`, `package:uuid` | `package:flutter/*`, `dart:io`, `dart:ui`, anything in `lib/data`, `lib/sync`, `lib/ui`, `lib/theme` |
+| `lib/core/**` | `dart:core`, `dart:math`, `dart:convert`, `dart:collection`, `dart:typed_data`, `package:meta`, `package:collection`, `package:uuid`, `package:unorm_dart` (NFKC for names) | `package:flutter/*`, `dart:io`, `dart:ui`, anything in `lib/data`, `lib/sync`, `lib/ui`, `lib/theme` |
 | `lib/data/**` | core, `dart:io`, `sqlite3`, `flutter_secure_storage`, `device_info_plus`, `path`, `path_provider`, `flutter/foundation.dart` | `lib/sync`, `lib/ui`, `lib/theme`, `flutter/material.dart`, `flutter/widgets.dart` |
 | `lib/sync/**` | core, `lib/data/repositories.dart` (interfaces only), `dart:io`, crypto, transport and permission packages | `lib/data/**` other than `repositories.dart`, `lib/ui`, `lib/theme`, `flutter/material.dart` |
 | `lib/theme/**` | `flutter/material.dart`, `google_fonts`, `lib/core` | data, sync, ui |

@@ -461,11 +461,20 @@ void main() {
 
     test('emoji ZWJ sequences survive cleaning and count as one', () async {
       const family = '\u{1F468}\u200D\u{1F469}\u200D\u{1F467}';
-      final id = await phone.ledger.addMember(s.g, displayName: family * 5);
-      expect(phone.state.groups[s.g]!.members[id]!.displayName, family * 5);
-      // 8 code units per family: 40 of them exceed the 4-units-per-char cap.
+      // A name needs a letter or number (DATA-R6-02), so the families
+      // follow one.
+      final id = await phone.ledger.addMember(
+        s.g,
+        displayName: 'A${family * 5}',
+      );
+      expect(
+        phone.state.groups[s.g]!.members[id]!.displayName,
+        'A${family * 5}',
+      );
+      // 8 code units per family: 40 characters of them exceed the
+      // 4-units-per-char cap.
       await expectLater(
-        phone.ledger.addMember(s.g, displayName: family * 41),
+        phone.ledger.addMember(s.g, displayName: 'A${family * 39}'),
         invalidInput,
       );
     });
