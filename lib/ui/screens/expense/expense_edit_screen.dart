@@ -128,7 +128,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final state = snap.state;
 
     if (widget.expenseId != null) {
-      final e = state.expense(widget.expenseId!);
+      final gid = widget.groupId;
+      final e = gid == null
+          ? state.expense(widget.expenseId!)
+          : state.expenseIn(gid, widget.expenseId!);
       if (e == null) return;
       _editing = e;
       final g = state.groups[e.groupId]!;
@@ -509,7 +512,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
           context,
           S.expenseAdded,
           actionLabel: S.undo,
-          onAction: () => ledger.deleteExpense(id),
+          onAction: () => ledger.deleteExpense(id, groupId: draft.groupId),
         );
       }
     });

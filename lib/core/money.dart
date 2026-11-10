@@ -54,8 +54,13 @@ final class Money implements Comparable<Money> {
 
   static Money zero(String currency) => Money(0, currency);
 
-  /// Max absolute amount accepted from user input: 9,999,999.99 (2 digits).
-  static const int maxMinor = 999999999;
+  /// Largest amount the ledger holds, in minor units of any currency:
+  /// 999,999,999.99 with 2 digits (99,999,999,999 JPY, 99,999,999.999 KWD).
+  /// One cap for every currency, set by the overflow budget (SPEC 6.1:
+  /// total x 10,000 basis points stays below 2^53), so low-value currencies
+  /// still hold everyday amounts: Rp 999,999,999.99 is about 60,000 USD
+  /// (QA UIFLOW-R2-04; it was 9,999,999.99, about 630 USD in IDR).
+  static const int maxMinor = 99999999999;
 
   bool get isZero => minor == 0;
   bool get isPositive => minor > 0;

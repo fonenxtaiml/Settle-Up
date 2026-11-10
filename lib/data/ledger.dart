@@ -422,9 +422,18 @@ final class Ledger implements LedgerRepository, SyncStore {
       _fail(LedgerErrorCode.memberNotFound,
           'No member $memberId in ${gs.groupId}');
 
-  Expense _expense(ExpenseId expenseId) =>
-      _reducer.state.expense(expenseId) ??
+  /// The expense [expenseId], only in [groupId] when given (entity ids are
+  /// scoped by group, SPEC 7.2).
+  Expense _expense(ExpenseId expenseId, {GroupId? groupId}) =>
+      (groupId == null
+          ? _reducer.state.expense(expenseId)
+          : _reducer.state.expenseIn(groupId, expenseId)) ??
       _fail(LedgerErrorCode.expenseNotFound, 'No expense $expenseId');
+
+  /// The expense a draft for [groupId] edits: the one in that group, else
+  /// (to report that expenses cannot change group) the id anywhere.
+  Expense _draftTarget(ExpenseId expenseId, GroupId groupId) =>
+      _reducer.state.expenseIn(groupId, expenseId) ?? _expense(expenseId);
 
   /// An id: trimmed and non-empty.
   static String _text(String value, String field) {
@@ -945,7 +954,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   @override
   Future<void> updateExpense(ExpenseId expenseId, ExpenseDraft draft) =>
       _serial(() async {
-        final expense = _expense(expenseId);
+        final expense = _draftTarget(expenseId, draft.groupId);
         if (expense.isPayment) {
           _fail(LedgerErrorCode.invalidInput, 'Use updatePayment');
         }
@@ -961,8 +970,9 @@ final class Ledger implements LedgerRepository, SyncStore {
       });
 
   @override
-  Future<void> deleteExpense(ExpenseId expenseId) => _serial(() async {
-        final expense = _expense(expenseId);
+  Future<void> deleteExpense(ExpenseId expenseId, {GroupId? groupId}) =>
+      _serial(() async {
+        final expense = _expense(expenseId, groupId: groupId);
         _liveGroup(expense.groupId);
         if (expense.isDeleted) return;
         await _commit(_factory.batch()
@@ -970,8 +980,9 @@ final class Ledger implements LedgerRepository, SyncStore {
       });
 
   @override
-  Future<void> restoreExpense(ExpenseId expenseId) => _serial(() async {
-        final expense = _expense(expenseId);
+  Future<void> restoreExpense(ExpenseId expenseId, {GroupId? groupId}) =>
+      _serial(() async {
+        final expense = _expense(expenseId, groupId: groupId);
         _liveGroup(expense.groupId);
         if (!expense.isDeleted) return;
         await _commit(_factory.batch()
@@ -1027,7 +1038,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   @override
   Future<void> updatePayment(ExpenseId expenseId, PaymentDraft draft) =>
       _serial(() async {
-        final expense = _expense(expenseId);
+        final expense = _draftTarget(expenseId, draft.groupId);
         if (!expense.isPayment) {
           _fail(LedgerErrorCode.invalidInput, 'Use updateExpense');
         }

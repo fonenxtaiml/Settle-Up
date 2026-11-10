@@ -23,15 +23,22 @@ import '../common.dart';
 enum _Menu { delete, restore }
 
 class ExpenseDetailScreen extends ConsumerWidget {
-  const ExpenseDetailScreen({super.key, required this.expenseId});
+  const ExpenseDetailScreen({super.key, required this.expenseId, this.groupId});
 
   final ExpenseId expenseId;
+
+  /// The expense's group, when the caller knows it (ids are scoped by
+  /// group, SPEC 7.2). Null = look the id up in any group.
+  final GroupId? groupId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final snap = ref.watch(ledgerProvider).value;
     final profile = ref.watch(profileProvider).value;
-    final e = snap?.state.expense(expenseId);
+    final gid = groupId;
+    final e = gid == null
+        ? snap?.state.expense(expenseId)
+        : snap?.state.expenseIn(gid, expenseId);
     if (snap == null || profile == null || e == null) {
       return Scaffold(
         appBar: screenAppBar(
@@ -63,20 +70,26 @@ class ExpenseDetailScreen extends ConsumerWidget {
         confirmLabel: S.delete,
       );
       if (!ok || !context.mounted) return;
-      final done = await runGuarded(context, () => ledger.deleteExpense(e.id));
+      final done = await runGuarded(
+        context,
+        () => ledger.deleteExpense(e.id, groupId: e.groupId),
+      );
       if (!done || !context.mounted) return;
       Haptics.medium(context);
       showSnack(
         context,
         S.expenseDeleted,
         actionLabel: S.undo,
-        onAction: () => ledger.restoreExpense(e.id),
+        onAction: () => ledger.restoreExpense(e.id, groupId: e.groupId),
       );
       if (context.canPop()) context.pop();
     }
 
     Future<void> restore() async {
-      final done = await runGuarded(context, () => ledger.restoreExpense(e.id));
+      final done = await runGuarded(
+        context,
+        () => ledger.restoreExpense(e.id, groupId: e.groupId),
+      );
       if (done && context.mounted) showSnack(context, S.expenseRestored);
     }
 
@@ -116,7 +129,8 @@ class ExpenseDetailScreen extends ConsumerWidget {
         actions: [
           if (!e.isDeleted)
             IconButton(
-              onPressed: () => context.push(Routes.editExpense(e.id)),
+              onPressed: () =>
+                  context.push(Routes.editExpense(e.id, groupId: e.groupId)),
               tooltip: S.edit,
               icon: const Icon(Icons.edit_outlined),
             ),
@@ -409,7 +423,9 @@ class _History extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final entries = ref.watch(expenseHistoryProvider(expense.id)).value;
+    final entries = ref
+        .watch(expenseHistoryProvider((expense.groupId, expense.id)))
+        .value;
     if (entries == null || entries.isEmpty) return const SizedBox.shrink();
     final names = memberNames(group, me);
     final now = ref.watch(clockProvider)();
