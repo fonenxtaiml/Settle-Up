@@ -18,6 +18,7 @@ import 'package:meta/meta.dart';
 
 import '../../../core/models.dart';
 import '../../crypto/tokens.dart';
+import '../../name_cut.dart';
 import '../transport.dart';
 
 @immutable
@@ -53,7 +54,8 @@ final class NearbyEndpointName {
   /// Most tokens advertised.
   static const int maxTokens = 24;
 
-  /// Device names are cut to this many Unicode code points.
+  /// Device names are cut to this many Unicode code points (and to fit
+  /// [maxBytes]), on a character boundary (DATA-R5-01).
   static const int maxNameRunes = 24;
 
   /// Upper bound for the encoded endpoint info (Nearby allows 131 bytes).
@@ -79,12 +81,14 @@ final class NearbyEndpointName {
     final tokens = '${kept.tokens.join()}$more';
     final id = DiscoveryTokens.isAdvertId(advertId) ? advertId : '';
     final tag = windowTag == null ? '' : DiscoveryTokens.windowTag(windowTag!);
-    var runes = deviceName.runes.take(maxNameRunes).toList();
-    while (true) {
-      final s = '$version|$id|$tag|${String.fromCharCodes(runes)}|$tokens';
-      if (runes.isEmpty || utf8.encode(s).length <= maxBytes) return s;
-      runes = runes.sublist(0, runes.length - 1);
-    }
+    String layout(String name) => '$version|$id|$tag|$name|$tokens';
+    final name = cutName(
+      deviceName,
+      (s) =>
+          s.runes.length <= maxNameRunes &&
+          utf8.encode(layout(s)).length <= maxBytes,
+    );
+    return layout(name);
   }
 
   /// Null when [name] is not a Settle Up endpoint name of this layout.

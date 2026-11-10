@@ -13,12 +13,12 @@ import 'dart:convert';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:characters/characters.dart';
 import 'package:cryptography/cryptography.dart';
 import 'package:meta/meta.dart';
 
 import '../../core/ids.dart';
 import '../../core/models.dart';
+import '../name_cut.dart';
 import '../protocol/codec.dart';
 import '../protocol/messages.dart';
 import 'aead.dart';
@@ -253,13 +253,7 @@ final class HandshakeKeys {
 /// [name] as HELLO carries it: at most [kMaxDeviceNameLength] UTF-16 units
 /// (what the peer accepts), cut on a character boundary so a letter outside
 /// the BMP or a cluster is never split (DATA-R4-03). A split surrogate pair
-/// would reach the peer as U+FFFD.
-String helloDeviceName(String name) {
-  if (name.length <= kMaxDeviceNameLength) return name;
-  final out = StringBuffer();
-  for (final ch in name.characters) {
-    if (out.length + ch.length > kMaxDeviceNameLength) break;
-    out.write(ch);
-  }
-  return out.toString();
-}
+/// would reach the peer as U+FFFD. A first character longer than the limit
+/// is cut by code points rather than sent as an empty name (DATA-R5-02).
+String helloDeviceName(String name) =>
+    cutName(name, (s) => s.length <= kMaxDeviceNameLength);
