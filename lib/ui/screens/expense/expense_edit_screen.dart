@@ -1068,21 +1068,65 @@ class _InputSplitRow extends StatelessWidget {
     final titleStyle = included
         ? theme.textTheme.titleSmall!
         : theme.textTheme.titleSmall!.copyWith(color: scheme.onSurfaceVariant);
-    final large = isLargeText(context);
+    final subStyle = theme.textTheme.bodySmall!.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(name, style: titleStyle),
-        if (sub.isNotEmpty)
-          Text(
-            sub,
-            style: theme.textTheme.bodySmall!.copyWith(
-              color: scheme.onSurfaceVariant,
-            ),
-          ),
+        if (sub.isNotEmpty) Text(sub, style: subStyle),
       ],
     );
+    final inputWidth = switch (input) {
+      final _UnitField f => f.widthIn(context),
+      _SharesStepper() => _SharesStepper.width,
+      _ => 112.0,
+    };
+    // The input goes under the name at large text, and earlier whenever
+    // the name's longest word or an amount in the subline would not fit
+    // beside it (VISUAL-R4-03): an amount is never broken over two lines.
+    final textNeeds = [
+      _longestWord(context, name, titleStyle),
+      _longestWord(context, sub, subStyle),
+    ].reduce((a, b) => a > b ? a : b);
+    return LayoutBuilder(
+      builder: (context, c) {
+        const fixed =
+            48 + // checkbox
+            Sizes.avatarSmall +
+            Space.md +
+            Space.sm +
+            16; // end padding
+        final large =
+            isLargeText(context) || c.maxWidth - fixed - inputWidth < textNeeds;
+        return _row(context, large: large, text: text);
+      },
+    );
+  }
+
+  static double _longestWord(BuildContext context, String s, TextStyle st) {
+    var widest = 0.0;
+    for (final word in s.split(RegExp(r'\s+'))) {
+      if (word.isEmpty) continue;
+      final tp = TextPainter(
+        text: TextSpan(text: word, style: st),
+        textDirection: Directionality.of(context),
+        textScaler: MediaQuery.textScalerOf(context),
+        maxLines: 1,
+      )..layout();
+      if (tp.width > widest) widest = tp.width;
+      tp.dispose();
+    }
+    return widest;
+  }
+
+  Widget _row(
+    BuildContext context, {
+    required bool large,
+    required Widget text,
+  }) {
     return ConstrainedBox(
       constraints: const BoxConstraints(minHeight: 56),
       child: Padding(
@@ -1151,42 +1195,69 @@ class _UnitField extends StatelessWidget {
   final String? hint;
   final bool signed;
 
+  /// The width that shows the whole value with its symbol (at least the
+  /// design's 112 dp), so no digit scrolls out of sight (VISUAL-R4-03).
+  double widthIn(BuildContext context) {
+    final style = AppType.amount(context);
+    final value = controller.text.isEmpty ? (hint ?? '0') : controller.text;
+    final tp = TextPainter(
+      text: TextSpan(
+        text: '${prefix ?? ''}$value${suffix ?? ''}',
+        style: style,
+      ),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: 1,
+    )..layout();
+    // Content padding (10 + 10), the caret and its gap, and a little
+    // room for the next key.
+    final w = tp.width + 20 + 12;
+    tp.dispose();
+    return w < 112 ? 112 : w;
+  }
+
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final scheme = theme.colorScheme;
-    return SizedBox(
-      width: 112,
-      child: TextField(
-        controller: controller,
-        enabled: enabled,
-        onChanged: onChanged,
-        textAlign: TextAlign.end,
-        keyboardType: TextInputType.numberWithOptions(
-          decimal: true,
-          signed: signed,
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      final w = widthIn(context);
+      return SizedBox(
+        width: c.maxWidth.isFinite && c.maxWidth < w ? c.maxWidth : w,
+        child: _field(context),
+      );
+    },
+  );
+
+  Widget _field(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    return TextField(
+      controller: controller,
+      enabled: enabled,
+      onChanged: onChanged,
+      textAlign: TextAlign.end,
+      keyboardType: TextInputType.numberWithOptions(
+        decimal: true,
+        signed: signed,
+      ),
+      inputFormatters: [
+        UnitInputFormatter(read: read, write: write, signed: signed),
+      ],
+      style: AppType.amount(context),
+      decoration: InputDecoration(
+        isDense: true,
+        hintText: hint ?? '0',
+        labelText: null,
+        semanticCounterText: label,
+        prefixText: prefix,
+        suffixText: suffix,
+        filled: true,
+        fillColor: scheme.surfaceContainer,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 10,
+          vertical: 10,
         ),
-        inputFormatters: [
-          UnitInputFormatter(read: read, write: write, signed: signed),
-        ],
-        style: AppType.amount(context),
-        decoration: InputDecoration(
-          isDense: true,
-          hintText: hint ?? '0',
-          labelText: null,
-          semanticCounterText: label,
-          prefixText: prefix,
-          suffixText: suffix,
-          filled: true,
-          fillColor: scheme.surfaceContainer,
-          contentPadding: const EdgeInsets.symmetric(
-            horizontal: 10,
-            vertical: 10,
-          ),
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(Radii.md),
-            borderSide: BorderSide.none,
-          ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(Radii.md),
+          borderSide: BorderSide.none,
         ),
       ),
     );
@@ -1204,6 +1275,9 @@ class _SharesStepper extends StatelessWidget {
   });
 
   static const max = 1000;
+
+  /// Two 48 dp buttons around the 36 dp number.
+  static const double width = 48 + 36 + 48;
 
   final int value;
   final bool enabled;
