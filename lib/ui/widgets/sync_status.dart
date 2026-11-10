@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
 import '../format/dates.dart';
+import 'button_semantics.dart';
 import 'kit_layout.dart';
 import 'kit_strings.dart';
 import 'list_section.dart';
@@ -73,42 +74,52 @@ class SyncStatusChip extends StatelessWidget {
     final iconColor = state == SyncChipState.failed
         ? scheme.error
         : scheme.onSurface;
-    return Semantics(
-      button: onTap != null,
-      label: label,
-      excludeSemantics: true,
-      child: Material(
-        color: scheme.surfaceContainer,
-        shape: const StadiumBorder(),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const StadiumBorder(),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: Sizes.buttonSmall),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 14, 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (state == SyncChipState.inProgress)
-                    const _Spinner()
-                  else
-                    Icon(_icon(state), size: 18, color: iconColor),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall!.copyWith(fontSize: 14),
-                    ),
+    final Widget pill = Material(
+      color: scheme.surfaceContainer,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const StadiumBorder(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: Sizes.buttonSmall),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 14, 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (state == SyncChipState.inProgress)
+                  const _Spinner()
+                else
+                  Icon(_icon(state), size: 18, color: iconColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall!.copyWith(fontSize: 14),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
+    );
+    return ButtonSemantics(
+      alwaysButton: false,
+      label: label,
+      onTap: onTap,
+      // A tappable 36 dp pill sits in a 48 dp tap target (VISUAL-R9-01).
+      child: onTap == null
+          ? pill
+          : TapTargetPadding(
+              padding: const EdgeInsets.symmetric(
+                vertical: (Sizes.minTap - Sizes.buttonSmall) / 2,
+              ),
+              onTap: onTap,
+              child: pill,
+            ),
     );
   }
 }
