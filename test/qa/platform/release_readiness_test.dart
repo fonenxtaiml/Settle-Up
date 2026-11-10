@@ -307,7 +307,33 @@ void main() {
             'logger.warn is filtered out by flutter build -q; the '
             'tester never sees that the APK is debug-signed',
       );
-    }, skip: 'PLATFORM-R2-02: logger.warn is hidden by flutter build -q');
+    });
+
+    test('PLATFORM-R2-02: the debug-key banner is never logged below QUIET '
+        'and is repeated after the APK/AAB is packaged', () {
+      final g = _read(_appGradle);
+      expect(
+        g,
+        isNot(contains('logger.warn(')),
+        reason: 'flutter build -q hides WARN',
+      );
+      expect(
+        g,
+        isNot(contains('logger.lifecycle(')),
+        reason: 'flutter build -q hides LIFECYCLE',
+      );
+      expect(
+        g,
+        isNot(contains('logger.info(')),
+        reason: 'flutter build -q hides INFO',
+      );
+      final tail = g.substring(g.indexOf('if (!hasReleaseKey) {'));
+      expect(tail, contains('"assembleRelease"'));
+      expect(tail, contains('"bundleRelease"'));
+      expect(tail, contains('doLast { logger.quiet(debugKeyFallbackBanner) }'));
+      expect(g, contains('DEBUG key'));
+      expect(_read('README.md'), contains('QUIET level'));
+    });
 
     test('device-to-device and cloud rules also exclude the device_* '
         'domains (direct boot storage)', () {
