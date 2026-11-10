@@ -311,7 +311,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R4-01: the Sync tether overflows its row at 320-340 dp '
     'between 1.4x and 1.59x',
-    skip: true, // QA VISUAL-R4-01
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -339,7 +338,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R4-02: the expense amount field hides part of a realistic '
     'amount (₹1,20,000.50 at 320 dp 1.0x, 360 dp 1.3x)',
-    skip: true, // QA VISUAL-R4-02
     (tester) async {
       final problems = <String>[];
       for (final build in [VisualWorld.realistic, VisualWorld.longNames]) {
@@ -391,7 +389,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R4-03: expense editor split rows break the share amount over '
     'two lines and the 112 dp share field hides digits',
-    skip: true, // QA VISUAL-R4-03
     (tester) async {
       late VisualWorld w;
       await tester.runAsync(() async => w = await VisualWorld.realistic());
@@ -437,7 +434,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R4-04: expense detail "Who paid / Who owes" rows squeeze the '
     'name below one word, to 0 dp, and overflow with huge amounts',
-    skip: true, // QA VISUAL-R4-04
     (tester) async {
       final problems = <String>[];
       for (final (build, variants) in [
@@ -472,7 +468,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R4-05: Home and Person balance rows squeeze the group name '
     'below one word at 320-360 dp, 1.3x to 1.59x',
-    skip: true, // QA VISUAL-R4-05
     (tester) async {
       final problems = <String>[];
       for (final (build, variants) in [
