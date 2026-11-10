@@ -12,6 +12,7 @@ import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/data/repositories.dart';
+import 'package:settle_up/data/text_rules.dart';
 
 import '../../sync/support/phone.dart';
 
@@ -121,135 +122,127 @@ void main() {
     });
   });
 
-  group(
-    'SPEC 5.16 limits enforced by the Ledger',
-    () {
-      test('group name over 60 characters', () async {
-        await expectLater(
-          phone.ledger.createGroup(newGroup('g' * 61)),
-          invalidInput,
-        );
-        await expectLater(
-          phone.ledger.updateGroup(s.g, GroupPatch(name: 'g' * 61)),
-          invalidInput,
-        );
-      });
-
-      test('member display name over 40 characters', () async {
-        await expectLater(
-          phone.ledger.createGroup(newGroup('Trip', members: ['m' * 41])),
-          invalidInput,
-        );
-        await expectLater(
-          phone.ledger.addMember(s.g, displayName: 'm' * 41),
-          invalidInput,
-        );
-        await expectLater(
-          phone.ledger.renameMember(s.g, s.b, 'm' * 41),
-          invalidInput,
-        );
-      });
-
-      test('description over 120 characters', () async {
-        await expectLater(
-          phone.ledger.addExpense(draft(description: 'd' * 121)),
-          invalidInput,
-        );
-      });
-
-      test('notes over 1000 characters', () async {
-        await expectLater(
-          phone.ledger.addExpense(draft(notes: 'n' * 1001)),
-          invalidInput,
-        );
-      });
-
-      test('a 51st active member', () async {
-        for (var i = 0; i < 48; i++) {
-          await phone.ledger.addMember(s.g, displayName: 'P$i');
-        }
-        expect(phone.state.groups[s.g]!.activeMembers, hasLength(50));
-        await expectLater(
-          phone.ledger.addMember(s.g, displayName: 'One too many'),
-          invalidInput,
-        );
-      });
-
-      test(
-        'a megabyte description is refused, not written to the op log',
-        () async {
-          final before = phone.opCount(s.g);
-          await expectLater(
-            phone.ledger.addExpense(draft(description: 'x' * (1 << 20))),
-            invalidInput,
-          );
-          expect(phone.opCount(s.g), before);
-        },
+  group('SPEC 5.16 limits enforced by the Ledger', () {
+    test('group name over 60 characters', () async {
+      await expectLater(
+        phone.ledger.createGroup(newGroup('g' * 61)),
+        invalidInput,
       );
-    },
-  );
+      await expectLater(
+        phone.ledger.updateGroup(s.g, GroupPatch(name: 'g' * 61)),
+        invalidInput,
+      );
+    });
 
-  group(
-    'control and bidi override characters',
-    () {
-      // U+202E RIGHT-TO-LEFT OVERRIDE makes "Bob\u202Eevil" render as
-      // "Bobvile" and flips the words after it in the same line, e.g.
-      // "{name} paid {name}" in the activity feed.
-      const hostile = <String, String>{
-        'RLO': 'Bob\u202E5000 diap',
-        'LRO': '\u202DAlex',
-        'RLI': 'Al\u2067ex',
-        'NUL': 'Al\u0000ex',
-        'BEL': 'Al\u0007ex',
-        'newline inside': 'Al\nex',
-        'zero width only': '\u200B\u200B',
-      };
-      for (final MapEntry(key: what, value: name) in hostile.entries) {
-        test('member name with $what is refused or cleaned', () async {
+    test('member display name over 40 characters', () async {
+      await expectLater(
+        phone.ledger.createGroup(newGroup('Trip', members: ['m' * 41])),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.addMember(s.g, displayName: 'm' * 41),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.renameMember(s.g, s.b, 'm' * 41),
+        invalidInput,
+      );
+    });
+
+    test('description over 120 characters', () async {
+      await expectLater(
+        phone.ledger.addExpense(draft(description: 'd' * 121)),
+        invalidInput,
+      );
+    });
+
+    test('notes over 1000 characters', () async {
+      await expectLater(
+        phone.ledger.addExpense(draft(notes: 'n' * 1001)),
+        invalidInput,
+      );
+    });
+
+    test('a 51st active member', () async {
+      for (var i = 0; i < 48; i++) {
+        await phone.ledger.addMember(s.g, displayName: 'P$i');
+      }
+      expect(phone.state.groups[s.g]!.activeMembers, hasLength(50));
+      await expectLater(
+        phone.ledger.addMember(s.g, displayName: 'One too many'),
+        invalidInput,
+      );
+    });
+
+    test(
+      'a megabyte description is refused, not written to the op log',
+      () async {
+        final before = phone.opCount(s.g);
+        await expectLater(
+          phone.ledger.addExpense(draft(description: 'x' * (1 << 20))),
+          invalidInput,
+        );
+        expect(phone.opCount(s.g), before);
+      },
+    );
+  });
+
+  group('control and bidi override characters', () {
+    // U+202E RIGHT-TO-LEFT OVERRIDE makes "Bob\u202Eevil" render as
+    // "Bobvile" and flips the words after it in the same line, e.g.
+    // "{name} paid {name}" in the activity feed.
+    const hostile = <String, String>{
+      'RLO': 'Bob\u202E5000 diap',
+      'LRO': '\u202DAlex',
+      'RLI': 'Al\u2067ex',
+      'NUL': 'Al\u0000ex',
+      'BEL': 'Al\u0007ex',
+      'newline inside': 'Al\nex',
+      'zero width only': '\u200B\u200B',
+    };
+    for (final MapEntry(key: what, value: name) in hostile.entries) {
+      test('member name with $what is refused or cleaned', () async {
+        try {
+          final id = await phone.ledger.addMember(s.g, displayName: name);
+          final stored = phone.state.groups[s.g]!.members[id]!.displayName;
+          expect(
+            stored.runes.any(_isControlOrBidi),
+            isFalse,
+            reason: 'stored ${stored.runes.toList()}',
+          );
+          expect(stored.trim(), isNotEmpty);
+        } on LedgerException catch (e) {
+          expect(e.code, LedgerErrorCode.invalidInput);
+        }
+      });
+    }
+
+    test(
+      'group name and description with RLO are refused or cleaned',
+      () async {
+        Future<String> storedGroupName() async {
+          final g = await phone.ledger.createGroup(newGroup('Trip\u202Epirt'));
+          return phone.state.groups[g]!.group!.name;
+        }
+
+        Future<String> storedDescription() async {
+          final id = await phone.ledger.addExpense(
+            draft(description: 'Taxi\u202E00.005'),
+          );
+          return phone.state.groups[s.g]!.expenses[id]!.description;
+        }
+
+        for (final read in [storedGroupName, storedDescription]) {
           try {
-            final id = await phone.ledger.addMember(s.g, displayName: name);
-            final stored = phone.state.groups[s.g]!.members[id]!.displayName;
-            expect(
-              stored.runes.any(_isControlOrBidi),
-              isFalse,
-              reason: 'stored ${stored.runes.toList()}',
-            );
-            expect(stored.trim(), isNotEmpty);
+            final v = await read();
+            expect(v.runes.any(_isControlOrBidi), isFalse);
           } on LedgerException catch (e) {
             expect(e.code, LedgerErrorCode.invalidInput);
           }
-        });
-      }
-
-      test(
-        'group name and description with RLO are refused or cleaned',
-        () async {
-          Future<String> storedGroupName() async {
-            final g = await phone.ledger.createGroup(
-              newGroup('Trip\u202Epirt'),
-            );
-            return phone.state.groups[g]!.group!.name;
-          }
-
-          Future<String> storedDescription() async {
-            final id = await phone.ledger.addExpense(
-              draft(description: 'Taxi\u202E00.005'),
-            );
-            return phone.state.groups[s.g]!.expenses[id]!.description;
-          }
-
-          for (final read in [storedGroupName, storedDescription]) {
-            try {
-              final v = await read();
-              expect(v.runes.any(_isControlOrBidi), isFalse);
-            } on LedgerException catch (e) {
-              expect(e.code, LedgerErrorCode.invalidInput);
-            }
-          }
-        },
-      );
-    },
-  );
+        }
+      },
+    );
+  });
 
   group('CSV formula injection', () {
     Future<String> csvWith({
@@ -451,12 +444,18 @@ void main() {
     }
 
     test('U+2028 / U+2029 inside a one-line name become spaces', () async {
-      final id = await phone.ledger.addMember(s.g, displayName: 'Al\u2028ex\u2029Z');
+      final id = await phone.ledger.addMember(
+        s.g,
+        displayName: 'Al\u2028ex\u2029Z',
+      );
       expect(phone.state.groups[s.g]!.members[id]!.displayName, 'Al ex Z');
     });
 
     test('an Arabic letter mark U+061C and LRM/RLM are dropped', () async {
-      final id = await phone.ledger.addMember(s.g, displayName: '\u061CBob\u200E\u200F');
+      final id = await phone.ledger.addMember(
+        s.g,
+        displayName: '\u061CBob\u200E\u200F',
+      );
       expect(phone.state.groups[s.g]!.members[id]!.displayName, 'Bob');
     });
 
@@ -467,6 +466,53 @@ void main() {
       // 8 code units per family: 40 of them exceed the 4-units-per-char cap.
       await expectLater(
         phone.ledger.addMember(s.g, displayName: family * 41),
+        invalidInput,
+      );
+    });
+  });
+
+  group('round 3: default-ignorable code points', () {
+    // SECURITY-R3-02. TextRules.isBlank lists the assigned invisible
+    // characters but not the rest of Unicode's Default_Ignorable_Code_Point
+    // ranges (U+2065, U+FFF0..FFF8, U+E0080..E00FF, U+E01F0..E0FFF). Text
+    // shaping (HarfBuzz, as Flutter uses) draws those as nothing, so a
+    // name made only of them is invisible. The remote check uses the same
+    // isBlank, so peers can send such names too.
+    const invisible = <String, String>{
+      'U+2065': '\u2065',
+      'U+FFF0': '\uFFF0\uFFF0',
+      'U+E0080': '\u{E0080}',
+      'U+E01F0': '\u{E01F0}',
+    };
+    for (final MapEntry(key: what, value: name) in invisible.entries) {
+      test('a member name of only $what is refused', () async {
+        expect(TextRules.isBlank(name), isTrue, reason: 'remote check');
+        await expectLater(
+          phone.ledger.addMember(s.g, displayName: name),
+          invalidInput,
+        );
+      }, skip: 'SECURITY-R3-02');
+    }
+
+    test('visible look-alikes of blank stay allowed', () async {
+      // Guards the fix: an object replacement character, a lone combining
+      // mark and a letter after a format control all draw something.
+      for (final name in ['\uFFFC', '\u0300', '\u{13430}x']) {
+        expect(TextRules.isBlank(name), isFalse, reason: name.runes.toString());
+      }
+    });
+
+    test('local rename paths refuse an invisible-only name', () async {
+      await expectLater(
+        phone.ledger.renameMember(s.g, s.b, '\u3164'),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.updateGroup(s.g, const GroupPatch(name: '\u2800')),
+        invalidInput,
+      );
+      await expectLater(
+        phone.ledger.addExpense(draft(description: '\u115F')),
         invalidInput,
       );
     });

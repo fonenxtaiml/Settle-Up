@@ -290,21 +290,18 @@ void main() {
       },
     );
 
-    test(
-      'an earlier-stamped op for an expense id of another group cannot hide '
-      'it from its own group',
-      () async {
-        final other = await priya.seedGroup(expenses: 1, name: 'Private');
-        final target = priya.state.groups[other.g]!.expenses.values.single;
-        await crossGroupUpdate(other, target.id, 1);
-        final after = priya.state.groups[other.g]!.expenses[target.id];
-        expect(
-          after,
-          isNotNull,
-          reason: 'the Goa trip op took ownership of the Private expense',
-        );
-      },
-    );
+    test('an earlier-stamped op for an expense id of another group cannot hide '
+        'it from its own group', () async {
+      final other = await priya.seedGroup(expenses: 1, name: 'Private');
+      final target = priya.state.groups[other.g]!.expenses.values.single;
+      await crossGroupUpdate(other, target.id, 1);
+      final after = priya.state.groups[other.g]!.expenses[target.id];
+      expect(
+        after,
+        isNotNull,
+        reason: 'the Goa trip op took ownership of the Private expense',
+      );
+    });
   });
 
   group('counters and forged authors', () {
@@ -326,85 +323,75 @@ void main() {
       await expectStillSyncs();
     });
 
-    test(
-      'an op forged with this phone own device id and a huge counter cannot '
-      'break the phone later ops',
-      () async {
-        final (evil, result) = await attack();
-        // Max int64: the next local counter wraps to a negative number.
-        await sendRawOps(evil, {
-          'g': seed.g,
-          'batch': 1,
-          'total': 1,
-          'ops': [
-            expenseJson(
-              id: 'forged-own',
-              device: priya.deviceId,
-              counter: 0x7FFFFFFFFFFFFFFF,
-            ),
-          ],
-          'more': false,
-        });
-        final error = await errorFrom(evil);
-        await evil.close();
-        await result;
-        // Expected: rejected; this phone is the only author of its id.
-        expect(error?.code, ErrorCodes.badOp);
-        // And in any case the phone must keep writing valid ops.
-        await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
-        final mine = priya
-            .opsOf(seed.g)
-            .where((o) => o.deviceId == priya.deviceId)
-            .toList();
-        expect(
-          mine.every((o) => o.counter >= 1),
-          isTrue,
-          reason: 'counters: ${mine.map((o) => o.counter).toList()}',
-        );
-        final (ri, rr) = await syncPair(priya, alex);
-        expect(ri.isSuccess, isTrue, reason: ri.message);
-        expect(rr.isSuccess, isTrue, reason: rr.message);
-        // Today the wrapped (negative) counter is never above any version
-        // vector, so the new expense silently never leaves this phone.
-        expect(alex.canonical, priya.canonical);
-      },
-    );
+    test('an op forged with this phone own device id and a huge counter cannot '
+        'break the phone later ops', () async {
+      final (evil, result) = await attack();
+      // Max int64: the next local counter wraps to a negative number.
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [
+          expenseJson(
+            id: 'forged-own',
+            device: priya.deviceId,
+            counter: 0x7FFFFFFFFFFFFFFF,
+          ),
+        ],
+        'more': false,
+      });
+      final error = await errorFrom(evil);
+      await evil.close();
+      await result;
+      // Expected: rejected; this phone is the only author of its id.
+      expect(error?.code, ErrorCodes.badOp);
+      // And in any case the phone must keep writing valid ops.
+      await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+      final mine = priya
+          .opsOf(seed.g)
+          .where((o) => o.deviceId == priya.deviceId)
+          .toList();
+      expect(
+        mine.every((o) => o.counter >= 1),
+        isTrue,
+        reason: 'counters: ${mine.map((o) => o.counter).toList()}',
+      );
+      final (ri, rr) = await syncPair(priya, alex);
+      expect(ri.isSuccess, isTrue, reason: ri.message);
+      expect(rr.isSuccess, isTrue, reason: rr.message);
+      // Today the wrapped (negative) counter is never above any version
+      // vector, so the new expense silently never leaves this phone.
+      expect(alex.canonical, priya.canonical);
+    });
 
-    test(
-      'an op forged with this phone own device id and a counter gap leaves '
-      'every later local change unshared forever',
-      () async {
-        final (evil, result) = await attack();
-        await sendRawOps(evil, {
-          'g': seed.g,
-          'batch': 1,
-          'total': 1,
-          'ops': [
-            expenseJson(
-              id: 'forged-gap',
-              device: priya.deviceId,
-              counter: 1000,
-            ),
-          ],
-          'more': false,
-        });
-        await errorFrom(evil);
-        await evil.close();
-        await result;
-        await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
-        final (ri, rr) = await syncPair(priya, alex);
-        expect(ri.isSuccess && rr.isSuccess, isTrue);
-        expect(priya.canonical, alex.canonical);
-        // Alex holds everything Priya wrote, so nothing is unshared.
-        expect(
-          priya.snapshot.unsharedCounts,
-          isEmpty,
-          reason:
-              'Priya next counter jumped past the forged 1000, so her '
-              'contiguous version vector never covers her own ops',
-        );
-      },
-    );
+    test('an op forged with this phone own device id and a counter gap leaves '
+        'every later local change unshared forever', () async {
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [
+          expenseJson(id: 'forged-gap', device: priya.deviceId, counter: 1000),
+        ],
+        'more': false,
+      });
+      await errorFrom(evil);
+      await evil.close();
+      await result;
+      await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+      final (ri, rr) = await syncPair(priya, alex);
+      expect(ri.isSuccess && rr.isSuccess, isTrue);
+      expect(priya.canonical, alex.canonical);
+      // Alex holds everything Priya wrote, so nothing is unshared.
+      expect(
+        priya.snapshot.unsharedCounts,
+        isEmpty,
+        reason:
+            'Priya next counter jumped past the forged 1000, so her '
+            'contiguous version vector never covers her own ops',
+      );
+    });
   });
 
   group('sizes', () {
@@ -799,7 +786,10 @@ void main() {
       // SECURITY-R2-04. HELLO deviceName (and the name in adverts and
       // connect links) is peer-controlled and only length-checked. It is
       // shown in the nearby list, the session screen and Sync history.
-      final spoof = await TestPhone.create('c', deviceName: 'Alex\u202E5000 diap');
+      final spoof = await TestPhone.create(
+        'c',
+        deviceName: 'Alex\u202E5000 diap',
+      );
       addTearDown(spoof.close);
       await spoof.ledger.registerJoinedGroup(
         seed.g,
@@ -822,6 +812,215 @@ void main() {
 
     test('a remote member name with an RLO is refused', () async {
       expect(await remoteMemberName('Bob\u202E5000 diap'), isNull);
+    });
+  });
+
+  group('round 3: field types', () {
+    // SECURITY-R3-01. TextRules.remoteProblem checks the length of known
+    // text fields only when they are strings, and the strings inside known
+    // token fields, but not the types. The reducer then drops any entity
+    // whose required field has the wrong type (materialize.dart _str,
+    // _bool, _date return null), so one update op from any key holder,
+    // with a later HLC, makes the whole group, a member or an expense
+    // vanish on every phone it syncs to. No activity line says why, and the
+    // UI has no way back (the group is not shown, so it cannot be renamed).
+    Map<String, Object?> updateOf(
+      Operation target,
+      Map<String, Object?> payload,
+    ) => {
+      ...target.toJson(),
+      'id': 'retype-1',
+      'kind': OpKind.update.name,
+      'deviceId': mallory,
+      'counter': 1,
+      'hlc': Hlc(target.hlc.millis + 1000, 0, mallory).encode(),
+      'payload': payload,
+    };
+
+    Future<ErrorMessage?> sendOne(Map<String, Object?> op) async {
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [op],
+        'more': false,
+      });
+      final error = await errorFrom(evil);
+      await evil.close();
+      await result;
+      return error;
+    }
+
+    final groupCases = <String, Map<String, Object?>>{
+      'a number as the name': {GroupFields.name: 7},
+      'null as the name': {GroupFields.name: null},
+      'a list as the name': {
+        GroupFields.name: ['Goa trip'],
+      },
+      'a string as simplifyDebts': {GroupFields.simplifyDebts: 'yes'},
+      'a string as createdAt': {GroupFields.createdAt: 'now'},
+      'an out-of-range createdAt': {GroupFields.createdAt: 1 << 60},
+      'a map as the currency': {
+        GroupFields.currency: {'a': 'b'},
+      },
+    };
+    for (final MapEntry(key: what, value: payload) in groupCases.entries) {
+      test(
+        'a group update with $what is refused and the group stays',
+        () async {
+          final groupOp = alex
+              .opsOf(seed.g)
+              .firstWhere((o) => o.entityType == EntityType.group);
+          final error = await sendOne(updateOf(groupOp, payload));
+          expect(
+            priya.state.visibleGroups.map((g) => g.groupId),
+            contains(seed.g),
+            reason: 'one op hid the whole group',
+          );
+          expect(error?.code, ErrorCodes.badOp);
+          expect(
+            priya.opsOf(seed.g).where((o) => o.deviceId == mallory),
+            isEmpty,
+          );
+          await expectStillSyncs();
+        },
+        skip: 'SECURITY-R3-01',
+      );
+    }
+
+    final entityCases = <String, (EntityType, Map<String, Object?>)>{
+      'a number as a member displayName': (
+        EntityType.member,
+        {MemberFields.displayName: 42},
+      ),
+      'a number as a member personId': (
+        EntityType.member,
+        {MemberFields.personId: 1},
+      ),
+      'a list as an expense description': (
+        EntityType.expense,
+        {
+          ExpenseFields.description: ['Dinner'],
+        },
+      ),
+      'a string as an expense money block': (
+        EntityType.expense,
+        {ExpenseFields.money: 'x'},
+      ),
+    };
+    for (final MapEntry(key: what, value: (type, payload))
+        in entityCases.entries) {
+      test('an update with $what is refused and the entity stays', () async {
+        final target = alex
+            .opsOf(seed.g)
+            .firstWhere((o) => o.entityType == type);
+        int count() {
+          final gs = priya.state.groups[seed.g]!;
+          return type == EntityType.member
+              ? gs.members.length
+              : gs.expenses.length;
+        }
+
+        final before = count();
+        final error = await sendOne(updateOf(target, payload));
+        expect(count(), before, reason: 'one op hid ${target.entityId}');
+        expect(error?.code, ErrorCodes.badOp);
+      }, skip: 'SECURITY-R3-01');
+    }
+
+    test('padding inside a known money block is refused', () async {
+      // Same gap: the unknown-field budget (TextRules.maxUnknownUnits) does
+      // not apply inside known token fields, so a money block may carry
+      // extra keys and long lists up to the 16 Ki-unit op cap. The expense
+      // still shows (MoneyBlock.fromJson ignores the extra key).
+      final template = alex.opsOf(seed.g).last;
+      final money = Map<String, Object?>.from(
+        template.payload[ExpenseFields.money]! as Map,
+      );
+      final error = await sendOne(
+        expenseJson(
+          payloadOverride: {
+            ExpenseFields.money: {...money, 'pad': List.filled(7600, 0)},
+          },
+        ),
+      );
+      expect(error?.code, ErrorCodes.badOp);
+      expect(priya.opsOf(seed.g).where((o) => o.deviceId == mallory), isEmpty);
+    }, skip: 'SECURITY-R3-01');
+  });
+
+  group('round 3: regression around the round 2 fixes', () {
+    test('the round 2 unknown-field cap still holds at schema version 1 for '
+        'many small unknown fields', () async {
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 1,
+        'ops': [
+          expenseJson(
+            payloadOverride: {for (var i = 0; i < 200; i++) 'k$i': 'v'},
+          ),
+        ],
+        'more': false,
+      });
+      expect((await errorFrom(evil))?.code, ErrorCodes.badOp);
+      await evil.close();
+      await result;
+      expect(priya.opsOf(seed.g).where((o) => o.deviceId == mallory), isEmpty);
+      await expectStillSyncs();
+    });
+
+    test('a batch over the batch budget is refused as a whole', () async {
+      final (evil, result) = await attack();
+      await sendRawOps(evil, {
+        'g': seed.g,
+        'batch': 1,
+        'total': 80,
+        'ops': [
+          for (var i = 1; i <= 80; i++)
+            {
+              ...expenseJson(
+                id: 'big-$i',
+                counter: i,
+                payloadOverride: {'pad': 'z' * 15500},
+              ),
+              'schemaVersion': 2,
+            },
+        ],
+        'more': false,
+      });
+      expect((await errorFrom(evil))?.code, ErrorCodes.badOp);
+      await evil.close();
+      await result;
+      expect(priya.opsOf(seed.g).where((o) => o.deviceId == mallory), isEmpty);
+      await expectStillSyncs();
+    });
+
+    test('a version vector that claims exactly what this phone wrote still '
+        'leaves later changes unshared', () async {
+      final mine = priya.deviceId;
+      await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+      final written = (await priya.ledger.versionVector(seed.g))[mine];
+      await priya.ledger.recordPeerKnowledge(
+        mallory,
+        seed.g,
+        VersionVector({mine: written}),
+      );
+      expect(priya.snapshot.unsharedCounts[seed.g], isNull);
+      await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+      expect(priya.snapshot.unsharedCounts[seed.g], 1);
+      await priya.ledger.recordPeerKnowledge(
+        mallory,
+        seed.g,
+        VersionVector({mine: written + 1000}),
+      );
+      expect(
+        priya.snapshot.unsharedCounts[seed.g],
+        isNull,
+        reason: 'clamped to the counter written, which the peer may hold',
+      );
     });
   });
 }
