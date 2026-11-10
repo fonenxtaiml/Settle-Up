@@ -286,7 +286,7 @@ void main() {
     // permanentlyDenied verdict from the request with needsPermission: the
     // "Open settings" way out turns into "Allow", which shows no dialog.
     // The same happens when the user comes back from the settings page
-    // without granting. skip: PLATFORM-R1-11.
+    // without granting.
     testWidgets('PLATFORM-R1-11: "Open settings" survives the resume that '
         'follows the permission dialog', (tester) async {
       final (world, engine) = await _world();
@@ -316,6 +316,6 @@ void main() {
             'permission back into "Allow" (Android never shows the dialog '
             'again, so "Allow" does nothing); calls were ${engine.calls}',
       );
-    }, skip: true); // PLATFORM-R1-11
+    }); // PLATFORM-R1-11
   });
 }
