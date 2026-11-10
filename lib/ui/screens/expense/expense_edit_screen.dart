@@ -380,12 +380,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
   Future<void> _pickDate() async {
     final now = ref.read(clockProvider)();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(now.year + 1, 12, 31),
-    );
+    final d = await pickEntryDate(context, initial: _date, now: now);
     if (d == null || !mounted) return;
     setState(() {
       _touch();
