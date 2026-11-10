@@ -1405,7 +1405,13 @@ class _WeightPromptState extends State<_WeightPrompt> {
       autofocus: true,
       keyboardType: TextInputType.number,
       inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
+        // Digits only, and an edit that brings anything else is refused
+        // whole: a paste of "1 2" or "1e3" is never joined into 12 or 13
+        // (the digits-only filter dropped the rest and joined them).
+        TextInputFormatter.withFunction(
+          (old, next) =>
+              RegExp(r'^[0-9]*$').hasMatch(next.text) ? next : old,
+        ),
         LengthLimitingTextInputFormatter(4),
       ],
       decoration: InputDecoration(
