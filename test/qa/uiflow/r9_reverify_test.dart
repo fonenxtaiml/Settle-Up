@@ -312,21 +312,26 @@ void main() {
       'with a profile name saved by an earlier build, $label, fails with '
       '"Check the highlighted fields." or "That is too long" and nothing to '
       'change',
-      // QA UIFLOW-R8-02: a profile name saved by an earlier build blocks
-      // "I'm not on the list" on the claim screen (reopened in round 9).
-      skip: true,
       (tester) async {
         final (ledger, gid, done) = await _legacyClaim(
           tester,
           legacyName: legacy,
         );
+        // The seeded group already holds 3 members: Priya who made it, and
+        // "Priya" and "Meera" from the list.
+        final before = ledger.current.state.groups[gid]!.activeMembers.length;
         await qaTap(tester, find.text(S.notOnList));
         await _io(tester);
         // Expected (as New group and Add friend after the R8-02 fix): I am
         // added under my name as it is shown (or a usable fallback), or
         // the screen points to Settings > your name.
         expect(_bad, isNot(contains(snackText(tester))));
-        expect(ledger.current.state.groups[gid]!.activeMembers, hasLength(3));
+        final g = ledger.current.state.groups[gid]!;
+        expect(g.activeMembers, hasLength(before + 1));
+        final me = g.memberForPerson('p-legacy');
+        expect(me, isNotNull);
+        expect(me!.displayName, NameText.fit(legacy));
+        expect(me.deviceId, isNotNull);
         await done();
       },
     );
