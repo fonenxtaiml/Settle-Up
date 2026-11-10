@@ -303,9 +303,6 @@ void main() {
         expect(a.snap.unsharedCounts[t.g], 1);
         expect(a.snap.totalUnshared, 1);
       },
-      skip:
-          'DATA-R4-01: the failed cut at open is never retried, so the '
-          'next open repeats DATA-R3-01 for edits made in that session',
     );
   });
 
