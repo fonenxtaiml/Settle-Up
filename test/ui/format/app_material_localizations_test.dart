@@ -11,10 +11,18 @@
 //   look-alike characters: a string reads as a date if and only if it is
 //   day/month/four-digit-year with one separator and a real calendar day,
 //   checked against an independent oracle.
+//
+// VISUAL-R12-01 regression: the field reads back every date it writes, over
+// the whole range a picker can open on (every model date, 1900-01-01 to
+// 9999-12-31 UTC, seen in every time zone: 31 Dec 1899 to 1 Jan 10000
+// local), not only the reported 1 Jan 10000; and the year grammar is
+// exactly the years the field writes (four digits, or more with no leading
+// zero), for every year a DateTime holds.
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/data/text_rules.dart';
 import 'package:settle_up/ui/format/app_material_localizations.dart';
 
 const l = AppMaterialLocalizations();
@@ -36,8 +44,12 @@ DateTime? oracle(String text) {
   if (!parts.every(digits)) return null;
   final [d, m, y] = parts;
   if (d.isEmpty || d.length > 2 || m.isEmpty || m.length > 2) return null;
-  if (y.length != 4) return null;
+  // Four digits, or five or six with no leading zero: what the field
+  // writes for a year.
+  if (y.length < 4 || y.length > 6) return null;
+  if (y.length > 4 && y.startsWith('0')) return null;
   final day = int.parse(d), month = int.parse(m), year = int.parse(y);
+  if (year > 275759) return null;
   if (year < 1 || month < 1 || month > 12 || day < 1) return null;
   if (day > DateUtils.getDaysInMonth(year, month)) return null;
   return DateTime(year, month, day);
@@ -79,6 +91,96 @@ void main() {
       if (bad.length > 20) break;
     }
     expect(bad, isEmpty, reason: bad.join('\n'));
+  });
+
+  test('VISUAL-R12-01: 1 Jan 10000 is written and read back as itself', () {
+    final d = DateTime(10000, 1, 1);
+    expect(l.formatCompactDate(d), '01/01/10000');
+    expect(l.parseCompactDate('01/01/10000'), d);
+    expect(l.parseCompactDate('1/1/10000'), d);
+    expect(l.parseCompactDate('1-1-10000'), d);
+    expect(l.parseCompactDate('1.1.10000'), d);
+  });
+
+  test('every local date a model date can be, in any time zone, '
+      'round-trips', () {
+    // Every zone from UTC-12 to UTC+14 sees the model's first and last
+    // instants on these local days.
+    final firstUtc = DateTime.fromMillisecondsSinceEpoch(
+      TextRules.minModelDateMs,
+      isUtc: true,
+    );
+    final lastUtc = DateTime.fromMillisecondsSinceEpoch(
+      TextRules.maxModelDateMs,
+      isUtc: true,
+    );
+    DateTime day(DateTime t) => DateTime(t.year, t.month, t.day);
+    final from = day(firstUtc.subtract(const Duration(hours: 12)));
+    final to = day(lastUtc.add(const Duration(hours: 14)));
+    expect(from, DateTime(1899, 12, 31));
+    expect(to, DateTime(10000, 1, 1));
+    final bad = <String>[];
+    void check(DateTime d) {
+      final text = l.formatCompactDate(d);
+      if (l.parseCompactDate(text) != d) bad.add(text);
+      final loose = '${d.day}/${d.month}/${d.year}';
+      if (l.parseCompactDate(loose) != d) bad.add(loose);
+    }
+
+    // Every day of the first and last years in the range, and the first,
+    // 28th, 29th, 30th and last day of every month between.
+    for (
+      var d = from;
+      d.year <= 1901;
+      d = DateTime(d.year, d.month, d.day + 1)
+    ) {
+      check(d);
+    }
+    for (
+      var d = DateTime(9998, 1, 1);
+      !d.isAfter(to);
+      d = DateTime(d.year, d.month, d.day + 1)
+    ) {
+      check(d);
+    }
+    for (var y = from.year; y <= to.year; y++) {
+      for (var m = 1; m <= 12; m++) {
+        final last = DateUtils.getDaysInMonth(y, m);
+        for (final dd in {1, 28, 29, 30, last}) {
+          if (dd <= last) check(DateTime(y, m, dd));
+        }
+        if (bad.length > 20) break;
+      }
+    }
+    expect(bad, isEmpty, reason: bad.join('\n'));
+  });
+
+  test('the year grammar is exactly the years the field writes', () {
+    final bad = <String>[];
+    // Every year a DateTime holds whole, written by the field, reads back.
+    for (var y = 1; y <= AppMaterialLocalizations.maxCompactYear; y++) {
+      final d = DateTime(y, 12, 31);
+      final text = l.formatCompactDate(d);
+      if (l.parseCompactDate(text) != d) bad.add(text);
+      if (bad.length > 20) break;
+    }
+    expect(bad, isEmpty, reason: bad.join('\n'));
+    // A year the field never writes is no date.
+    for (final s in const [
+      '01/01/999', // three digits
+      '01/01/01999', // five digits, leading zero
+      '01/01/010000',
+      '01/01/0000',
+      '01/01/00000',
+      '01/01/275760', // past the last whole year a DateTime holds
+      '13/09/275760',
+      '01/01/999999',
+      '01/01/1000000', // seven digits
+    ]) {
+      expect(l.parseCompactDate(s), isNull, reason: s);
+    }
+    expect(l.parseCompactDate('31/12/0999'), DateTime(999, 12, 31));
+    expect(l.parseCompactDate('31/12/275759'), DateTime(275759, 12, 31));
   });
 
   test('impossible and partial dates read as nothing', () {
@@ -139,7 +241,9 @@ void main() {
         // Near-dates: a real shape with one character changed, added or
         // dropped.
         final d = 1 + r.nextInt(31), m = 1 + r.nextInt(13);
-        final y = 1990 + r.nextInt(60);
+        final y = r.nextInt(8) == 0
+            ? 9990 + r.nextInt(20)
+            : 1990 + r.nextInt(60);
         final sep = const ['/', '-', '.'][r.nextInt(3)];
         var t = '$d$sep$m$sep$y';
         if (r.nextBool()) {
