@@ -54,16 +54,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
 
   Future<void> _start() async {
     // The name Settings saves: a letter or number is needed (DATA-R6-02).
-    if (!NameText.isValid(_name.text) || _saving) return;
+    if (!isSavableName(_name.text, kMemberNameMax) || _saving) return;
     setState(() => _saving = true);
     await runGuarded(
       context,
       () => ref
           .read(settingsRepositoryProvider)
-          .completeOnboarding(
-            displayName: _name.text,
-            homeCurrency: _currency,
-          ),
+          .completeOnboarding(displayName: _name.text, homeCurrency: _currency),
     );
     if (mounted) setState(() => _saving = false);
   }
@@ -74,8 +71,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final ink2 = theme.colorScheme.onSurfaceVariant;
     final c = Currencies.of(_currency);
     final helper = theme.textTheme.bodySmall!.copyWith(color: ink2);
-    final valid = NameText.isValid(_name.text);
-    final name = valid ? NameText.fit(_name.text) : '';
+    final valid = isSavableName(_name.text, kMemberNameMax);
+    final name = NameText.isValid(_name.text, kMemberNameMax)
+        ? NameText.fit(_name.text, kMemberNameMax)
+        : '';
     return Scaffold(
       bottomNavigationBar: SafeArea(
         top: false,
@@ -141,8 +140,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 label: S.yourName,
                 hintText: S.yourNameHint,
                 controller: _name,
-                maxLength: 40,
-                errorText: nameInputError(_name.text),
+                maxLength: kMemberNameMax,
+                inputFormatters: nameFormatters(kMemberNameMax),
+                errorText: nameInputError(_name.text, limit: kMemberNameMax),
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _start(),

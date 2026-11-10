@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
@@ -21,6 +22,7 @@ class LabeledTextField extends StatelessWidget {
     this.onSubmitted,
     this.errorText,
     this.maxLength,
+    this.inputFormatters,
   });
 
   final String label;
@@ -34,6 +36,12 @@ class LabeledTextField extends StatelessWidget {
   final String? errorText;
   final int? maxLength;
 
+  /// Run before the [maxLength] cap, e.g. a name field's stored-length
+  /// cap.
+  final List<TextInputFormatter>? inputFormatters;
+
+  static const double _fieldPad = 8;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -45,7 +53,9 @@ class LabeledTextField extends StatelessWidget {
       children: [
         Container(
           constraints: const BoxConstraints(minHeight: 56),
-          padding: const EdgeInsetsDirectional.fromSTEB(16, 8, 12, 8),
+          // The 8 dp above and below are the field's own padding, so the
+          // whole height takes a tap (at least 48 dp, VISUAL-R8-01).
+          padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 12, 0),
           decoration: BoxDecoration(
             color: scheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(Radii.md),
@@ -63,6 +73,7 @@ class LabeledTextField extends StatelessWidget {
                   onSubmitted: onSubmitted,
                   textInputAction: textInputAction,
                   maxLength: maxLength,
+                  inputFormatters: inputFormatters,
                   textCapitalization: TextCapitalization.sentences,
                   style: valueStyle,
                   decoration: InputDecoration(
@@ -72,7 +83,9 @@ class LabeledTextField extends StatelessWidget {
                     enabledBorder: InputBorder.none,
                     focusedBorder: InputBorder.none,
                     errorBorder: InputBorder.none,
-                    contentPadding: EdgeInsets.zero,
+                    contentPadding: const EdgeInsets.symmetric(
+                      vertical: _fieldPad,
+                    ),
                     counterText: '',
                     labelText: label,
                     floatingLabelBehavior: FloatingLabelBehavior.always,
@@ -90,7 +103,10 @@ class LabeledTextField extends StatelessWidget {
               ),
               if (trailing != null) ...[
                 const SizedBox(width: Space.md),
-                trailing!,
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: _fieldPad),
+                  child: trailing,
+                ),
               ],
             ],
           ),

@@ -118,10 +118,9 @@ List<String> _buttonProblems(WidgetTester tester, String where) {
   return problems;
 }
 
-/// The failing nodes of a guideline [r], one string each, leaving out two
-/// kinds tracked or ruled out elsewhere:
-/// - the payer amount fields' tap targets, 42.8 dp tall at 1.0x
-///   (VISUAL-R8-01, its own repro below);
+/// The failing nodes of a guideline [r], one string each, leaving out one
+/// kind ruled out elsewhere (the payer amount fields' tap targets count
+/// since VISUAL-R8-01 was fixed):
 /// - the lone currency prefix ("₹") of those fields in the light theme.
 ///   The checker samples the anti-aliased edge of an 8.5 dp glyph and
 ///   reports 3.12:1, but the colours drawn are onSurfaceVariant on
@@ -132,11 +131,7 @@ List<String> _failures(Evaluation r) {
   final nodes = (r.reason ?? '')
       .split('SemanticsNode#')
       .skip(1)
-      .where(
-        (n) =>
-            !n.contains('isTextField') &&
-            !RegExp(r'label: "(₹|KD|\$|€|¥)"').hasMatch(n),
-      )
+      .where((n) => !RegExp(r'label: "(₹|KD|\$|€|¥)"').hasMatch(n))
       .toList();
   return [for (final n in nodes) n.split('\n').first];
 }
@@ -352,6 +347,5 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true, // VISUAL-R8-01
   );
 }
