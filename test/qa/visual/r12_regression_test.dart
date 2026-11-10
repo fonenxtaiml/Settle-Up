@@ -275,7 +275,6 @@ void main() {
     'QA VISUAL-R12-01: an entry dated 1 Jan 10000 local time (9999-12-31 '
     'late UTC, a valid model date, seen east of UTC) opens with a field the '
     'picker refuses on OK',
-    skip: true, // QA VISUAL-R12-01: the date field writes a five-digit year its own parser refuses, so OK on an unchanged 1 Jan 10000 shows Invalid format
     (tester) async {
       // The model accepts dates up to the end of 9999-12-31 UTC
       // (TextRules.maxModelDateMs) and the editors pass the local date to
