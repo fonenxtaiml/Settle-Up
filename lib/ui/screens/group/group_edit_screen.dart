@@ -75,7 +75,12 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   /// Adds the typed person; false when the name is already in the list.
   bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
-    if (!NameText.isValid(n)) return true;
+    if (n.isEmpty) return true;
+    final notName = nameInputError(n);
+    if (notName != null) {
+      setState(() => _personError = notName);
+      return false;
+    }
     // You are a member of every new group too (Members refuses your name
     // for the same reason).
     final me = ref.read(profileProvider).value?.displayName;
@@ -250,9 +255,9 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               hintText: S.groupNameHint,
               controller: _name,
               maxLength: 60,
-              errorText: _tried && !NameText.isValid(_name.text)
-                  ? S.nameNeeded
-                  : null,
+              errorText: _name.text.trim().isEmpty
+                  ? (_tried ? S.nameNeeded : null)
+                  : nameInputError(_name.text),
               onChanged: (_) => setState(() {}),
             ),
           ),

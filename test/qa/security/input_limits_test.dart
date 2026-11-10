@@ -481,6 +481,12 @@ void main() {
         phone.ledger.addMember(s.g, displayName: family),
         invalidInput,
       );
+      // 40 characters, a letter and 39 families, exceed the cap too
+      // (DATA-R6-02).
+      await expectLater(
+        phone.ledger.addMember(s.g, displayName: 'A${family * 39}'),
+        invalidInput,
+      );
     });
   });
 
