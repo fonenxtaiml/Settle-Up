@@ -237,16 +237,19 @@ final class NearbyRegistry {
         advertId: withId.isEmpty ? null : withId.first.peer.advertId,
         transports: {for (final r in routes) r.peer.kind},
         sharedGroupIds: shared.toList()..sort(),
+        moreGroups: routes.any((r) => r.peer.moreGroups),
       ));
     }
     out.sort((a, b) {
       if (a.sharesGroups != b.sharesGroups) return a.sharesGroups ? -1 : 1;
+      if (a.maySync != b.maySync) return a.maySync ? -1 : 1;
       final c = a.name.compareTo(b.name);
       return c != 0 ? c : a.key.compareTo(b.key);
     });
     final signature = out
         .map((p) => '${p.key}|${p.advertId}|${p.name}|'
-            '${p.transports.map((t) => t.name)}|${p.sharedGroupIds}')
+            '${p.transports.map((t) => t.name)}|${p.sharedGroupIds}|'
+            '${p.moreGroups}')
         .join('\n');
     if (signature == _signature) return false;
     _signature = signature;

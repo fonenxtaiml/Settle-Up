@@ -168,4 +168,29 @@ void main() {
     );
     expect(r.peers.single.name, 'Alex5000 diap');
   });
+
+  test('a cut advert makes a phone worth trying; it sorts after sharers',
+      () {
+    // SYNC-R2-01.
+    r.update(
+      DiscoveredPeer(
+        kind: TransportKind.nearby,
+        address: 'E1',
+        name: 'Busy phone',
+        advertId: 'bbbb0000',
+        moreGroups: true,
+      ),
+      t0,
+    );
+    r.update(peer(TransportKind.ble, 'u2', prefix: 'cccc0000', name: 'A'),
+        t0);
+    r.update(peer(TransportKind.lan, '10.0.0.3:1', prefix: 'dddd0000',
+        name: 'Z', tokens: {'tok-g1'}), t0);
+    expect(r.peers.map((p) => p.name), ['Z', 'Busy phone', 'A']);
+    final busy = r.peers[1];
+    expect(busy.sharesGroups, isFalse);
+    expect(busy.moreGroups, isTrue);
+    expect(busy.maySync, isTrue);
+    expect(r.peers[2].maySync, isFalse);
+  });
 }

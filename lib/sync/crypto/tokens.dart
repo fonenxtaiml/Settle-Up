@@ -7,9 +7,16 @@
 //                   s = a random per-launch secret that never leaves the phone
 //   blind(g, n)   = b64url(HMAC-SHA256(key_g, "settleup-gid-v1" || n)[0..16])
 //
-// Tokens are short so a phone in many groups still fits every token in a
-// Nearby endpoint name. A false match only labels a phone "shares Goa trip"
-// by mistake; the HELLO (blind) is what decides whether a session starts.
+// Tokens are short so a phone in many groups fits many of them in an
+// advert. A false match only labels a phone "shares Goa trip" by mistake;
+// the HELLO (blind) is what decides whether a session starts.
+//
+// An advert holds a bounded number of tokens (Nearby 24, BLE 96, LAN 240).
+// [DiscoveryTokens.advertised] lists them by priority (groups synced
+// recently, then the newest groups), so a transport that has to cut the
+// list keeps the same groups in every window; it sorts what it keeps, so
+// the order reveals nothing, and says that it cut the list, so a scanner
+// may still offer Sync and let the HELLO decide (QA SYNC-R2-01).
 //
 // The advertiser says which window its tokens are for, so a scanner whose
 // clock is minutes, hours or a day off still matches them
@@ -113,16 +120,43 @@ abstract final class DiscoveryTokens {
     return _hex(mac).substring(0, advertIdLength);
   }
 
-  /// Tokens to advertise at [now]: one per group, sorted so the order does
-  /// not reveal which group is which.
+  /// Tokens to advertise at [now]: one per group, most important first:
+  /// the groups in [priority] in that order (e.g. synced most recently),
+  /// then the rest newest first (ids are UUIDv7, so by creation time).
+  /// The order is stable across windows. Transports keep a prefix and must
+  /// sort it ([forAdvert]) so the order does not reveal which group is
+  /// which.
   static Future<List<String>> advertised(
     Map<GroupId, Uint8List> keys,
-    DateTime now,
-  ) async {
+    DateTime now, {
+    Iterable<GroupId> priority = const [],
+  }) async {
     final w = windowAt(now);
-    final out = [for (final key in keys.values) await token(key, w)];
-    out.sort();
-    return out;
+    final order = <GroupId>[
+      for (final g in priority)
+        if (keys.containsKey(g)) g,
+    ];
+    final first = order.toSet();
+    order.addAll(
+      keys.keys.where((g) => !first.contains(g)).toList()
+        ..sort((a, b) => b.compareTo(a)),
+    );
+    return [for (final g in order.toSet()) await token(keys[g]!, w)];
+  }
+
+  /// What an advert carries of [tokens] (in [advertised] order) when it
+  /// holds at most [max]: the first valid ones, sorted, and whether some
+  /// were left out.
+  static ({List<String> tokens, bool cut}) forAdvert(
+    Iterable<String> tokens,
+    int max,
+  ) {
+    final valid = [
+      for (final t in tokens)
+        if (isToken(t)) t,
+    ];
+    final kept = valid.take(max).toList()..sort();
+    return (tokens: kept, cut: valid.length > kept.length);
   }
 
   /// token -> group for the windows a scanner accepts at [now] from an

@@ -33,8 +33,10 @@ final class AdvertiseInfo {
   final String deviceName;
 
   /// Rotating blinded tokens, one per group we hold (4 base64url chars
-  /// each, SPEC 8.3). Transports include as many as fit (LAN: up to 48,
-  /// Nearby: up to 24, BLE: in the INFO characteristic, up to 48).
+  /// each, SPEC 8.3), most important first. Transports include as many as
+  /// fit from the front (LAN: up to 240, Nearby: up to 24, BLE: in the
+  /// INFO characteristic, up to 96), sort them, and flag the advert when
+  /// they had to leave some out.
   final List<String> groupTokens;
 
   /// Per-window random id (8 hex chars, SPEC 8.3) that lets scanners merge
@@ -56,6 +58,7 @@ final class DiscoveredPeer {
     this.advertId,
     this.groupTokens = const {},
     this.windowTag,
+    this.moreGroups = false,
   });
 
   final TransportKind kind;
@@ -69,6 +72,11 @@ final class DiscoveredPeer {
 
   /// The advertised window tag of [groupTokens] (window mod 4096), if any.
   final int? windowTag;
+
+  /// The advert left some of the phone's group tokens out (it is in more
+  /// groups than the advert holds), so it may share a group with us even
+  /// when no token matches.
+  final bool moreGroups;
 
   @override
   bool operator ==(Object other) =>

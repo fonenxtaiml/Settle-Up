@@ -148,4 +148,35 @@ void main() {
       expect(NearbyEndpointName.tryParse(bad), isNull, reason: bad);
     }
   });
+
+  test('a cut token list ends with + and still fits 131 bytes', () {
+    // SYNC-R2-01: the first 24 in priority order are kept, sorted.
+    final name = NearbyEndpointName.of(AdvertiseInfo(
+      deviceId: deviceId,
+      advertId: '5e1f00d2',
+      tokenWindow: 7,
+      deviceName: '😀' * 30,
+      groupTokens: [for (var i = 40; i > 0; i--) token(i)],
+    ));
+    expect(name.moreGroups, isTrue);
+    final encoded = name.encode();
+    expect(encoded, endsWith('+'));
+    expect(utf8.encode(encoded).length, lessThanOrEqualTo(131));
+    final parsed = NearbyEndpointName.tryParse(encoded)!;
+    expect(parsed.moreGroups, isTrue);
+    expect(parsed.toPeer('E1').moreGroups, isTrue);
+    expect(parsed.groupTokens,
+        [for (var i = 40; i > 16; i--) token(i)]..sort());
+    expect(parsed.deviceName, isNotEmpty);
+  });
+
+  test('no + when every token fits', () {
+    final encoded = NearbyEndpointName.of(AdvertiseInfo(
+      deviceId: deviceId,
+      deviceName: 'Alex',
+      groupTokens: [for (var i = 0; i < 24; i++) token(i)],
+    )).encode();
+    expect(encoded, isNot(endsWith('+')));
+    expect(NearbyEndpointName.tryParse(encoded)!.moreGroups, isFalse);
+  });
 }
