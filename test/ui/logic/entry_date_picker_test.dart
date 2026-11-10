@@ -1,5 +1,7 @@
 // SECURITY-R5-01: the editors' date picker opens for every date the remote
 // check accepts, and keeps its usual range for ordinary dates.
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/ui/screens/common.dart';
@@ -17,7 +19,9 @@ void main() {
         ),
       ),
     );
-    pickEntryDate(ctx, initial: initial, now: DateTime(2026, 11, 10));
+    unawaited(
+      pickEntryDate(ctx, initial: initial, now: DateTime(2026, 11, 10)),
+    );
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
     return t.widget<DatePickerDialog>(find.byType(DatePickerDialog));
