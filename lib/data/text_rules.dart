@@ -266,14 +266,31 @@ abstract final class TextRules {
   /// Largest |ms| a DateTime accepts.
   static const int maxDateMs = 8640000000000000;
 
+  /// Earliest date a payload field may hold: 1900-01-01 00:00 UTC.
+  ///
+  /// The whole DateTime range is not enough: near its ends toLocal() and
+  /// the local calendar (DateTime(y, m, d), month and year labels) cannot
+  /// represent the date, so one such peer expense would break the group
+  /// screen on every phone outside UTC (SECURITY-R4-01). An honest phone
+  /// writes dates from its date picker (2000 on) or its clock (a reset
+  /// clock reads 1970), so this window never refuses one of its ops.
+  static const int minModelDateMs = -2208988800000;
+
+  /// Latest date a payload field may hold: the end of 9999-12-31 UTC.
+  static const int maxModelDateMs = 253402300799999;
+
+  /// True when [ms] lies in [minModelDateMs]..[maxModelDateMs], the dates
+  /// every phone can show in its own time zone.
+  static bool isModelDate(int ms) =>
+      ms >= minModelDateMs && ms <= maxModelDateMs;
+
   static bool _hasKind(Object? value, _Kind kind) => switch (kind) {
     _Kind.text => value is String,
     _Kind.optionalText => value == null || value is String,
     _Kind.id => value is String && value.isNotEmpty,
     _Kind.flag => value is bool,
-    _Kind.date => value is int && value.abs() <= maxDateMs,
-    _Kind.optionalDate =>
-      value == null || (value is int && value.abs() <= maxDateMs),
+    _Kind.date => value is int && isModelDate(value),
+    _Kind.optionalDate => value == null || (value is int && isModelDate(value)),
     _Kind.money => _isMoneyBlock(value),
   };
 
@@ -347,8 +364,8 @@ enum _Kind {
   optionalText('a string or null'),
   id('a non-empty string'),
   flag('true or false'),
-  date('a date in milliseconds'),
-  optionalDate('a date in milliseconds or null'),
+  date('a date in milliseconds from 1900 to 9999'),
+  optionalDate('a date in milliseconds from 1900 to 9999 or null'),
   money('a money block');
 
   const _Kind(this.what);

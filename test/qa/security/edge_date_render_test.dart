@@ -22,34 +22,42 @@ import '../../ui/screens/screen_harness.dart';
 void main() {
   const edge = -TextRules.maxDateMs;
 
-  testWidgets(
-    'SECURITY-R4-01 the group screen shows an expense at the earliest date a '
-    'peer may send',
-    (tester) async {
-      phoneView(tester);
-      final w = await TestWorld.demo();
-      await pumpApp(tester, w);
-      final g = w.g.goa;
-      final members = w.ledger.current.state.groups[g]!.members.keys.toList();
-      await w.ledger.addExpense(
-        ExpenseDraft(
-          groupId: g,
-          description: 'Edge',
-          total: 100,
-          currency: 'INR',
-          paidBy: SplitSpec.single(members.first, 100),
-          owedBy: SplitSpec.equal(members),
-          category: 'food',
-          date: utcFromMillis(edge),
-        ),
-      );
-      w.go(Routes.group(g));
-      await settle(tester);
-      expect(tester.takeException(), isNull);
-      expect(find.text('Edge'), findsOneWidget);
-    },
-    skip: true,
-  ); // SECURITY-R4-01
+  // After the fix the earliest date a peer may send is
+  // TextRules.minModelDateMs (1900-01-01 UTC), not the start of the
+  // DateTime range; the latest is TextRules.maxModelDateMs. Both must show
+  // in any time zone:
+  //   TZ=Asia/Kolkata flutter test test/qa/security/edge_date_render_test.dart
+  for (final (what, ms) in [
+    ('earliest', TextRules.minModelDateMs),
+    ('latest', TextRules.maxModelDateMs),
+  ])
+    testWidgets(
+      'SECURITY-R4-01 the group screen shows an expense at the $what date a '
+      'peer may send',
+      (tester) async {
+        phoneView(tester);
+        final w = await TestWorld.demo();
+        await pumpApp(tester, w);
+        final g = w.g.goa;
+        final members = w.ledger.current.state.groups[g]!.members.keys.toList();
+        await w.ledger.addExpense(
+          ExpenseDraft(
+            groupId: g,
+            description: 'Edge',
+            total: 100,
+            currency: 'INR',
+            paidBy: SplitSpec.single(members.first, 100),
+            owedBy: SplitSpec.equal(members),
+            category: 'food',
+            date: utcFromMillis(ms),
+          ),
+        );
+        w.go(Routes.group(g));
+        await settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.text('Edge'), findsOneWidget);
+      },
+    ); // SECURITY-R4-01
 
   test('the remote check refuses a date that has no local calendar day', () {
     // Local offsets run from -12 h to +14 h. Within 14 h of the start of
@@ -69,5 +77,5 @@ void main() {
       );
       expect(TextRules.remoteProblem(op), isNotNull, reason: '$ms');
     }
-  }, skip: 'SECURITY-R4-01');
+  });
 }
