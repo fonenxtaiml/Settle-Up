@@ -2,6 +2,7 @@
 // "1,234.50" (comma groups, dot decimal), but people also type "12,50" or
 // paste "1.234,50" (dot groups, comma decimal), "1 234,50" or "1'234.50".
 // One reader for every amount input, so no field turns a thousand into one.
+import '../../core/currencies_data.dart';
 import '../../core/money.dart';
 
 /// [raw] as canonical "1234.50" (digits, at most one '.' decimal point, no
@@ -14,9 +15,15 @@ import '../../core/money.dart';
 ///   lead-in with letters before the first digit, unless it sits right
 ///   before that digit ("USD .50" is half a dollar);
 /// - text with more than one number in it ("Rs 500 paid at Cafe 21",
-///   "Dinner for 4: 1,200", "1e3") or with a multiplier after the number
-///   ("2.5k", "1.5 lakh", "$1.2M") is refused: it is never joined or
-///   shortened into a different amount;
+///   "Dinner for 4: 1,200", "Dinner for 4 1,200", "1e3") is refused: it is
+///   never joined into a different amount. A space or apostrophe between
+///   digits groups them only when every run after it has three digits
+///   ("1 234,50", "1'234.50"), and a space only in a currency written that
+///   way or in a bare number ("Table 12 340" is two numbers in USD);
+/// - a word after the number that is not a currency ("2.5k", "1.5 lakh",
+///   "$1.2M", "1.5 mln", "5万", "50 cents") is refused: it may multiply or
+///   divide the number, so it is never dropped. "50 kr", "500 Rs." and
+///   "1,250 DT" are read;
 /// - with both '.' and ',', the last one is the decimal separator and the
 ///   other may only group digits before it ("1.234,50", "1,234.50");
 /// - commas only: several commas group ("1,20,000"); a single comma groups
@@ -45,13 +52,21 @@ import '../../core/money.dart';
 /// comma group may be short too ("1,234," and "1,234,5" on the way to
 /// "1,234,567").
 ///
+/// A minus ("-30", "–30", "30-", "(30)"; see [amountSign]) is refused
+/// unless [allowSign]: an amount that cannot be negative never drops it
+/// and reads the number as positive. With [allowSign] the sign is left to
+/// the caller and the number is read without it.
+///
 /// The fraction is not cut to the currency here; callers decide.
 String? normalizeAmountInput(
   String raw, {
   bool typing = false,
   Currency? currency,
+  bool allowSign = false,
 }) {
-  if (_joinsNumbers(raw) || _hasMultiplier(raw)) return null;
+  if (_joinsNumbers(raw, currency) || _hasUnknownWordAfter(raw)) return null;
+  final sign = amountSign(raw);
+  if (sign == null || (sign < 0 && !allowSign)) return null;
   final kept = _dropWordMarks(raw).replaceAll(RegExp(r'[^0-9.,]'), '');
   if (kept.isEmpty) return '';
   final lakh = currency == null || lakhCurrencies.contains(currency.code);
@@ -123,32 +138,144 @@ String? typedGroups(String raw, {String separator = ','}) {
 
 /// Whether [raw] holds more than one number: digit runs apart by anything
 /// but separators, spaces and apostrophes ("Rs 500 paid at Cafe 21" is 500
-/// and 21, never 50,021; "1e3" is not 13).
-bool _joinsNumbers(String raw) {
+/// and 21, never 50,021; "1e3" is not 13), or apart by a space or an
+/// apostrophe that cannot be a thousands mark ("Dinner for 4 1,200",
+/// "Rs 500 21"). A space groups only in a currency written with space
+/// groups ("1 234,50 €"), or in a bare number with no words around it.
+bool _joinsNumbers(String raw, Currency? currency) {
   final first = raw.indexOf(RegExp('[0-9]'));
   if (first < 0) return false;
   final last = raw.lastIndexOf(RegExp('[0-9]'));
-  return !RegExp(r"^[0-9.,'\u2019\u02BC\s\u00A0\u2009\u202F]*$")
-      .hasMatch(raw.substring(first, last + 1));
+  final span = raw.substring(first, last + 1);
+  if (!RegExp(r"^[0-9.,'\u2019\u02BC\s\u00A0\u2009\u202F]*$").hasMatch(span)) {
+    return true;
+  }
+  final marks = RegExp(r"[\s\u00A0\u2009\u202F'\u2019\u02BC]+");
+  final runs = span.split(marks);
+  if (runs.length == 1) return false;
+  // Thousands marks: "1", then runs of three ("234"), the last of which
+  // may carry the decimals ("234,50").
+  if (!RegExp(r'^[1-9][0-9]{0,2}$').hasMatch(runs.first)) return true;
+  for (var i = 1; i < runs.length; i++) {
+    final isLast = i == runs.length - 1;
+    final ok = isLast
+        ? RegExp(r'^[0-9]{3}(?:[.,][0-9]*)?$').hasMatch(runs[i])
+        : RegExp(r'^[0-9]{3}$').hasMatch(runs[i]);
+    if (!ok) return true;
+  }
+  final spaced = RegExp(r'[\s\u00A0\u2009\u202F]').hasMatch(span);
+  if (spaced &&
+      currency != null &&
+      !spaceGroupCurrencies.contains(currency.code) &&
+      RegExp(r'\p{L}', unicode: true).hasMatch(raw)) {
+    return true;
+  }
+  return false;
 }
 
-/// Words and letters after a number that multiply it ("2.5k", "1.5 lakh",
-/// "$1.2M", "3 crore"): dropping them would read a different amount.
-const Set<String> _multipliers = {
-  'k', 'kk', 'm', 'mm', 'mn', 'mio', 'mil', 'b', 'bn', 'mrd', 't', 'tn', //
-  'l', 'lac', 'lacs', 'lakh', 'lakhs', 'cr', 'crs', 'crore', 'crores', //
-  'thousand', 'thousands', 'million', 'millions', 'billion', 'billions', //
-  'tsd', 'e',
+/// Every way a minus is written: hyphen-minus, the minus sign, the en and
+/// em dashes and the figure dash (as text editors and chat apps turn "-"
+/// into one), and the small and full-width hyphen-minus.
+const String _minusChars = '-\u2212\u2013\u2014\u2012\uFE63\uFF0D';
+
+/// The sign written around the number in [raw]: -1 for a minus right
+/// before it or at the start ("-30", "–30", "USD -50", "-USD .50"), right
+/// after it ("30-", as accounting writes it) or for brackets around it
+/// ("(30)"); 1 otherwise ("+30", "Rs. 1,200/-", "1.250,- €", "Fr. 30.–"
+/// are not negative). Null when the text holds more than one sign
+/// ("-(30)", "+30-"): it cannot be read without guessing.
+int? amountSign(String raw) {
+  final first = raw.indexOf(RegExp('[0-9]'));
+  if (first < 0) return 1;
+  final last = raw.lastIndexOf(RegExp('[0-9]'));
+  final lead = raw.substring(0, first);
+  final trail = raw.substring(last + 1);
+  const m = '[$_minusChars]';
+  final atStart = RegExp('^\\s*$m').hasMatch(lead);
+  final beforeDigits = RegExp('$m\\s*[.,]?\$').hasMatch(lead);
+  final leadMinus = atStart || beforeDigits;
+  final doubleLead =
+      atStart && beforeDigits && RegExp(m).allMatches(lead).length > 1;
+  final trailMinus = RegExp('^[\\s\\u00A0]*$m').hasMatch(trail);
+  final brackets = lead.contains('(') && trail.contains(')');
+  final marks = [leadMinus, trailMinus, brackets].where((b) => b).length;
+  if (doubleLead || marks > 1) return null;
+  if (marks == 1 && lead.contains('+')) return null;
+  return marks == 1 ? -1 : 1;
+}
+
+/// [raw] without the spaces and apostrophes that group its digits ("1 234"
+/// is "1234"), so a key typed after a pasted amount extends its last group
+/// instead of reading as a second number.
+String closeDigitGroups(String raw) => raw.replaceAll(
+  RegExp(r"(?<=[0-9])[\s\u00A0\u2009\u202F'\u2019\u02BC]+(?=[0-9])"),
+  '',
+);
+
+/// Currencies written with a space between thousands ("1 234,50 €",
+/// "12 500 DT"). Elsewhere a space between digits groups them only in a
+/// bare number.
+const Set<String> spaceGroupCurrencies = {
+  ...decimalCommaCurrencies,
+  'CAD', 'CHF', 'ZAR', //
 };
 
-bool _hasMultiplier(String raw) {
+/// Words that multiply a number, or divide it, when they follow it
+/// ("2.5k", "1.5 lakh", "$1.2M", "2 млн", "50 cents"). Some are also
+/// currency symbols ("K", "m"); a number followed by one is still refused,
+/// since dropping it could read a different amount.
+const Set<String> _multipliers = {
+  'k', 'kk', 'm', 'mm', 'mn', 'mln', 'mio', 'mil', 'mill', 'b', 'bn', //
+  'bln', 'bil', 'mrd', 'mld', 'mlrd', 'md', 't', 'tn', 'tr', 'trn', //
+  'l', 'lk', 'lac', 'lacs', 'lakh', 'lakhs', 'cr', 'crs', 'crore', //
+  'crores', 'thousand', 'thousands', 'million', 'millions', 'billion', //
+  'billions', 'trillion', 'grand', 'tsd', 'tys', 'tyś', 'tysięcy', //
+  'mille', 'mila', 'miljoen', 'miljon', 'millones', 'millón', 'milhões', //
+  'тыс', 'тысяч', 'тысячи', 'тис', 'млн', 'млрд', 'хил', 'e', //
+  'cent', 'cents', 'paise', 'paisa', 'ct', 'cts', 'c',
+};
+
+/// Numerals that open a CJK word after a number ("5万", "3千円", "5만원"):
+/// ten thousand, thousand, hundred, hundred million and so on.
+final RegExp _cjkMultiplier = RegExp('^[十百千万萬亿億兆천만억조백십]');
+
+/// Words that may follow a number because they name its currency: every
+/// ISO code, the letters of every symbol, each currency's own name ("50
+/// rupees", "20 euro") and a few local spellings ("Rs", "DT", "kr", "円").
+final Set<String> _currencyWords = () {
+  final letters = RegExp(r'\p{L}+', unicode: true);
+  final words = <String>{
+    'rs', 'rp', 'dt', 'kd', 'bd', 'ro', 'jd', 'kr', 'zł', 'zl', 'ft', //
+    'kč', 'kc', 'lei', 'лв', 'грн', 'руб', 'р', 'тг', 'сум', 'tl', 'dh', //
+    'dhs', 'sar', 'eur', 'euro', 'euros', 'rupees', 'rupaye', 'only', //
+    '円', '元', '원', '圓', '块', 'บาท', 'ريال', 'دينار', 'درهم', 'جنيه', //
+  };
+  for (final c in isoCurrencies) {
+    words.add(c.code.toLowerCase());
+    final symbol = letters.firstMatch(c.symbol)?.group(0);
+    if (symbol != null) words.add(symbol.toLowerCase());
+    final name = c.name.split(' ').last.toLowerCase();
+    words
+      ..add(name)
+      ..add('${name}s');
+  }
+  return words;
+}();
+
+/// Whether a word that is not a currency follows the number: it may be a
+/// multiplier ("2.5k", "1.5 mln", "5万") or start another phrase, and the
+/// number without it could be a different amount.
+bool _hasUnknownWordAfter(String raw) {
   final last = raw.lastIndexOf(RegExp('[0-9]'));
   if (last < 0) return false;
   final word = RegExp(
-    r'^[\s\u00A0]*(\p{L}+)',
+    r'^[\s\u00A0\u2009\u202F]*(\p{L}+)',
     unicode: true,
   ).firstMatch(raw.substring(last + 1));
-  return word != null && _multipliers.contains(word.group(1)!.toLowerCase());
+  if (word == null) return false;
+  final w = word.group(1)!.toLowerCase();
+  if (_multipliers.contains(w) || _cjkMultiplier.hasMatch(w)) return true;
+  return !_currencyWords.contains(w);
 }
 
 /// [raw] without the '.' and ',' that belong to words rather than to the
@@ -221,4 +348,15 @@ int? parseAmountInput(String raw, Currency c) {
   final t = normalizeAmountInput(raw.trim(), currency: c);
   if (t == null || t.isEmpty) return null;
   return Money.parseMinor(t.startsWith('.') ? '0$t' : t, c);
+}
+
+/// Signed minor units for an amount typed in any of the forms above, with
+/// its minus written in any of the forms [amountSign] reads, or null.
+int? parseSignedAmountInput(String raw, Currency c) {
+  final sign = amountSign(raw);
+  if (sign == null) return null;
+  final t = normalizeAmountInput(raw.trim(), currency: c, allowSign: true);
+  if (t == null || t.isEmpty) return null;
+  final v = Money.parseMinor(t.startsWith('.') ? '0$t' : t, c);
+  return v == null ? null : sign * v;
 }

@@ -46,14 +46,16 @@ class ClaimScreen extends ConsumerWidget {
             m,
       ].firstOrNull;
       if (placeholder != null) {
-        final mine = await confirmAction(
+        final mine = await askChoice(
           context,
           title: S.claimSameNameTitle,
           body: S.claimSameNameBody(placeholder.displayName, groupName),
           confirmLabel: S.thatsMe,
           cancelLabel: S.notMe,
         );
-        if (!context.mounted) return;
+        // Back or a tap outside closes the question and nothing else
+        // (UIFLOW-R4-02); only "Not me" goes on to the name prompt.
+        if (mine == null || !context.mounted) return;
         if (mine) {
           final ok = await runGuarded(
             context,

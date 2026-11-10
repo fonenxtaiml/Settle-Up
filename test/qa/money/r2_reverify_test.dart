@@ -437,7 +437,13 @@ void main() {
         // After "1,25" the field shows "1.25"; one more digit must not turn
         // it into one thousand two hundred and fifty.
         expect(await typeInto(t, 'TND', '1,250'), 1250);
-        expect(await typeInto(t, 'KWD', '12,345'), 12345);
+        // KWD writes a dot, so its "12,345" is twelve thousand three hundred
+        // and forty-five wherever it is entered (one reading per currency,
+        // R3-06; QA MONEY-R3-03 reopened), as USD "12,345" is.
+        expect(
+          await typeInto(t, 'KWD', '12,345'),
+          parseAmountInput('12,345', Currencies.of('KWD')),
+        );
         // Two-decimal currency: a stray third digit is cut or refused, never
         // multiplies the amount by a thousand.
         expect(await typeInto(t, 'EUR', '12,500'), anyOf(isNull, 1250));

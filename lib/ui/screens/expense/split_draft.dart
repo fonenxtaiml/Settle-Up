@@ -27,19 +27,14 @@ String formatPercent(int bp) {
   return '$whole.${f.endsWith('0') ? f.substring(0, 1) : f}';
 }
 
-/// Signed minor units: "+50", "-50", "−50", "50", "1,000", "1.234,50".
+/// Signed minor units: "+50", "-50", "−50", "–50", "50-", "(50)", "50",
+/// "1,000", "1.234,50". A sign on its own (being typed) is zero.
 int? parseSignedMinor(String text, Currency c) {
-  var t = text.trim();
-  var sign = 1;
-  if (t.startsWith('-') || t.startsWith('−')) {
-    sign = -1;
-    t = t.substring(1);
-  } else if (t.startsWith('+')) {
-    t = t.substring(1);
+  final t = text.trim();
+  if (t.isEmpty || RegExp(r'^[+\-\u2212\u2013\u2014()\s]*$').hasMatch(t)) {
+    return 0;
   }
-  if (t.trim().isEmpty) return 0;
-  final v = parseAmountInput(t, c);
-  return v == null ? null : sign * v;
+  return parseSignedAmountInput(t, c);
 }
 
 /// Minor units as plain input text: 60000 INR -> "600", 1250 -> "12.50".

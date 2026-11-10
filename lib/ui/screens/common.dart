@@ -9,6 +9,7 @@ import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
+import '../../core/text_clean.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
@@ -180,8 +181,27 @@ Future<bool> confirmAction(
   required String body,
   required String confirmLabel,
   String cancelLabel = S.cancel,
-}) async {
-  final ok = await showDialog<bool>(
+}) async =>
+    await askChoice(
+      context,
+      title: title,
+      body: body,
+      confirmLabel: confirmLabel,
+      cancelLabel: cancelLabel,
+    ) ??
+    false;
+
+/// A question with two answers: true for [confirmLabel], false for
+/// [cancelLabel], and null when it is closed without an answer (Android
+/// back, a tap outside), so a caller can tell "Not me" from "never mind".
+Future<bool?> askChoice(
+  BuildContext context, {
+  required String title,
+  required String body,
+  required String confirmLabel,
+  required String cancelLabel,
+}) {
+  return showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
       title: Text(title),
@@ -198,7 +218,6 @@ Future<bool> confirmAction(
       ],
     ),
   );
-  return ok ?? false;
 }
 
 /// A single-line text prompt ("Rename", "Your name", "Phone name").
@@ -436,14 +455,17 @@ Set<ExpenseId> _findDuplicatePayments(GroupState g) {
 const int kMemberNameMax = 40;
 
 /// The existing name [candidate] would duplicate (case and spaces
-/// ignored: "priya " is "Priya"), or null.
+/// ignored: "priya " is "Priya"), or null. Both sides are compared as the
+/// Ledger saves them (TextClean.clean), so a name carrying an invisible
+/// mark (U+200B, U+200E, ...) is the plain name it will be stored as
+/// (UIFLOW-R4-01).
 String? duplicateName(String candidate, Iterable<String> existing) {
   String key(String n) =>
-      n.trim().toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+      TextClean.clean(n).toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
   final k = key(candidate);
   if (k.isEmpty) return null;
   for (final e in existing) {
-    if (key(e) == k) return e.trim();
+    if (key(e) == k) return TextClean.clean(e);
   }
   return null;
 }
