@@ -51,6 +51,7 @@ abstract final class KitStrings {
     1 => 'Enter an amount with at most 1 decimal',
     _ => 'Enter an amount with at most $digits decimals',
   };
+  static const amountUnreadable = 'Enter the amount as a number';
   static const notYetShared = 'Not yet shared';
   static const restore = 'Restore';
   static const deleted = 'deleted';

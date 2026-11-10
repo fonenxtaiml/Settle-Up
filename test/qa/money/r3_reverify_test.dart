@@ -115,7 +115,6 @@ void main() {
       for (final s in [
         'Rs. 500',
         'Rs.500',
-        'Rs . 500',
         '500 Rs.',
         'INR 500',
         '₹ 500.',
@@ -124,7 +123,10 @@ void main() {
       }
       expect(parseAmountInput('Rs. 1,234.50', inr), 123450);
       expect(parseAmountInput('Rs.1,00,000', inr), 10000000);
-      expect(parseAmountInput('approx. 300', inr), 30000);
+      // Round 7, one strict grammar: a dot apart from the mark, and a word
+      // that is no currency mark, are no amount.
+      expect(parseAmountInput('Rs . 500', inr), isNull);
+      expect(parseAmountInput('approx. 300', inr), isNull);
     });
   });
 
