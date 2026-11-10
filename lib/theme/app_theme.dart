@@ -313,6 +313,35 @@ abstract final class AppTheme {
     final ink = scheme.onSurface;
     final ink2 = scheme.onSurfaceVariant;
     const pill = StadiumBorder();
+    final field = InputDecorationThemeData(
+      filled: true,
+      fillColor: scheme.surfaceContainerLowest,
+      contentPadding: const EdgeInsets.symmetric(
+        horizontal: Space.lg,
+        vertical: Space.md,
+      ),
+      border: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(Radii.md)),
+        borderSide: BorderSide.none,
+      ),
+      enabledBorder: const OutlineInputBorder(
+        borderRadius: BorderRadius.all(Radius.circular(Radii.md)),
+        borderSide: BorderSide.none,
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
+        borderSide: BorderSide(color: scheme.primary, width: 2),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
+        borderSide: BorderSide(color: scheme.error, width: 2),
+      ),
+      labelStyle: text.labelMedium?.copyWith(color: ink2),
+      floatingLabelStyle: text.labelMedium?.copyWith(color: ink2),
+      hintStyle: text.bodyLarge?.copyWith(color: ink2),
+      helperStyle: text.bodySmall?.copyWith(color: ink2),
+      errorStyle: text.bodySmall?.copyWith(color: scheme.error),
+    );
 
     return ThemeData(
       useMaterial3: true,
@@ -533,35 +562,7 @@ abstract final class AppTheme {
         thickness: 1,
         space: 1,
       ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: scheme.surfaceContainerLowest,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: Space.lg,
-          vertical: Space.md,
-        ),
-        border: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(Radii.md)),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: const OutlineInputBorder(
-          borderRadius: BorderRadius.all(Radius.circular(Radii.md)),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
-          borderSide: BorderSide(color: scheme.primary, width: 2),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
-          borderSide: BorderSide(color: scheme.error, width: 2),
-        ),
-        labelStyle: text.labelMedium?.copyWith(color: ink2),
-        floatingLabelStyle: text.labelMedium?.copyWith(color: ink2),
-        hintStyle: text.bodyLarge?.copyWith(color: ink2),
-        helperStyle: text.bodySmall?.copyWith(color: ink2),
-        errorStyle: text.bodySmall?.copyWith(color: scheme.error),
-      ),
+      inputDecorationTheme: field,
       textSelectionTheme: TextSelectionThemeData(
         cursorColor: ink,
         selectionColor: scheme.surfaceContainerHigh,
@@ -585,6 +586,24 @@ abstract final class AppTheme {
         ),
         titleTextStyle: text.titleLarge,
         contentTextStyle: text.bodyLarge?.copyWith(color: ink2),
+      ),
+      // The pickers are dialogs too: on the dialog surface, not the M3
+      // default surfaceContainerHigh, on which onSurfaceVariant (the year
+      // list, "Select date", the field label) is 4.28:1 in the dark theme
+      // (VISUAL-R11-02). The field is filled with that same surface, so it
+      // is drawn with an outline.
+      datePickerTheme: DatePickerThemeData(
+        backgroundColor: scheme.surfaceContainerLowest,
+        surfaceTintColor: Colors.transparent,
+        inputDecorationTheme: field.copyWith(
+          enabledBorder: OutlineInputBorder(
+            borderRadius: const BorderRadius.all(Radius.circular(Radii.md)),
+            borderSide: BorderSide(color: scheme.outline),
+          ),
+        ),
+      ),
+      timePickerTheme: TimePickerThemeData(
+        backgroundColor: scheme.surfaceContainerLowest,
       ),
       snackBarTheme: SnackBarThemeData(
         behavior: SnackBarBehavior.floating,

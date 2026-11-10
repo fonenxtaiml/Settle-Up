@@ -237,7 +237,7 @@ Future<List<String>> _sweep(WidgetTester t, Shape s) async {
   }
   out.addAll(await _check(t, '$where input error'));
   // ...and a right one is returned.
-  await t.enterText(field, '09/03/2026');
+  await t.enterText(field, '03/09/2026');
   await t.tap(find.text('OK'));
   await t.pumpAndSettle();
   final d = await picked;

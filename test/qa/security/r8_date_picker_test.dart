@@ -58,10 +58,10 @@ void main() {
     );
     final f = pickEntryDate(ctx, initial: reset, now: reset);
     await t.pumpAndSettle();
-    // Switch to text entry and type the real date (en_US: MM/DD/YYYY).
+    // Switch to text entry and type the real date, day first (dd/mm/yyyy).
     await t.tap(find.byIcon(Icons.edit_outlined));
     await t.pumpAndSettle();
-    await t.enterText(find.byType(TextField), '11/10/2026');
+    await t.enterText(find.byType(TextField), '10/11/2026');
     await t.pumpAndSettle();
     expect(t.takeException(), isNull);
     await t.tap(find.text('OK'));
