@@ -500,16 +500,34 @@ final class Ledger implements LedgerRepository, SyncStore {
     return t;
   }
 
-  /// My profile name as it goes into a member op. Settings validate it on
-  /// their own; a name saved before the limits is cleaned and cut
-  /// ([NameText.fit]) rather than blocking every new group.
-  static String _profileName(Profile profile) {
-    final t = NameText.fit(profile.displayName, TextRules.memberName);
-    if (!NameText.hasLetterOrNumber(t)) {
-      _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
-    }
-    return t;
+  /// The name of a person this phone already holds (my profile, or a
+  /// member of another group picked for a new one) as it goes into a
+  /// member op: [NameText.fit] like a typed name. A name saved before
+  /// names needed a letter (DATA-R6-02), by an earlier build or by an
+  /// older phone, is kept when it shows something by the rule every phone
+  /// checks names from peers with ([TextRules.isBlank]), for example
+  /// "😎": it is how that person is already shown, and refusing it would
+  /// block every new group with them (UIFLOW-R8-02). Null for a name that
+  /// shows nothing.
+  static String? _knownName(String value) {
+    final t = NameText.fit(value, TextRules.memberName);
+    if (NameText.hasLetterOrNumber(t)) return t;
+    return t.isEmpty || TextRules.isBlank(t) ? null : t;
   }
+
+  /// [_knownName] of a person picked from another group.
+  static String _knownMemberName(String value, String field) =>
+      _knownName(value) ?? _memberName(value, field);
+
+  /// My profile name as it goes into a member op ([_knownName]). Settings
+  /// validate a name when it is saved; one saved before the limits is cut
+  /// rather than blocking every new group, and one that shows nothing
+  /// (only possible in a row written by an earlier build) falls back to
+  /// this phone's name, which is always a valid name, until I change it.
+  String _profileName(Profile profile) =>
+      _knownName(profile.displayName) ??
+      _knownName(_settings.device.deviceName) ??
+      _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
 
   static Never _groupFull() => throw const LedgerException(
         LedgerErrorCode.invalidInput,
@@ -626,8 +644,8 @@ final class Ledger implements LedgerRepository, SyncStore {
         for (final p in draft.existingPeople) {
           final personId = _text(p.personId, 'personId');
           if (personId == profile.personId) continue;
-          existing.putIfAbsent(
-              personId, () => _memberName(p.displayName, 'member name'));
+          existing.putIfAbsent(personId,
+              () => _knownMemberName(p.displayName, 'member name'));
         }
         if (1 + newNames.length + existing.length >
             TextRules.maxActiveMembers) {
@@ -888,7 +906,7 @@ final class Ledger implements LedgerRepository, SyncStore {
         if (friend == profile.personId) {
           _fail(LedgerErrorCode.invalidInput, 'That is you');
         }
-        final name = _memberName(displayName, 'displayName');
+        final name = _knownMemberName(displayName, 'displayName');
         final code = _currency(currency);
         final found = <GroupId>[];
         for (final gs in _reducer.state.visibleGroups) {

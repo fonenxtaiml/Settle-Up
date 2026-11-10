@@ -508,6 +508,5 @@ void main() {
       expect(w.state.visibleGroups, hasLength(1));
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R8-02: a profile name with no letter saved by an earlier build blocks New group
   );
 }
