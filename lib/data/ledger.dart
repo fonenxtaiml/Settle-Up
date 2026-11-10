@@ -483,33 +483,51 @@ final class Ledger implements LedgerRepository, SyncStore {
   static String _memberName(String v, String field) =>
       _name(v, field, TextRules.memberName);
 
-  /// A name (SPEC 5.16): stored as it is shown and compared
-  /// ([NameText.normalize]), with at least one letter or number, at most
-  /// [limit] characters.
+  /// A name (SPEC 5.16): stored as it is shown and compared, [NameText.fit]
+  /// to [limit] characters (normalised, then cut like a pasted name when
+  /// normalising made it longer than the field let through, DATA-R8-01),
+  /// with at least one letter or number.
   static String _name(String value, String field, int limit) {
-    final t = NameText.normalize(value);
-    if (!NameText.isValid(t)) {
+    final t = NameText.fit(value, limit);
+    if (!NameText.hasLetterOrNumber(t)) {
       _fail(LedgerErrorCode.invalidInput, '$field is empty');
     }
-    _fit(t, field, limit);
+    final why = TextRules.nameTooLong(value, limit);
+    if (why != null) {
+      throw LedgerException(LedgerErrorCode.invalidInput, '$field is $why',
+          LedgerInputIssue.tooLong);
+    }
     return t;
   }
 
-  /// My profile name as it goes into a member op. Settings validate it on
-  /// their own; a name saved before the limits is cleaned and shortened
-  /// rather than blocking every new group.
-  static String _profileName(Profile profile) {
-    final t = NameText.normalize(profile.displayName);
-    if (!NameText.isValid(t)) {
-      _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
-    }
-    if (TextRules.tooLong(t, TextRules.memberName) == null) return t;
-    final short = t.characters.take(TextRules.memberName).toString();
-    return TextRules.tooLong(short, TextRules.memberName) == null
-        ? short.trim()
-        : _fail(LedgerErrorCode.invalidInput, 'Your name is too long',
-            LedgerInputIssue.tooLong);
+  /// The name of a person this phone already holds (my profile, or a
+  /// member of another group picked for a new one) as it goes into a
+  /// member op: [NameText.fit] like a typed name. A name saved before
+  /// names needed a letter (DATA-R6-02), by an earlier build or by an
+  /// older phone, is kept when it shows something by the rule every phone
+  /// checks names from peers with ([TextRules.isBlank]), for example
+  /// "😎": it is how that person is already shown, and refusing it would
+  /// block every new group with them (UIFLOW-R8-02). Null for a name that
+  /// shows nothing.
+  static String? _knownName(String value) {
+    final t = NameText.fit(value, TextRules.memberName);
+    if (NameText.hasLetterOrNumber(t)) return t;
+    return t.isEmpty || TextRules.isBlank(t) ? null : t;
   }
+
+  /// [_knownName] of a person picked from another group.
+  static String _knownMemberName(String value, String field) =>
+      _knownName(value) ?? _memberName(value, field);
+
+  /// My profile name as it goes into a member op ([_knownName]). Settings
+  /// validate a name when it is saved; one saved before the limits is cut
+  /// rather than blocking every new group, and one that shows nothing
+  /// (only possible in a row written by an earlier build) falls back to
+  /// this phone's name, which is always a valid name, until I change it.
+  String _profileName(Profile profile) =>
+      _knownName(profile.displayName) ??
+      _knownName(_settings.device.deviceName) ??
+      _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
 
   static Never _groupFull() => throw const LedgerException(
         LedgerErrorCode.invalidInput,
@@ -626,8 +644,8 @@ final class Ledger implements LedgerRepository, SyncStore {
         for (final p in draft.existingPeople) {
           final personId = _text(p.personId, 'personId');
           if (personId == profile.personId) continue;
-          existing.putIfAbsent(
-              personId, () => _memberName(p.displayName, 'member name'));
+          existing.putIfAbsent(personId,
+              () => _knownMemberName(p.displayName, 'member name'));
         }
         if (1 + newNames.length + existing.length >
             TextRules.maxActiveMembers) {
@@ -888,7 +906,7 @@ final class Ledger implements LedgerRepository, SyncStore {
         if (friend == profile.personId) {
           _fail(LedgerErrorCode.invalidInput, 'That is you');
         }
-        final name = _memberName(displayName, 'displayName');
+        final name = _knownMemberName(displayName, 'displayName');
         final code = _currency(currency);
         final found = <GroupId>[];
         for (final gs in _reducer.state.visibleGroups) {
@@ -1333,8 +1351,9 @@ final class Ledger implements LedgerRepository, SyncStore {
         }
         // A group name from another phone's link, in the form group names
         // are shown in ([NameText.display]).
-        var hint = NameText.display(nameHint);
+        var hint = NameText.display(nameHint, TextRules.groupName);
         if (TextRules.tooLong(hint, TextRules.groupName) != null) {
+          // Only a hint that shows nothing once normalised gets here.
           hint = hint.characters.take(TextRules.groupName).toString().trim();
         }
         // The hint goes first: a key without a hint and without ops is

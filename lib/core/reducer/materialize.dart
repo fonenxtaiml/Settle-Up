@@ -82,7 +82,7 @@ Group? buildGroup(GroupId id, EntityState s) {
   return Group(
     id: id,
     // Shown as names typed here are stored, whichever phone wrote it.
-    name: NameText.display(name),
+    name: NameText.display(name, NameText.maxGroupLength),
     type: enumByName(GroupType.values, type, GroupType.other),
     currency: currency,
     simplifyDebts: simplify,

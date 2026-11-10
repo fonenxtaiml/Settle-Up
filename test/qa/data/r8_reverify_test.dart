@@ -298,8 +298,6 @@ void main() {
         await ledger.close();
         expect(member, isNull, reason: '$member');
       },
-      skip: 'QA DATA-R8-01: a name that fits the 40-character field is '
-          'refused when saved because normalising makes it longer',
     );
   });
 }

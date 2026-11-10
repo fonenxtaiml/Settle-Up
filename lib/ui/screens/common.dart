@@ -286,7 +286,9 @@ class _TextPromptState extends State<_TextPrompt> {
 
   bool get _accepted {
     final text = _controller.text;
-    return widget.isName ? NameText.isValid(text) : text.trim().isNotEmpty;
+    return widget.isName
+        ? NameText.isValid(text, widget.maxLength ?? NameText.maxLength)
+        : text.trim().isNotEmpty;
   }
 
   void _submit() {
@@ -308,7 +310,12 @@ class _TextPromptState extends State<_TextPrompt> {
           hintText: widget.hint,
           helperText: widget.helper,
           helperMaxLines: 3,
-          errorText: widget.isName ? nameInputError(_controller.text) : null,
+          errorText: widget.isName
+              ? nameInputError(
+                  _controller.text,
+                  widget.maxLength ?? NameText.maxLength,
+                )
+              : null,
           errorMaxLines: 3,
         ),
         onSubmitted: (_) => _submit(),
@@ -473,9 +480,12 @@ const int kMemberNameMax = 40;
 /// The message under a name field whose text is not empty but is no name
 /// (no letter or number once normalised, [NameText.isValid]): only
 /// spaces, symbols or characters that show nothing. Null while the field
-/// is empty or holds a name.
-String? nameInputError(String text) =>
-    text.trim().isEmpty || NameText.isValid(text) ? null : S.nameNeedsLetter;
+/// is empty or holds a name. [limit] is the field's maxLength: the letter
+/// must be in what is saved of the name ([NameText.fit]).
+String? nameInputError(String text, [int limit = NameText.maxLength]) =>
+    text.trim().isEmpty || NameText.isValid(text, limit)
+        ? null
+        : S.nameNeedsLetter;
 
 /// The existing name [candidate] would duplicate, as it is shown, or null.
 /// Both sides are compared in the one form names are stored and shown in

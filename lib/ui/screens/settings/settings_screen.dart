@@ -312,7 +312,7 @@ String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
 /// so friends see it after the next sync.
 Future<void> renameMeEverywhere(WidgetRef ref, PersonId me, String name) async {
   final ledger = ref.read(ledgerRepositoryProvider);
-  final trimmed = NameText.normalize(name);
+  final trimmed = NameText.fit(name);
   for (final g in ledger.current.state.visibleGroups) {
     final mine = myMemberIn(g, me);
     if (mine == null) continue;

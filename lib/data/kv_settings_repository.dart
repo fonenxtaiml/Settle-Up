@@ -43,7 +43,7 @@ final class KvSettingsRepository implements SettingsRepository {
     var device = deviceFromJson(deviceJson);
     if (device == null) {
       final name = NameText.isValid(defaultDeviceName)
-          ? NameText.normalize(defaultDeviceName)
+          ? NameText.fit(defaultDeviceName)
           : '';
       // A missing or unreadable row on a phone that already wrote ops
       // keeps its id (a fresh install has no hlc.last).
@@ -61,7 +61,7 @@ final class KvSettingsRepository implements SettingsRepository {
       device = DeviceIdentity(
         deviceId: recovered ?? ids.newId(),
         deviceName: oldName is String && NameText.isValid(oldName)
-            ? NameText.normalize(oldName)
+            ? NameText.fit(oldName)
             : (name.isEmpty ? 'Phone' : name),
       );
       await store.setKv(KvKeys.device, jsonEncode(deviceToJson(device)));
@@ -256,18 +256,19 @@ final class KvSettingsRepository implements SettingsRepository {
   /// limit of a member name ([TextRules.memberName]).
   static const int maxNameLength = TextRules.memberName;
 
-  /// A name as it is stored, shown and compared ([NameText.normalize]):
-  /// it must keep a letter or a number and fit [maxNameLength] characters
-  /// by the rules a member name is held to ([TextRules.tooLong]). My name
-  /// becomes my member's name in every group, so a name saved here is
-  /// always one the Ledger accepts there (DATA-R6-02).
+  /// A name as it is stored, shown and compared ([NameText.fit]): it must
+  /// keep a letter or a number and fit [maxNameLength] characters by the
+  /// rules a member name is held to ([TextRules.nameTooLong]); one that
+  /// normalising makes longer than it was typed is cut, as the Ledger cuts
+  /// it (DATA-R8-01). My name becomes my member's name in every group, so
+  /// a name saved here is always one the Ledger accepts there (DATA-R6-02).
   static String _name(String value, String field) {
-    final t = NameText.normalize(value);
-    if (!NameText.isValid(t)) {
+    final t = NameText.fit(value, maxNameLength);
+    if (!NameText.hasLetterOrNumber(t)) {
       throw ArgumentError.value(
           value, field, 'must have at least one letter or number');
     }
-    if (TextRules.tooLong(t, maxNameLength) != null) {
+    if (TextRules.nameTooLong(value, maxNameLength) != null) {
       throw ArgumentError.value(
           value, field, 'must be at most $maxNameLength characters');
     }
