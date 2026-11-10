@@ -701,7 +701,7 @@ void main() {
         1,
         reason: 'the new expense reached no phone, yet it shows as shared',
       );
-    }, skip: 'SECURITY-R2-01');
+    });
   });
 
   group('round 2: sizes', () {
