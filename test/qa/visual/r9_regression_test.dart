@@ -317,6 +317,5 @@ void main() {
       handle.dispose();
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true, // QA VISUAL-R9-01: kit buttons have no semantic tap action
   );
 }
