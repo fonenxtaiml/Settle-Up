@@ -333,7 +333,6 @@ void main() {
         // the platform channel turns into U+FFFD in the shared file's name.
         expect(wellFormed(file), isTrue, reason: file);
       },
-      skip: 'DATA-R3-02: csvFileName cuts the name by UTF-16 units',
     );
 
     test('CSV file names of BMP scripts (<= 60 units) are never cut', () {
