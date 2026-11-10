@@ -285,7 +285,9 @@ class SettingsScreen extends ConsumerWidget {
 const int kDeviceNameMax = 40;
 
 /// The refusal copy when [name] is already someone else's name in a group
-/// I am in ("Rahul is already in Goa trip"), or null when it is free.
+/// I am in ("Rahul is already in Goa trip"; for a 1:1, whose stored name is
+/// the friend's, "You already have a friend called Rahul"), or null when
+/// it is free.
 String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
   final ledger = ref.read(ledgerRepositoryProvider);
   for (final g in ledger.current.state.visibleGroups) {
@@ -295,7 +297,10 @@ String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
       for (final m in g.activeMembers)
         if (g.resolve(m.id) != mine) m.displayName,
     ]);
-    if (dup != null) return S.alreadyInNamedGroup(dup, g.group!.name);
+    if (dup == null) continue;
+    return g.group!.isDirect
+        ? S.alreadyAFriend(dup)
+        : S.alreadyInNamedGroup(dup, g.group!.name);
   }
   return null;
 }
