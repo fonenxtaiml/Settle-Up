@@ -1961,8 +1961,11 @@ abstract interface class SyncStore {
 
   /// Validates (op.groupId == groupId, key held, parseable, counter >= 1,
   /// hlc.deviceId == deviceId, the 5.16 text limits as code units, no bidi
-  /// or control characters, encoded op <= 32 KiB, and an op carrying this
-  /// phone's device id only if this phone already used that counter),
+  /// or control characters, no blank group or member name, ids and enum
+  /// strings <= 64 units, unknown payload fields <= 1 KiB of JSON per op,
+  /// encoded op <= 16 KiB, the whole batch <= 1 Mi units, and an op
+  /// carrying this phone's device id only if this phone already used that
+  /// counter),
   /// persists in one transaction, advances the HLC with the batch max,
   /// applies to the reducer, emits a snapshot. Ops stamped more than 7 days
   /// ahead of this phone's clock are held back (not stored, so the peer
@@ -1970,6 +1973,9 @@ abstract interface class SyncStore {
   /// ops. Throws FormatException on a bad op (the whole batch is rejected).
   Future<List<Operation>> applyRemote(GroupId groupId, List<Operation> ops);
 
+  /// Merges what [peer] holds. An entry for this phone's own device above
+  /// the counters this phone wrote is forged and clamped to them, so it
+  /// cannot mark later local changes as shared.
   Future<void> recordPeerKnowledge(
       DeviceId peer, GroupId groupId, VersionVector vv);
 
@@ -2956,8 +2962,8 @@ abstract final class MoneyFormat {
 - `LedgerSnapshot.ops` is the full op list sorted ascending by `hlc` (encoded string order equals `Hlc.compareTo`). It is shared, unmodifiable, and rebuilt only when ops change.
 - `watch()`, `watchProfile()`, `watchSettings()`, `watchDevice()`, `watchStatus()`, `watchNearby()`, `watchHistory()` and `watchSyncRecords()` **emit the current value immediately on listen** (use a `StreamController.broadcast` plus an `async*` wrapper that yields the current value first). Providers rely on this.
 - Ledger commands are serialized through a single async queue, so the counter and HLC never race.
-- Limits enforced by `Ledger` (throw `LedgerException(invalidInput)`): group name 1..60 characters, member display name 1..40, description 1..120, notes ≤ 1000, ≤ 50 active members per group, total 1..`Money.maxMinor`. Text is trimmed. These keep one op well under 8 KiB, so any op fits a BLE frame. A failed store or keystore write throws `storageFailed`; once the ops are stored the command succeeds (saving `hlc.last` is best effort). Limits on the member count and lengths carry `LedgerInputIssue.groupFull` / `tooLong` so the UI can say why.
-- Characters are user-perceived characters (grapheme clusters, as the UI's `maxLength` counts them), and a field may hold at most 4 UTF-16 code units per allowed character. Before measuring, text is cleaned (`lib/data/text_rules.dart`): C0/C1 controls, bidi embeddings, overrides, isolates and marks (U+061C, U+200E/F, U+202A-202E, U+2066-2069), zero-width space, word joiner and BOM are removed; ZWJ and ZWNJ stay (emoji, Indic scripts). Names turn tabs and line breaks into spaces; descriptions and notes keep line breaks. A name that shows nothing after cleaning is empty.
+- Limits enforced by `Ledger` (throw `LedgerException(invalidInput)`): group name 1..60 characters, member display name 1..40, description 1..120, notes ≤ 1000, ≤ 50 active members per group, total 1..`Money.maxMinor`. Text is trimmed. These keep one op under 16 KiB of JSON (the worst case, a 50-person shares split with every text field at its limit in 4-unit characters, is about 15 K units), so any op fits a BLE frame. A failed store or keystore write throws `storageFailed`; once the ops are stored the command succeeds (saving `hlc.last` is best effort). Limits on the member count and lengths carry `LedgerInputIssue.groupFull` / `tooLong` so the UI can say why.
+- Characters are user-perceived characters (grapheme clusters, as the UI's `maxLength` counts them), and a field may hold at most 4 UTF-16 code units per allowed character. Before measuring, text is cleaned (`lib/data/text_rules.dart`): C0/C1 controls, bidi embeddings, overrides, isolates and marks (U+061C, U+200E/F, U+202A-202E, U+2066-2069), zero-width space, word joiner and BOM are removed; ZWJ and ZWNJ stay (emoji, Indic scripts). Names turn tabs and line breaks into spaces; descriptions and notes keep line breaks. A name that shows nothing after cleaning is empty: only spaces, removed characters, or characters that render blank on their own (joiners, variation selectors, Hangul fillers U+115F/U+1160/U+3164/U+FFA0, braille blank U+2800, soft hyphen, U+034F, invisible operators U+2061-2064, U+180B-180F, tag characters U+E0000-E007F and similar; `TextRules.isBlank`). Ops from peers are checked with the same code-point rules (no Unicode tables, so every phone decides alike): over-long text, control or bidi characters, and a blank group or member name reject the batch.
 - Category ids, enum `.name` strings and field names are wire format. Renaming any of them is a protocol change (bump `kSchemaVersion`).
 
 ---
@@ -3149,7 +3155,7 @@ CREATE TABLE sync_records(id TEXT PRIMARY KEY, started_at INTEGER NOT NULL, json
 
 ### 7.6 Schema evolution
 
-`kSchemaVersion = 1`. A newer app writes ops with a higher `schemaVersion`. Older apps parse them with placeholder entity type/kind, keep `Operation.raw`, store and relay them byte for byte, and never apply them. After the user updates, the reducer replays all stored ops on startup and the newer ops take effect. Unknown payload fields in v1 ops are preserved in the same way.
+`kSchemaVersion = 1`. A newer app writes ops with a higher `schemaVersion`. Older apps parse them with placeholder entity type/kind, keep `Operation.raw`, store and relay them byte for byte, and never apply them. After the user updates, the reducer replays all stored ops on startup and the newer ops take effect. Unknown payload fields in v1 ops are preserved in the same way, up to 1 KiB of JSON per op (`TextRules.maxUnknownUnits`); more is refused as `bad_op`, so padding in a field this version does not know cannot store megabytes from one small gzipped frame.
 
 ---
 
@@ -3321,7 +3327,7 @@ This is the same session staying in LIVE. The UI sets `liveMode = true` while th
 | QR photographed by someone | The QR is the membership secret. It auto-hides after 2 min and sharing is explicit with a warning. Rotation is Phase 2. |
 | Member forges another member's op | Accepted risk for MVP (friends). Phase 2 adds Ed25519 signatures. |
 | Malformed or hostile ops | `Operation.fromJson` + `SyncStore.applyRemote` validation (text limits, no bidi/control characters, 32 KiB per op, no forged own-device counters, far-future stamps held back); the reducer ignores invisible or inconsistent entities; size limits. |
-| Keystore failure wipes group keys | `flutter_secure_storage` with `resetOnError: false`: a failed read is reported, not answered by erasing every key. Groups without a key are listed in `LedgerSnapshot.groupsWithoutKey` and re-scanning an invite restores the key. |
+| Keystore failure wipes group keys | `flutter_secure_storage` with `resetOnError: false`: a failed read is reported, not answered by erasing every key. Groups without a key are listed in `LedgerSnapshot.groupsWithoutKey` and re-scanning an invite restores the key. If the store has lost its own wrapping key (every call fails with the plugin's key-mismatch error), a write fails twice and is then made once with `resetOnError: true`, which drops the already unreadable entries, so that scan (and new groups) can store keys again; keys read earlier in the session are written back. |
 
 ### 8.10 Permissions wrapper (`lib/sync/platform/permissions.dart`, WP-D1, used by D2)
 
