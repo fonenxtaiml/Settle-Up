@@ -2290,6 +2290,7 @@ enum SyncPhase { connecting, handshaking, comparing, transferring, finishing }
 enum SyncFailure {
   permissionDenied,
   radioOff,
+  locationOff, // Bluetooth on, the location switch off where scans need it
   peerUnreachable,
   timeout,
   noSharedGroups,
@@ -3368,7 +3369,7 @@ class NearbyPermissions {
 }
 ```
 
-Per kind on Android (API level → permissions): `lan`: none (targetSdk 36). `nearby`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≥ 33 also `nearbyWifiDevices`; API ≤ 32 `locationWhenInUse`. `ble`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≤ 30 `locationWhenInUse`. On iOS: `ble` → `bluetooth`; `lan` → no runtime API (the system prompts on the first local-network access; a timeout there maps to `permissionDenied` with the hint "Allow Local Network for Settle Up in Settings"). `radioOff` comes from `CentralManager().state` (BLE) and the Wi-Fi state (LAN: no IPv4 interface). `locationOff` is reported for `nearby`/`ble` when Bluetooth is on but the location service switch is off on an API level that needs `locationWhenInUse` for scanning (the Sync tab offers "Turn on location").
+Per kind on Android (API level → permissions): `lan`: none (targetSdk 36). `nearby`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≥ 33 also `nearbyWifiDevices`; API ≤ 32 `locationWhenInUse`. `ble`: API ≥ 31 `bluetoothScan`, `bluetoothAdvertise`, `bluetoothConnect`; API ≤ 30 `locationWhenInUse`. On iOS: `ble` → `bluetooth`; `lan` → no runtime API (the system prompts on the first local-network access; a timeout there maps to `permissionDenied` with the hint "Allow Local Network for Settle Up in Settings"). `radioOff` comes from `CentralManager().state` (BLE) and the Wi-Fi state (LAN: no IPv4 interface). `locationOff` is reported for `nearby`/`ble` when Bluetooth is on but the location service switch is off on an API level that needs `locationWhenInUse` for scanning (the Sync tab offers "Turn on location"). When nothing can advertise, `startHosting` fails with `permissionDenied` if a permission is missing, else `locationOff` if any transport reports it (Bluetooth is then on, so "Bluetooth or Wi-Fi is off" would point at the wrong switch; QA PLATFORM-R3-01), else `radioOff`.
 
 ---
 
