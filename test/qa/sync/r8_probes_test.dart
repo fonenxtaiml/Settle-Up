@@ -338,10 +338,6 @@ void main() {
               'expiry: $before)',
         );
       },
-      skip:
-          'QA SYNC-R8-01: a stale old-name sighting evicts the live '
-          'renamed service, so the old record\'s expiry hides a phone that '
-          'is still advertising',
     );
   });
 
@@ -403,10 +399,6 @@ void main() {
           reason: 'no goodbye was ever seen for "Alex\'s phone"',
         );
       },
-      skip:
-          'QA SYNC-R8-01: a stale old-name sighting evicts the live '
-          'renamed service, so the old record\'s expiry hides a phone that '
-          'is still advertising',
     );
   });
 }
