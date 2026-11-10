@@ -19,7 +19,7 @@ import '../../core/ops.dart';
 import '../../data/repositories.dart';
 import '../crypto/aead.dart';
 import '../crypto/handshake.dart';
-import '../peer_name.dart';
+import '../peer_label.dart';
 import '../sync_engine.dart';
 import '../transport/transport.dart';
 import 'batching.dart';
@@ -297,18 +297,25 @@ final class SyncSession {
   String? get verificationCode => _authenticated ? _keys?.verificationCode : null;
   List<GroupId> get sharedGroups => _keys?.sharedGroups ?? const [];
   DeviceId? get peerDeviceId => _peerHello?.deviceId;
-  /// The peer's device name from its HELLO (else the caller's hint),
-  /// cleaned: it is shown and recorded.
-  /// The HELLO name, or the advert or link hint when HELLO has none worth
-  /// showing (empty, or only hidden characters): never a blank name in the
-  /// session screen and Sync history (DATA-R5-02).
+  /// The peer's name as it is shown and recorded: the HELLO name, or the
+  /// advert or link hint when HELLO has none worth showing, or
+  /// [kUnnamedPeer] when neither does ([peerLabel]). Never a blank name in
+  /// the session screen and Sync history (DATA-R5-02, DATA-R6-01).
   String get peerName {
+    final name = knownPeerName;
+    return name.isEmpty ? kUnnamedPeer : name;
+  }
+
+  /// The HELLO name, else the hint, cleaned; '' when neither shows a name
+  /// ([shownPeerName]): what the peer is known by, for matching it with
+  /// the phone a dial was for.
+  String get knownPeerName {
     final hello = _peerHello?.deviceName;
     if (hello != null) {
-      final name = cleanPeerName(hello);
+      final name = shownPeerName(hello);
       if (name.isNotEmpty) return name;
     }
-    return cleanPeerName(peerNameHint);
+    return shownPeerName(peerNameHint);
   }
   bool get liveMode => _liveMode;
 

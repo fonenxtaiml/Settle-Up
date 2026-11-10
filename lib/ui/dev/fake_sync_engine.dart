@@ -309,7 +309,7 @@ final class FakeSyncEngine implements SyncEngine {
     final invite = InviteLink.tryParse(link);
     if (invite != null && invite.host != null) {
       return _run(
-        peerName: invite.fromName,
+        peerName: invite.fromName.isEmpty ? 'Phone' : invite.fromName,
         peerDeviceId: invite.deviceId,
         transport: TransportKind.lan,
         groupIds: [invite.groupId],

@@ -36,6 +36,7 @@ import '../core/models.dart';
 import '../data/repositories.dart';
 import 'crypto/tokens.dart';
 import 'nearby_registry.dart';
+import 'peer_label.dart';
 import 'peer_name.dart';
 import 'pairing/links.dart';
 import 'protocol/codec.dart';
@@ -881,7 +882,10 @@ final class DefaultSyncEngine implements SyncEngine {
     List<DiscoveredPeer> routes,
     Duration timeout,
   ) async {
-    final name = cleanPeerName(advertisedName);
+    // The session's hint is '' for an advert or link without a name worth
+    // showing; the progress and history then say [kUnnamedPeer].
+    final hint = shownPeerName(advertisedName);
+    final name = hint.isEmpty ? kUnnamedPeer : hint;
     final started = _clock.now();
     FrameChannel? channel;
     Object? lastError;
@@ -944,7 +948,7 @@ final class DefaultSyncEngine implements SyncEngine {
     }
     if (channel == null) return _follow(out);
 
-    final run = _startSession(channel, SessionRole.initiator, name, out: out);
+    final run = _startSession(channel, SessionRole.initiator, hint, out: out);
     final summary = Completer<SyncSummary>();
     unawaited(run.live.future.then((r) {
       // LIVE: the caller gets the summary now; the session keeps running.
@@ -1064,7 +1068,7 @@ final class DefaultSyncEngine implements SyncEngine {
   static bool _dialMayReach(_Outbound out, SyncSession s) {
     final id = out.targetId;
     if (id != null) return id == s.peerDeviceId;
-    final hello = _nameKey(s.peerName);
+    final hello = _nameKey(s.knownPeerName);
     if (hello.isEmpty || out.targetNames.isEmpty) return true;
     for (final n in out.targetNames) {
       final advertised = _nameKey(n);
@@ -1080,8 +1084,10 @@ final class DefaultSyncEngine implements SyncEngine {
 
   static final RegExp _mdnsSuffix = RegExp(r'\s*\(\d+\)$');
 
-  static String _nameKey(String name) =>
-      cleanPeerName(name).replaceFirst(_mdnsSuffix, '').trim().toLowerCase();
+  /// '' for a name that shows nothing (unknown), " (2)" left out.
+  static String _nameKey(String name) => shownPeerName(
+    cleanPeerName(name).replaceFirst(_mdnsSuffix, ''),
+  ).toLowerCase();
 
   /// Whether a phone that refused us with "Starting its own sync" while
   /// dialing a phone seen with the advert ids [dialing] may be dialing us:
