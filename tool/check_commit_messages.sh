@@ -28,4 +28,8 @@ if [[ $status -ne 0 ]]; then
 else
   echo "$count commit(s) in $range: commit messages are clean."
 fi
+if [[ "$(git config --get core.hooksPath || true)" != "tool/git-hooks" ]]; then
+  echo "Note: the commit-msg hook is not enabled in this clone; run" \
+    "tool/install_git_hooks.sh." >&2
+fi
 exit $status
