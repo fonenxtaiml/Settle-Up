@@ -149,8 +149,13 @@ void main() {
 
   group('MONEY-R2-04 neighbours: the shown decimal comma stays one', () {
     testWidgets('three-decimal currencies and the fourth digit', (t) async {
-      expect(await typeInto(t, 'BHD', '1,250'), 1250);
-      expect(await typeInto(t, 'BHD', '1,2500'), 1250);
+      // BHD writes a dot: "1,250" is read as every other input reads it
+      // (1,250 BD, QA MONEY-R3-03 reopened), and a fourth digit after the
+      // comma is refused.
+      final bhd = parseAmountInput('1,250', Currencies.of('BHD'));
+      expect(bhd, 1250000);
+      expect(await typeInto(t, 'BHD', '1,250'), bhd);
+      expect(await typeInto(t, 'BHD', '1,2500'), bhd);
       expect(await typeInto(t, 'TND', '1,2505'), 1250);
       // EUR: neither a third digit nor a second comma is taken.
       expect(await typeInto(t, 'EUR', '12,50,'), 1250);
@@ -315,7 +320,12 @@ void main() {
         // must not make it 1,250 dinars.
         expect(await typeInto(t, 'TND', '1,250,'), anyOf(isNull, 1250));
         expect(await typeInto(t, 'TND', '1,250.'), anyOf(isNull, 1250));
-        expect(await typeInto(t, 'KWD', '1,250.'), anyOf(isNull, 1250));
+        // KWD "1,250" is 1,250 KD as typed (QA MONEY-R3-03 reopened); the
+        // point after it is its decimal point and changes nothing.
+        expect(
+          await typeInto(t, 'KWD', '1,250.'),
+          await typeInto(t, 'KWD', '1,250'),
+        );
         // An existing KWD 1.250 with a comma typed at its end.
         final f = _Field(t);
         await f.pump('KWD', initial: 1250);
