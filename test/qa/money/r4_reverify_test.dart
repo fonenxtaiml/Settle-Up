@@ -174,11 +174,21 @@ void main() {
       t,
     ) async {
       for (final c in ['TND', 'KWD', 'BHD', 'OMR', 'JOD']) {
-        // "1,250," in KWD, BHD, OMR, JOD: see QA MONEY-R3-03 (reopened).
-        if (c == 'TND') {
-          expect(await typeInto(t, c, '1,250,'), 1250, reason: c);
-        }
-        expect(await typeInto(t, c, '1,250.'), 1250, reason: c);
+        // A comma after "1,250" never makes it a thousand times larger
+        // (QA MONEY-R3-03 reopened).
+        expect(
+          await typeInto(t, c, '1,250,'),
+          parseAmountInput('1,250', cur(c)),
+          reason: c,
+        );
+        // "1,250" is read as every input reads it in that currency (1.250
+        // DT, 1,250 KD: QA MONEY-R3-03 reopened); a point after it changes
+        // nothing.
+        expect(
+          await typeInto(t, c, '1,250.'),
+          parseAmountInput('1,250', cur(c)),
+          reason: c,
+        );
         expect(await typeInto(t, c, '1.250,'), 1250, reason: c);
         expect(await typeInto(t, c, '1.250.'), 1250, reason: c);
       }
@@ -296,7 +306,7 @@ void main() {
           expect(after, anyOf(isNull, shown), reason: '$c "1,250,"');
         }
       },
-      skip: true, // QA MONEY-R3-03 (reopened)
+      // QA MONEY-R3-03 (reopened)
     );
   });
 
@@ -324,7 +334,7 @@ void main() {
         expect(saveEnabled(tester), isFalse);
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R3-05 (reopened)
+      // QA MONEY-R3-05 (reopened)
     );
 
     test(
@@ -350,7 +360,7 @@ void main() {
           expect(v, isNull, reason: '"$s" in $c read as $v');
         }
       },
-      skip: true, // QA MONEY-R3-05 (reopened)
+      // QA MONEY-R3-05 (reopened)
     );
   });
 
@@ -368,7 +378,7 @@ void main() {
         expect(await typeInto(t, 'JPY', '12.5'), anyOf(isNull, 12));
         expect(parseAmountInput('800.50', cur('JPY')), isNull);
       },
-      skip: true, // QA MONEY-R4-01
+      // QA MONEY-R4-01
     );
   });
 
@@ -397,13 +407,15 @@ void main() {
             reason: 'TND "$shown" pasted back',
           );
         }
-        // Edit expense 12,345 DT: select "34", paste "99".
+        // Edit expense 12,345 DT: select "34", paste "99". The field writes
+        // TND thousands with a thin space (a comma there is the decimal
+        // comma), so its own text reads back as written.
         await f.pump('TND', initial: 12345000);
-        expect(f.text, '12,345');
-        await f.set('12,995');
+        expect(f.text, '12\u2009345');
+        await f.set('12\u2009995');
         expect(f.reported, anyOf(isNull, 12995000));
       },
-      skip: true, // QA MONEY-R4-02
+      // QA MONEY-R4-02
     );
   });
 
@@ -430,7 +442,7 @@ void main() {
         expect(saveEnabled(tester), isFalse);
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R4-03
+      // QA MONEY-R4-03
     );
   });
 
@@ -465,7 +477,7 @@ void main() {
         expect(w.group(gid).liveExpenses, isEmpty);
         await w.shutdown(tester);
       },
-      skip: true, // QA MONEY-R4-04
+      // QA MONEY-R4-04
     );
   });
 }
