@@ -351,6 +351,10 @@ final class NearbyTransport implements SyncTransport {
         }
         if (!_discovering) return;
         final peer = parsed.toPeer(endpointId);
+        // A phone that re-advertises (a rename) gets a new endpoint id with
+        // the same advert id; drop the old one even if its loss is never
+        // reported, or the row would flip between the names (SYNC-R6-01).
+        _found.removeWhere((_, p) => peer.sameAdvertiserAs(p));
         _found[endpointId] = peer;
         _emit(peer);
       case NearbyEndpointLost(:final endpointId):

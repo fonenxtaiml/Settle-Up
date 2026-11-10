@@ -284,11 +284,16 @@ final class LanTransport implements SyncTransport, HostingDetails {
         if (gone != null) _mdnsSeen.remove(gone.address);
         return;
       }
-      final previous = cache[name];
+      // One phone runs one service at a time: this sighting replaces the
+      // service's earlier one and any other cached service of the same
+      // phone (same address or advert id), such as its name before a
+      // rename whose goodbye was missed (SYNC-R6-01).
+      cache.removeWhere((other, p) {
+        if (other != name && !peer.sameAdvertiserAs(p)) return false;
+        if (p.address != peer.address) _mdnsSeen.remove(p.address);
+        return true;
+      });
       cache[name] = peer;
-      if (previous != null && previous.address != peer.address) {
-        _mdnsSeen.remove(previous.address);
-      }
       emit(peer);
     }
 
