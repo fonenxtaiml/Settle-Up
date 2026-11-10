@@ -89,7 +89,6 @@ void main() {
                 'the Sync screen shows "Pair" and refuses tap-to-sync',
           );
         },
-        skip: 'SYNC-R2-01',
       );
     }
   });
