@@ -66,6 +66,7 @@ Cloud backend, accounts and multi-device-per-person sync ("Already use Settle Up
 | Local DB | **`sqlite3` ^3.9.1 used directly, NO drift, NO code generation** | The op log is the only durable state and it is append-only. Materialized state is folded in memory by the pure-Dart reducer (section 7), so we need about 6 SQL statements, not an ORM. That removes `build_runner` from the parallel build (no generated files to conflict on). `sqlite3` 3.x bundles SQLite through Dart build hooks (no `sqlite3_flutter_libs`). It works in `flutter test` on Linux. SQLite runs synchronously on the main isolate; the expected sizes (≤ 20k ops) make this fine. Moving it to an isolate later is internal to `lib/data`. |
 | Routing | `go_router` ^18.1.3 with `StatefulShellRoute.indexedStack` for the 3-tab shell | |
 | IDs | `uuid` ^4.6.0, `Uuid().v7()` | Time-ordered, Postgres friendly. |
+| Names | `unorm_dart` 0.3.3 (NFKC) | Pure Dart. `NameText` (core) stores, shows and compares people, group and phone names in one NFKC-normalised form, so a name that looks the same always compares the same (UIFLOW-R6-01). |
 | Crypto | `cryptography` ^2.9.0 + `cryptography_flutter` ^2.3.4 | X25519, HKDF-SHA256, HMAC-SHA256, AES-256-GCM, SHA-256. In tests use `Cryptography.instance` pure-Dart implementations (`cryptography_flutter` only accelerates on device). |
 | Secrets | `flutter_secure_storage` ^11.2.0 | Group keys only. |
 | LAN | `dart:io` `ServerSocket`/`Socket`, `bonsoir` `>=7.1.5 <7.1.6` (mDNS), `network_info_plus` `>=8.2.1 <8.2.2` (gateway IP) | **Pinned below the latest on purpose:** `bonsoir` 7.1.6 and `network_info_plus` 8.2.2 pull `dbus` ^0.8 (through their Linux implementations), which conflicts with `bluetooth_low_energy` 6.2.1 (`bluez` → `dbus` ^0.7). Do not bump them until `bluetooth_low_energy` moves to `dbus` 0.8. |
@@ -117,6 +118,7 @@ dependencies:
   qr_flutter: ^4.1.0
   share_plus: ^13.3.1
   sqlite3: ^3.9.1
+  unorm_dart: 0.3.3  # NFKC for names (NameText)
   uuid: ^4.6.0
 
 dev_dependencies:
@@ -190,7 +192,7 @@ Balances, simplified debts and summaries are **never stored or synced**. They ar
 
 | Directory | May import | Must not import |
 |---|---|---|
-| `lib/core/**` | `dart:core`, `dart:math`, `dart:convert`, `dart:collection`, `dart:typed_data`, `package:meta`, `package:collection`, `package:uuid` | `package:flutter/*`, `dart:io`, `dart:ui`, anything in `lib/data`, `lib/sync`, `lib/ui`, `lib/theme` |
+| `lib/core/**` | `dart:core`, `dart:math`, `dart:convert`, `dart:collection`, `dart:typed_data`, `package:meta`, `package:collection`, `package:uuid`, `package:unorm_dart` | `package:flutter/*`, `dart:io`, `dart:ui`, anything in `lib/data`, `lib/sync`, `lib/ui`, `lib/theme` |
 | `lib/data/**` | core, `dart:io`, `sqlite3`, `flutter_secure_storage`, `device_info_plus`, `path`, `path_provider`, `flutter/foundation.dart` | `lib/sync`, `lib/ui`, `lib/theme`, `flutter/material.dart`, `flutter/widgets.dart` |
 | `lib/sync/**` | core, `lib/data/repositories.dart` (interfaces only), `dart:io`, crypto, transport and permission packages | `lib/data/**` other than `repositories.dart`, `lib/ui`, `lib/theme`, `flutter/material.dart` |
 | `lib/theme/**` | `flutter/material.dart`, `google_fonts`, `lib/core` | data, sync, ui |
