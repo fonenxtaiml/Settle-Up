@@ -13,20 +13,33 @@ import 'package:settle_up/sync/pairing/links.dart';
 import 'package:settle_up/sync/peer_label.dart';
 import 'package:settle_up/sync/peer_name.dart';
 import 'package:settle_up/sync/transport/transport.dart';
+import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 final _letterOrNumber = RegExp(r'^[\p{L}\p{N}]$', unicode: true);
 
 bool _isSurrogate(int r) => r >= 0xD800 && r <= 0xDFFF;
 
+/// Whether [s] holds a letter or number that draws in the compatibility
+/// form names are stored and shown in (NFKC, UIFLOW-R6-01): "㉑" is "21"
+/// and "ㄱ" is U+1100 there, while U+037A is a space and a lone mark.
+bool _drawsName(String s) => unorm.nfkc(s).runes.any(
+  (r) =>
+      !TextClean.isHidden(r) &&
+      !TextClean.isBlankMark(r) &&
+      _letterOrNumber.hasMatch(String.fromCharCode(r)),
+);
+
 /// Code points that do not make a name: every one that is not a letter or
 /// number (spaces, controls, format characters, marks, symbols,
 /// punctuation, unassigned), plus the letters that draw as blank space
-/// (the Hangul fillers).
+/// (the Hangul fillers), that hold no such letter or number in NFKC
+/// either.
 final List<int> nonName = [
   for (var r = 0; r <= 0x10FFFF; r++)
     if (!_isSurrogate(r) &&
         (!_letterOrNumber.hasMatch(String.fromCharCode(r)) ||
-            TextClean.isBlankMark(r)))
+            TextClean.isBlankMark(r)) &&
+        !_drawsName(String.fromCharCode(r)))
       r,
 ];
 
@@ -97,7 +110,7 @@ void main() {
     for (var r = 0; r <= 0x10FFFF; r++) {
       if (_isSurrogate(r) || TextClean.isBlankMark(r)) continue;
       final s = String.fromCharCode(r);
-      if (!_letterOrNumber.hasMatch(s)) continue;
+      if (!_letterOrNumber.hasMatch(s) || !_drawsName(s)) continue;
       expect(shownPeerName(s), cleanPeerName(s), reason: r.toRadixString(16));
       expect(shownPeerName(s), isNotEmpty, reason: r.toRadixString(16));
     }
@@ -123,7 +136,10 @@ void main() {
           '${randomFrom(rnd, nonName, 6)}$v${randomFrom(rnd, nonName, 6)}';
       final got = shownPeerName(s);
       expect(got, cleanPeerName(s), reason: s.runes.toList().toString());
-      expect(got, contains(v));
+      // NFKC may change the letter itself ("ㄱ" is U+1100, "Ⅻ" is "XII")
+      // or compose it with a following mark, so a letter or number of it
+      // is what must be left.
+      expect(_drawsName(got), isTrue, reason: s.runes.toList().toString());
       expect(TextRules.isBlank(got), isFalse);
       expect(peerLabel([s, 'Priya']), got);
     }
