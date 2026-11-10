@@ -1181,7 +1181,7 @@ void main() {
         final error = await sendBatch([op()]);
         expect(error?.code, ErrorCodes.badOp);
         expect(fromMallory(), isEmpty);
-      }, skip: 'SECURITY-R4-02');
+      });
     }
   });
 }
