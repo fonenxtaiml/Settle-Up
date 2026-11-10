@@ -124,6 +124,20 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
       return;
     }
     if (!mounted) return;
+    // A status check cannot see "permanently denied" on Android (only a
+    // request can), and the permission dialog closing is itself a resume:
+    // keep the request's verdict, so "Open settings" does not turn back
+    // into an "Allow" that shows no dialog. A later request (or a grant)
+    // replaces it.
+    now = {
+      for (final e in now.entries)
+        e.key:
+            e.value == TransportAvailability.needsPermission &&
+                _radios[e.key] ==
+                    TransportAvailability.permissionPermanentlyDenied
+            ? TransportAvailability.permissionPermanentlyDenied
+            : e.value,
+    };
     final gained = now.entries.any(
       (e) =>
           e.value == TransportAvailability.ready &&

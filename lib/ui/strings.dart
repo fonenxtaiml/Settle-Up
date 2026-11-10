@@ -161,6 +161,8 @@ abstract final class S {
   static const memberAdded = 'Person added';
   static String alreadyInGroup(String name) =>
       '$name is already in this group';
+  static String alreadyInNamedGroup(String name, String group) =>
+      '$name is already in $group';
   static String cannotRemoveTitle(String name) => "$name can't be removed yet";
   static String cannotRemoveBody(String name, String balance) =>
       '$name has $balance open in this group. Settle up first, then remove.';
@@ -450,6 +452,11 @@ abstract final class S {
   static const bluetoothOffBody =
       'Turn it on to sync with phones that are not on your Wi-Fi.';
   static const turnOnBluetooth = 'Turn on Bluetooth';
+  static const locationOffTitle = 'Location is off';
+  static const locationOffBody =
+      'On this version of Android, Location must be on to find phones over '
+      'Bluetooth.';
+  static const turnOnLocation = 'Turn on location';
   static const wifiOffTitle = 'Wi-Fi is off';
   static const wifiOffBody =
       'Turn on Wi-Fi, or join a friend\'s hotspot, to sync over Wi-Fi.';

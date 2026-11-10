@@ -322,7 +322,10 @@ final class DefaultSyncEngine implements SyncEngine {
         a == TransportAvailability.permissionPermanentlyDenied)) {
       return SyncFailure.permissionDenied;
     }
-    if (all.contains(TransportAvailability.radioOff)) return SyncFailure.radioOff;
+    if (all.contains(TransportAvailability.radioOff) ||
+        all.contains(TransportAvailability.locationOff)) {
+      return SyncFailure.radioOff;
+    }
     return SyncFailure.internal;
   }
 

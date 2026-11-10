@@ -30,7 +30,5 @@ void main() {
       expect(find.textContaining('x' * 38), findsWidgets);
       await w.shutdown(tester);
     },
-    // QA DATA-R2-02: _shortQuery splits a surrogate pair.
-    skip: true,
   );
 }

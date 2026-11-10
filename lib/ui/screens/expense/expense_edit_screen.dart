@@ -49,6 +49,10 @@ class ExpenseEditScreen extends ConsumerStatefulWidget {
   ConsumerState<ExpenseEditScreen> createState() => _ExpenseEditScreenState();
 }
 
+/// The least room the group chip gets in the app bar before it moves to
+/// the top of the form.
+const double _minGroupInBar = 120;
+
 class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   final _description = TextEditingController();
   final _notes = TextEditingController();
@@ -594,10 +598,42 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final payersOff =
         !_paidValid && (_triedSave || (_multiPaid != null && amount > 0));
 
-    // The group name shares the app bar with the title: it takes at most
-    // about 45% of the width and ellipsizes, so a long name never overflows.
+    // The group name shares the app bar with the title and gives way
+    // first: it gets what the title leaves and ellipsizes, and when that is
+    // too little for a readable chip (small phone, large text) it moves
+    // out of the bar to the top of the form, so the title stays whole.
+    final theme = Theme.of(context);
     final barWidth = MediaQuery.sizeOf(context).width;
-    final groupMax = barWidth * 0.45;
+    final titleWidth = measureTextWidth(
+      context,
+      title,
+      theme.appBarTheme.titleTextStyle ?? theme.textTheme.titleLarge,
+    );
+    final groupRoom =
+        barWidth -
+        kToolbarHeight - // the close button
+        titleWidth -
+        Space.sm - // the actions' end padding
+        Space.xs - // the gap after the group
+        Space.md; // breathing room between title and group
+    final groupInBar = groupRoom >= _minGroupInBar;
+    final Widget groupLabel = editing == null && widget.personId == null
+        ? DropdownChip(
+            label: groupName,
+            onTap: _pickGroup,
+            semanticLabel: S.groupChip(groupName),
+          )
+        : Padding(
+            padding: const EdgeInsets.only(right: Space.sm),
+            child: Text(
+              groupName,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: theme.textTheme.titleSmall!.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          );
     return PopScope(
       canPop: !_dirty || _saved || _saving,
       onPopInvokedWithResult: (didPop, _) {
@@ -608,32 +644,13 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
           leading: const BackArrow(close: true),
           title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
           actions: [
-            ConstrainedBox(
-              constraints: BoxConstraints(maxWidth: groupMax),
-              child: editing == null && widget.personId == null
-                  ? DropdownChip(
-                      label: groupName,
-                      onTap: _pickGroup,
-                      semanticLabel: S.groupChip(groupName),
-                    )
-                  : Padding(
-                      padding: const EdgeInsets.only(right: Space.sm),
-                      child: Center(
-                        child: Text(
-                          groupName,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.titleSmall!
-                              .copyWith(
-                                color: Theme.of(context)
-                                    .colorScheme
-                                    .onSurfaceVariant,
-                              ),
-                        ),
-                      ),
-                    ),
-            ),
-            const SizedBox(width: Space.xs),
+            if (groupInBar) ...[
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: groupRoom),
+                child: Center(widthFactor: 1, child: groupLabel),
+              ),
+              const SizedBox(width: Space.xs),
+            ],
           ],
         ),
         bottomNavigationBar: _SaveBar(
@@ -647,6 +664,13 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         body: ListView(
           padding: const EdgeInsets.only(bottom: Space.lg),
           children: [
+            if (!groupInBar)
+              textGutter(
+                Align(
+                  alignment: AlignmentDirectional.centerStart,
+                  child: groupLabel,
+                ),
+              ),
             const SizedBox(height: 6),
             textGutter(
               AmountField(
@@ -783,7 +807,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
                 hintText: S.notesHint,
                 controller: _notes,
                 maxLength: 500,
-                onChanged: (_) => _touch(),
+                onChanged: (_) => setState(_touch),
               ),
             ),
           ],
