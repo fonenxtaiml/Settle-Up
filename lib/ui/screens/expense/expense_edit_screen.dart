@@ -380,12 +380,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
   Future<void> _pickDate() async {
     final now = ref.read(clockProvider)();
-    final d = await showDatePicker(
-      context: context,
-      initialDate: _date,
-      firstDate: DateTime(2000),
-      lastDate: DateTime(now.year + 1, 12, 31),
-    );
+    final d = await pickEntryDate(context, initial: _date, now: now);
     if (d == null || !mounted) return;
     setState(() {
       _touch();
@@ -1076,7 +1071,9 @@ class _InputSplitRow extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(name, style: titleStyle),
-        if (sub.isNotEmpty) Text(sub, style: subStyle),
+        // Its amount is set smaller rather than broken over two lines when
+        // even the stacked column is too narrow (VISUAL-R4-03).
+        if (sub.isNotEmpty) FitWordsText(sub, style: subStyle),
       ],
     );
     final inputWidth = switch (input) {
@@ -1150,15 +1147,16 @@ class _InputSplitRow extends StatelessWidget {
               ),
             ),
             const SizedBox(width: Space.md),
+            // The input keeps its place in the tree beside or under the
+            // text, so typing never closes the keyboard (VISUAL-R5-01).
             Expanded(
-              child: large
-                  ? Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [text, const SizedBox(height: 4), input],
-                    )
-                  : text,
+              child: BesideOrUnder(
+                text: text,
+                trailing: input,
+                stacked: large,
+                gap: Space.sm,
+              ),
             ),
-            if (!large) ...[const SizedBox(width: Space.sm), input],
           ],
         ),
       ),
@@ -1260,6 +1258,10 @@ class _UnitField extends StatelessWidget {
         decimal: true,
         signed: signed,
       ),
+      // See AmountField: a pasted line break must reach the reader, and
+      // UnitInputFormatter keeps the text on one line.
+      minLines: 1,
+      maxLines: 2,
       inputFormatters: [
         UnitInputFormatter(read: read, write: write, signed: signed),
       ],

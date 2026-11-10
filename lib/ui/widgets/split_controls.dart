@@ -216,6 +216,34 @@ class MemberSplitRow extends StatelessWidget {
       onChanged!(!included);
     }
 
+    final shareStyle = AppType.amountSmall(context)
+        .copyWith(color: money.forDirection(shareDirection));
+    // The tether glyph (26 dp, following the text scale up to 1.5x) and
+    // its gap, when the subline shows one.
+    final tether =
+        6 + 26 * MediaQuery.textScalerOf(context).scale(1).clamp(1.0, 1.5);
+    final text = ExcludeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(name, style: titleStyle),
+          if (sub != null)
+            Row(
+              children: [
+                if (subtitleDirection != null) ...[
+                  TetherGlyph(direction: subtitleDirection!, color: subColor),
+                  const SizedBox(width: 6),
+                ],
+                // An amount in the subline ("you get back ₹80,000.33") is
+                // set smaller rather than broken (VISUAL-R5-02).
+                Flexible(child: FitWordsText(sub, style: subStyle)),
+              ],
+            ),
+        ],
+      ),
+    );
+
     return MergeSemantics(
       child: Semantics(
         label: spoken,
@@ -239,41 +267,49 @@ class MemberSplitRow extends StatelessWidget {
                   ),
                   const SizedBox(width: Space.md),
                   Expanded(
-                    child: ExcludeSemantics(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(name, style: titleStyle),
-                          if (sub != null)
-                            Row(
-                              children: [
-                                if (subtitleDirection != null) ...[
-                                  TetherGlyph(
-                                    direction: subtitleDirection!,
-                                    color: subColor,
+                    child: share == null
+                        ? text
+                        : LayoutBuilder(
+                            builder: (context, c) {
+                              // The share goes under the text at large
+                              // text, and whenever the name's longest word
+                              // or an amount in the subline would get less
+                              // room beside it (VISUAL-R5-02), as
+                              // KitListRow does.
+                              final needs = [
+                                longestWordWidth(context, name, titleStyle),
+                                if (sub != null)
+                                  longestWordWidth(context, sub, subStyle) +
+                                      (subtitleDirection != null ? tether : 0),
+                              ].fold(0.0, (a, b) => a > b ? a : b);
+                              final room =
+                                  c.maxWidth -
+                                  Space.sm -
+                                  measureTextWidth(context, share, shareStyle);
+                              final stacked =
+                                  isLargeText(context) || room + 0.5 < needs;
+                              return BesideOrUnder(
+                                text: text,
+                                stacked: stacked,
+                                gap: Space.sm,
+                                stackedAlignment:
+                                    AlignmentDirectional.centerEnd,
+                                trailing: ExcludeSemantics(
+                                  // Under the text, a share wider than
+                                  // the row is set smaller, never cut.
+                                  child: FittedBox(
+                                    fit: BoxFit.scaleDown,
+                                    child: Text(
+                                      share,
+                                      maxLines: 1,
+                                      style: shareStyle,
+                                    ),
                                   ),
-                                  const SizedBox(width: 6),
-                                ],
-                                Flexible(child: Text(sub, style: subStyle)),
-                              ],
-                            ),
-                        ],
-                      ),
-                    ),
+                                ),
+                              );
+                            },
+                          ),
                   ),
-                  if (share != null) ...[
-                    const SizedBox(width: Space.sm),
-                    ExcludeSemantics(
-                      child: Text(
-                        share,
-                        maxLines: 1,
-                        style: AppType.amountSmall(
-                          context,
-                        ).copyWith(color: money.forDirection(shareDirection)),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),

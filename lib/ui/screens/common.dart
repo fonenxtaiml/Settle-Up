@@ -458,14 +458,40 @@ const int kMemberNameMax = 40;
 /// ignored: "priya " is "Priya"), or null. Both sides are compared as the
 /// Ledger saves them (TextClean.clean), so a name carrying an invisible
 /// mark (U+200B, U+200E, ...) is the plain name it will be stored as
-/// (UIFLOW-R4-01).
+/// (UIFLOW-R4-01). The marks the Ledger keeps inside a name but that draw
+/// nothing after a letter (soft hyphen, ZWJ, variation selectors,
+/// invisible operators; TextClean.isBlankMark) are left out of the
+/// comparison too, never out of what is stored: "Rahul" with a soft hyphen
+/// looks like "Rahul" everywhere (UIFLOW-R5-01).
 String? duplicateName(String candidate, Iterable<String> existing) {
-  String key(String n) =>
-      TextClean.clean(n).toLowerCase().replaceAll(RegExp(r'\s+'), ' ');
+  String key(String n) => String.fromCharCodes(
+    TextClean.clean(n).runes.where((r) => !TextClean.isBlankMark(r)),
+  ).toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
   final k = key(candidate);
   if (k.isEmpty) return null;
   for (final e in existing) {
     if (key(e) == k) return TextClean.clean(e);
   }
   return null;
+}
+
+/// The date picker the expense, payment and settle-up editors open: from
+/// 2000 to the end of next year, widened to take in [initial] when the
+/// stored date lies outside that range (a phone with a reset clock writes
+/// 1970, and a peer may send any date the remote check accepts), so the
+/// user can always see the date and correct it (SECURITY-R5-01).
+Future<DateTime?> pickEntryDate(
+  BuildContext context, {
+  required DateTime initial,
+  required DateTime now,
+}) {
+  final day = DateTime(initial.year, initial.month, initial.day);
+  final first = DateTime(2000);
+  final last = DateTime(now.year + 1, 12, 31);
+  return showDatePicker(
+    context: context,
+    initialDate: day,
+    firstDate: day.isBefore(first) ? day : first,
+    lastDate: day.isAfter(last) ? day : last,
+  );
 }

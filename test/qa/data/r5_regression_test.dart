@@ -420,7 +420,7 @@ void main() {
         expect(file.startsWith('.'), isFalse, reason: '$name -> $file');
       }
       expect(csvFileName('.Goa trip'), 'Goa trip.csv');
-    }, skip: 'DATA-R5-03');
+    });
   });
 
   group('DATA-R4-03 reverify (HELLO device name)', () {

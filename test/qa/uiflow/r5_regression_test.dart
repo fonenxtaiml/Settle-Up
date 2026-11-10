@@ -400,7 +400,6 @@ void main() {
       );
       await w.shutdown(tester);
     },
-    skip: true, // UIFLOW-R5-01
   );
 }
 
