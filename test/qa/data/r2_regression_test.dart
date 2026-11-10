@@ -449,14 +449,11 @@ void main() {
           db.close();
         }
         a.wrap = (s) => FaultyStore(s)..failNextSetKvKey = KvKeys.pending(t.g);
-        // Expected: Ledger.open logs and carries on (the hint is cleared on a
-        // later open). Today the unguarded setKv in _load fails the whole
-        // open, so the phone lands on the startup error screen.
+        // DATA-R2-01: Ledger.open logs and carries on (the hint is cleared
+        // on a later open) instead of failing the whole start.
         await expectLater(a.launch(), completes);
         expect(a.snap.state.groups[t.g]?.group, isNotNull);
       },
-      skip: 'QA DATA-R2-01: Ledger._load clears a stale pending hint with an '
-          'unguarded setKv, so a full disk fails startup',
     );
   });
 }

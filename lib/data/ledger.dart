@@ -190,7 +190,7 @@ final class Ledger implements LedgerRepository, SyncStore {
     for (final g in _keyCache.keys.toList()) {
       final hint = await _store.getKv(KvKeys.pending(g));
       if (state.groups[g]?.group != null) {
-        if (hint != null) await _store.setKv(KvKeys.pending(g), null);
+        if (hint != null) await _clearHint(g);
       } else if (hint != null) {
         _pending[g] = hint;
       } else if (!withOps.contains(g) &&
@@ -286,13 +286,20 @@ final class Ledger implements LedgerRepository, SyncStore {
     ];
     for (final g in done) {
       _pending.remove(g);
-      try {
-        await _store.setKv(KvKeys.pending(g), null);
-      } catch (e) {
-        // Harmless: the next open drops the hint of a group it holds.
-        developer.log('Could not clear the invite hint of $g: $e',
-            name: _logName);
-      }
+      await _clearHint(g);
+    }
+  }
+
+  /// Best effort: a hint left behind is harmless (a group that holds its
+  /// create op is never shown as a join) and the next open drops it, so a
+  /// full disk must not turn it into a failed sync or a failed start
+  /// (DATA-R2-01).
+  Future<void> _clearHint(GroupId g) async {
+    try {
+      await _store.setKv(KvKeys.pending(g), null);
+    } catch (e) {
+      developer.log('Could not clear the invite hint of $g: $e',
+          name: _logName);
     }
   }
 
