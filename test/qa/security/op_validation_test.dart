@@ -739,7 +739,7 @@ void main() {
         lessThan(1 << 20),
         reason: '${stored.length} ops, $bytes bytes from one ~12 KB frame',
       );
-    }, skip: 'SECURITY-R1-02');
+    });
   });
 
   group('round 2: remote text', () {
@@ -791,7 +791,7 @@ void main() {
           isNull,
           reason: 'stored invisible name ${stored?.runes.toList()}',
         );
-      }, skip: 'SECURITY-R1-06');
+      });
     }
 
     test('a peer device name with bidi overrides is not shown or recorded '

@@ -1060,8 +1060,13 @@ final class Ledger implements LedgerRepository, SyncStore {
         if (!_keyCache.containsKey(groupId)) {
           throw FormatException('No key held for group', groupId);
         }
+        var units = 0;
         for (final op in ops) {
-          _checkRemote(groupId, op);
+          units += _checkRemote(groupId, op);
+        }
+        if (units > TextRules.maxRemoteBatchUnits) {
+          throw FormatException('Batch of ${ops.length} ops is $units units, '
+              'over ${TextRules.maxRemoteBatchUnits}');
         }
         if (ops.isEmpty) return const <Operation>[];
         await _checkOwnOps(groupId, ops);
@@ -1104,9 +1109,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   Future<void> _checkOwnOps(GroupId groupId, List<Operation> ops) async {
     final me = _me;
     if (!ops.any((op) => op.deviceId == me)) return;
-    final purged = purgedMark(await _store.getKv(KvKeys.purged(groupId)));
-    final max =
-        math.max(await _store.maxCounter(groupId, me), purged[me] ?? 0);
+    final max = await _ownMaxCounter(groupId);
     for (final op in ops) {
       if (op.deviceId == me && op.counter > max) {
         throw FormatException(
@@ -1115,10 +1118,17 @@ final class Ledger implements LedgerRepository, SyncStore {
     }
   }
 
+  /// Highest counter this phone has written in [groupId]: stored ops, or
+  /// ones removed by purgeGroup that peers may still hold.
+  Future<int> _ownMaxCounter(GroupId groupId) async {
+    final purged = purgedMark(await _store.getKv(KvKeys.purged(groupId)));
+    return math.max(await _store.maxCounter(groupId, _me), purged[_me] ?? 0);
+  }
+
   /// Throws [FormatException] unless [op] belongs to [groupId], has a valid
   /// counter and HLC device, keeps to the SPEC 5.16 text limits and size,
-  /// and survives a JSON round trip unchanged.
-  static void _checkRemote(GroupId groupId, Operation op) {
+  /// and survives a JSON round trip unchanged. Returns its JSON length.
+  static int _checkRemote(GroupId groupId, Operation op) {
     if (op.groupId != groupId) {
       throw FormatException('Op ${op.id} is for another group', op.groupId);
     }
@@ -1135,8 +1145,9 @@ final class Ledger implements LedgerRepository, SyncStore {
       throw FormatException('Op ${op.id}: $problem', op.id);
     }
     final Operation parsed;
+    final String json;
     try {
-      final json = jsonEncode(op.toJson());
+      json = jsonEncode(op.toJson());
       if (json.length > TextRules.maxRemoteOpUnits) {
         throw FormatException('Op ${op.id} is too large', op.id);
       }
@@ -1155,6 +1166,7 @@ final class Ledger implements LedgerRepository, SyncStore {
         parsed.hlc != op.hlc) {
       throw FormatException('Op ${op.id} does not match its JSON', op.id);
     }
+    return json.length;
   }
 
   @override
