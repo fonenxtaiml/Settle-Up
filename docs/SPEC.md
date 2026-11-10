@@ -2026,8 +2026,10 @@ final class AdvertiseInfo {
   final String deviceName;
 
   /// Rotating blinded tokens, one per group we hold (4 base64url chars
-  /// each, SPEC 8.3). Transports include as many as fit (LAN: up to 48,
-  /// Nearby: up to 24, BLE: in the INFO characteristic, up to 48).
+  /// each, SPEC 8.3), most important first. Transports include as many as
+  /// fit from the front (LAN: up to 240, Nearby: up to 24, BLE: in the
+  /// INFO characteristic, up to 96), sort them, and flag the advert when
+  /// they had to leave some out.
   final List<String> groupTokens;
 
   /// Per-window random id (8 hex chars, SPEC 8.3). Null: none advertised.
@@ -2046,6 +2048,7 @@ final class DiscoveredPeer {
     this.advertId,
     this.groupTokens = const {},
     this.windowTag,
+    this.moreGroups = false,
   });
 
   final TransportKind kind;
@@ -2057,6 +2060,7 @@ final class DiscoveredPeer {
   final String? advertId; // per-window advert id (SPEC 8.3), if advertised
   final Set<String> groupTokens;
   final int? windowTag; // window mod 4096 of groupTokens, if advertised
+  final bool moreGroups; // the advert left some of its tokens out (SPEC 8.3)
 
   @override
   bool operator ==(Object other) =>
@@ -2408,6 +2412,7 @@ final class NearbyPeer {
     required this.transports,
     required this.sharedGroupIds,
     this.advertId,
+    this.moreGroups = false,
   });
 
   final String key; // stable for the discovery run, across advert id rotation
@@ -2415,8 +2420,10 @@ final class NearbyPeer {
   final String? advertId; // most recently seen advert id (SPEC 8.3)
   final Set<TransportKind> transports; // preferred: lan > nearby > ble
   final List<GroupId> sharedGroupIds; // from tokens; empty = unknown/none
+  final bool moreGroups; // its advert was cut: it may share an unlisted group
 
   bool get sharesGroups => sharedGroupIds.isNotEmpty;
+  bool get maySync => sharesGroups || moreGroups; // Sync, not Pair (SPEC 8.3)
 }
 
 @immutable
@@ -3179,7 +3186,8 @@ Only `HELLO`, `AUTH` and `ERROR` may be plain. Everything after both AUTHs is se
 
 ### 8.3 Discovery tokens and blinded group ids
 
-- **Advertisement token** (lets a scanner see "this phone shares a group with me" without revealing group ids): `token(g, w) = base64url(HMAC-SHA256(groupKey_g, utf8("settleup-adv-v2:" + w))[0..3])` (4 characters), where `w = unixSeconds ~/ 600`. Advertise tokens for the current window, and refresh them when the window changes. Tokens are short so that a phone in many groups (every 1:1 friend balance is a group) fits all of them in a Nearby endpoint name: LAN and BLE carry up to 48, Nearby up to 24. A false match (about 1 in 16 million per token pair) only labels a phone "shares Goa trip" by mistake; the HELLO's blinded ids decide whether a session starts.
+- **Advertisement token** (lets a scanner see "this phone shares a group with me" without revealing group ids): `token(g, w) = base64url(HMAC-SHA256(groupKey_g, utf8("settleup-adv-v2:" + w))[0..3])` (4 characters), where `w = unixSeconds ~/ 600`. Advertise tokens for the current window, and refresh them when the window changes. Tokens are short so that a phone in many groups (every 1:1 friend balance is a group) fits many of them in an advert: LAN carries up to 240, BLE up to 96, Nearby up to 24. A false match (about 1 in 16 million per token pair) only labels a phone "shares Goa trip" by mistake; the HELLO's blinded ids decide whether a session starts.
+- **More groups than an advert holds** (QA SYNC-R2-01): `DiscoveryTokens.advertised(keys, now, priority:)` lists tokens most important first: groups in Sync history, most recently synced first (outcome not `failed`), then the rest newest first (group ids are UUIDv7). The order is the same in every window, so a transport that keeps only a prefix keeps the same groups each time. Transports keep the first ones that fit (`DiscoveryTokens.forAdvert`), **sort** them (the order must not reveal which group is which), and flag the advert as cut (Nearby: a trailing `+`; BLE: `"m":1`; LAN: TXT `m=1`). A scanner lists a phone with a cut advert and no matching token as "may share a group" with **Sync** (not Pair): the HELLO decides, and a phone with no shared group ends with `noSharedGroups`.
 - **Window tag:** adverts also carry `windowTag(w) = hex(w mod 4096)` (3 characters) for the window their tokens are for. A scanner resolves the tag to the window with that tag nearest to its own, accepts it when it is at most **288 windows (2 days)** away, and matches the tokens against that window for all of its group keys. So a phone whose clock is minutes, hours or a day off still shows its shared groups, while a recorded advert cannot be replayed for longer than that. An advert without a tag is matched against windows `w` and `w − 1`. `NearbyPeer.sharedGroupIds` = the matched groups.
 - **Advert id:** `advertId(s, w) = hex(HMAC-SHA256(s, utf8("settleup-aid-v1:" + w)))[0..8]`, with `s` 32 random bytes made at each app launch that never leave the phone. Scanners merge a phone's transports by it and drop their own adverts (ids for `w − 1`, `w`, `w + 1`). It replaces a device id prefix: a UUIDv7 prefix is the install time, so two phones set up in the same minute looked like "this phone", and it never changed, so a passive scanner could link a phone across places and days. When a known route shows a new id (the next window), the row keeps its key.
 - **Blinded group id in HELLO:** `blind(g, nonce) = base64url(HMAC-SHA256(groupKey_g, utf8("settleup-gid-v1") || nonce)[0..16])`, using the **sender's** HELLO nonce. A replayed HELLO fails, because the receiver recomputes the value with the replayer's own nonce.
@@ -3276,13 +3284,13 @@ CLOSING ──recv BYE, 2 s, or the link drops──► CLOSED (success; SyncRec
 **LAN (`LanTransport`, kind `lan`, maxFrame 1 MiB)**
 - Server: `ServerSocket.bind(InternetAddress.anyIPv4, 52741)`, falling back to port 0 if busy. The actual port goes into mDNS and the QR. `tcpNoDelay = true`.
 - Framing on the socket: `len:u32be | channel frame`. Reject `len > 1 MiB` or `len == 0` (close). Reassemble across reads (tests must cover split and coalesced reads).
-- mDNS (`bonsoir`): type `_settleup._tcp`, service name = device name (≤ 40 chars). TXT: `v=2`, `d=<advertId>`, `w=<windowTag>`, `t=<tokens comma-joined, ≤ 48>` (241 bytes at most, within one TXT string). Discovery resolves to `host:port` (prefer IPv4, bracket IPv6).
+- mDNS (`bonsoir`): type `_settleup._tcp`, service name = device name (≤ 40 chars). TXT: `v=2`, `d=<advertId>`, `w=<windowTag>`, `t`, `t1`, `t2`, `t3` = up to 60 sorted tokens each, back to back (≤ 243 bytes per TXT string, about 1000 bytes for the record, under Android's 1300), and `m=1` when more groups were left out (8.3). Readers also accept comma-separated tokens. Discovery resolves to `host:port` (prefer IPv4, bracket IPv6).
 - Gateway probe (hotspot case, mDNS is unreliable there): while `discover()` is listened to, every 5 s read `NetworkInfo().getWifiGatewayIP()`. If it is non-null and not one of our addresses, try `Socket.connect(gw, 52741, timeout: 1.5 s)`. On success close it immediately and emit `DiscoveredPeer(kind: lan, address: 'gw:52741', name: 'Phone sharing its hotspot')`. The server ignores connections that close before a frame.
 - `HostInfo.addresses` from `NetworkInterface.list(type: IPv4)` without loopback; tethering interfaces first.
 
 **Nearby Connections (`NearbyTransport`, kind `nearby`, Android only, maxFrame 32 KiB)**
 - `serviceId = 'app.settleup.sync'`, `Strategy.P2P_CLUSTER`.
-- Endpoint name (advertised) = `"2|<advertId>|<windowTag>|<deviceName ≤ 24>|<up to 24 tokens, back to back>"`, at most 131 UTF-8 bytes (the name is cut further to fit; all 24 tokens always fit). Parse it on `onEndpointFound`.
+- Endpoint name (advertised) = `"2|<advertId>|<windowTag>|<deviceName ≤ 24>|<up to 24 sorted tokens, back to back>[+]"`, at most 131 UTF-8 bytes (the name is cut further to fit; all 24 tokens and the `+` always fit). The `+` says the phone holds more groups than the name lists (8.3). Parse it on `onEndpointFound`.
 - Accept every connection automatically (`acceptConnection`). Authentication happens in our session layer.
 - One channel frame = one BYTES payload (≤ 32 KiB).
 - `availability()` returns `unsupported` on iOS.
@@ -3290,7 +3298,7 @@ CLOSING ──recv BYE, 2 s, or the link drops──► CLOSED (success; SyncRec
 
 **BLE GATT (`BleTransport`, kind `ble`, maxFrame 16 KiB)** using `bluetooth_low_energy` 6.2.1:
 - Service `82101e6c-f454-4ceb-86a8-5375a3b1a414`. Characteristics:
-  - `INFO` `cdc76358-cfae-4208-855b-5d0c5b179f6a` (read): UTF-8 JSON `{"v":2,"d":"<advertId>","w":"<windowTag>","n":"<deviceName>","t":[tokens ≤ 48]}`.
+  - `INFO` `cdc76358-cfae-4208-855b-5d0c5b179f6a` (read): UTF-8 JSON `{"v":2,"d":"<advertId>","w":"<windowTag>","n":"<deviceName ≤ 40>","t":"<sorted tokens ≤ 96, back to back>","m":1}` (`m` only when more groups were left out, 8.3), within one 512-byte attribute: the least important tokens are left out if a wide name needs the room (at least 57 always fit). Readers also accept `t` as a JSON list.
   - `RX` `fb7ee064-81d8-47d5-87dc-a89a5e02dbe7` (write with response): central → peripheral chunks.
   - `TX` `33453450-cada-4c25-afb0-ba2115611155` (notify): peripheral → central chunks.
 - Advertising: service UUID only, plus local name `SU` (iOS allows only name and service UUIDs). The scanner filters on the service UUID, connects, reads `INFO` to build the `DiscoveredPeer` (cache by peripheral UUID for 60 s, then disconnect until the user taps Sync).
