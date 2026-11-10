@@ -8,7 +8,6 @@ import '../../../core/balances.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
-import '../../../core/name_text.dart';
 import '../../../theme/tokens.dart';
 import '../../format/money_format.dart';
 import '../../providers.dart';
@@ -44,7 +43,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
   Future<void> _add(GroupState g) async {
     final n = _name.text.trim();
     if (n.isEmpty) return;
-    final notName = nameInputError(n);
+    final notName = nameInputError(n, limit: kMemberNameMax);
     if (notName != null) {
       Haptics.invalid(context);
       setState(() => _nameError = notName);
@@ -238,12 +237,13 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
                 hintText: S.personNameHint,
                 controller: _name,
                 maxLength: kMemberNameMax,
+                inputFormatters: nameFormatters(kMemberNameMax),
                 errorText: _nameError,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _add(g),
                 onChanged: (_) => setState(() => _nameError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: !NameText.isValid(_name.text)
+                  onPressed: !isSavableName(_name.text, kMemberNameMax)
                       ? null
                       : () => _add(g),
                   style: KitButtonStyles.small(context),

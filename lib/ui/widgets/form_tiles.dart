@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
@@ -21,6 +22,7 @@ class LabeledTextField extends StatelessWidget {
     this.onSubmitted,
     this.errorText,
     this.maxLength,
+    this.inputFormatters,
   });
 
   final String label;
@@ -33,6 +35,10 @@ class LabeledTextField extends StatelessWidget {
   final ValueChanged<String>? onSubmitted;
   final String? errorText;
   final int? maxLength;
+
+  /// Run before the [maxLength] cap, e.g. a name field's stored-length
+  /// cap.
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -63,6 +69,7 @@ class LabeledTextField extends StatelessWidget {
                   onSubmitted: onSubmitted,
                   textInputAction: textInputAction,
                   maxLength: maxLength,
+                  inputFormatters: inputFormatters,
                   textCapitalization: TextCapitalization.sentences,
                   style: valueStyle,
                   decoration: InputDecoration(
