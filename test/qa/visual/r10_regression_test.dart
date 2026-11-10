@@ -580,7 +580,6 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true,
   );
 
   testWidgets(
@@ -623,6 +622,5 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true,
   );
 }

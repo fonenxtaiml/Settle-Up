@@ -13,6 +13,7 @@ export 'balance_row.dart';
 export 'button_semantics.dart';
 export 'category_glyph.dart';
 export 'empty_state.dart';
+export 'entry_date_picker.dart';
 export 'expense_row.dart';
 export 'form_tiles.dart';
 export 'haptics.dart';

@@ -558,6 +558,10 @@ const int entryDateFloorYear = 2026;
 /// [entryDateFloorYear], whatever the clock says: a phone whose clock was
 /// reset to 1970 starts a new expense dated 1970, and its user must still
 /// be able to choose the real date (SECURITY-R6-01).
+///
+/// It is laid out for the phone it opens on ([showEntryDatePicker]): every
+/// day a full tap target and the chosen date inside the header at every
+/// text size (VISUAL-R10-01, VISUAL-R10-02).
 Future<DateTime?> pickEntryDate(
   BuildContext context, {
   required DateTime initial,
@@ -567,8 +571,8 @@ Future<DateTime?> pickEntryDate(
   final first = DateTime(2000);
   final year = now.year < entryDateFloorYear ? entryDateFloorYear : now.year;
   final last = DateTime(year + 1, 12, 31);
-  return showDatePicker(
-    context: context,
+  return showEntryDatePicker(
+    context,
     initialDate: day,
     firstDate: day.isBefore(first) ? day : first,
     lastDate: day.isAfter(last) ? day : last,
