@@ -4,7 +4,8 @@
 // session screen and in Sync history, so they get the same cleaning as
 // names typed on this phone (SPEC 5.16, `TextClean` in core): no control, bidi or zero-width
 // characters, line breaks as spaces, trimmed.
-import '../core/text_clean.dart';
+import '../core/name_text.dart';
 
-/// [raw] as it may be shown or stored.
-String cleanPeerName(String raw) => TextClean.clean(raw);
+/// [raw] as it may be shown or stored: in the form names typed on this
+/// phone take ([NameText.normalize]).
+String cleanPeerName(String raw) => NameText.normalize(raw);

@@ -15,7 +15,12 @@ const Set<String> _coreAllowedDart = {
   'dart:collection',
   'dart:typed_data',
 };
-const Set<String> _coreAllowedPackages = {'meta', 'collection', 'uuid'};
+const Set<String> _coreAllowedPackages = {
+  'meta',
+  'collection',
+  'uuid',
+  'unorm_dart', // NFKC for names (NameText), pure Dart
+};
 
 /// Files under lib/data that the sync and ui layers may import.
 const Set<String> _dataContracts = {'data/repositories.dart'};
@@ -106,7 +111,7 @@ String? _check(String from, Target t) {
       }
       return _coreAllowedPackages.contains(t.package)
           ? null
-          : 'core may only use package:meta, collection and uuid';
+          : 'core may only use package:meta, collection, uuid and unorm_dart';
     case 'data':
       if (_isFlutterUi(t)) return 'data may not import Flutter UI libraries';
       if (t.inDir('sync') || t.inDir('ui') || t.inDir('theme')) {

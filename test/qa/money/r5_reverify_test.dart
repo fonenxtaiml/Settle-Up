@@ -102,8 +102,10 @@ void main() {
         expect(want, 1250000, reason: c);
         expect(await f.typed(c, '1,250'), want, reason: c);
         expect(await f.pasted(c, '1,250'), want, reason: '$c paste');
-        // Neither separator after it multiplies it.
-        expect(await f.typed(c, '1,250,'), want, reason: '$c ","');
+        // Neither separator after it multiplies it. "1,250," is on its way
+        // to "1,250,000" and holds no amount until then (round 7: no
+        // amount before the text matches the grammar).
+        expect(await f.typed(c, '1,250,'), isNull, reason: '$c ","');
         expect(await f.typed(c, '1,250.'), want, reason: '$c "."');
         // A short decimal comma stays a decimal comma, and a comma after it
         // is refused.
@@ -262,7 +264,15 @@ void main() {
         '-30/-',
         '(30/-)',
       ]) {
-        expect(parseSignedMinor(s, inr), -3000, reason: s);
+        // Round 7, one strict grammar: only '-' and U+2212, first or after
+        // a leading currency mark, write a minus; every other form is no
+        // amount, so its sign is never dropped either.
+        final minus = RegExp(r'^[-\u2212](₹|Rs\.? ?)?[0-9]|^(₹|Rs\.? ?)[-\u2212][0-9]');
+        expect(
+          parseSignedMinor(s, inr),
+          minus.hasMatch(s) ? -3000 : isNull,
+          reason: s,
+        );
         // An amount that cannot be negative refuses it.
         expect(parseAmountInput(s, inr), isNull, reason: s);
       }

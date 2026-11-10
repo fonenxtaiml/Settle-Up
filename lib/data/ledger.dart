@@ -22,6 +22,7 @@ import '../core/ids.dart';
 import '../core/ledger_state.dart';
 import '../core/models.dart';
 import '../core/money.dart';
+import '../core/name_text.dart';
 import '../core/ops.dart';
 import '../core/split.dart';
 import '../core/version_vector.dart';
@@ -477,17 +478,29 @@ final class Ledger implements LedgerRepository, SyncStore {
   }
 
   static String _groupName(String v) =>
-      _line(v, 'name', TextRules.groupName);
+      _name(v, 'name', TextRules.groupName);
 
   static String _memberName(String v, String field) =>
-      _line(v, field, TextRules.memberName);
+      _name(v, field, TextRules.memberName);
+
+  /// A name (SPEC 5.16): stored as it is shown and compared
+  /// ([NameText.normalize]), with at least one letter or number, at most
+  /// [limit] characters.
+  static String _name(String value, String field, int limit) {
+    final t = NameText.normalize(value);
+    if (!NameText.isValid(t)) {
+      _fail(LedgerErrorCode.invalidInput, '$field is empty');
+    }
+    _fit(t, field, limit);
+    return t;
+  }
 
   /// My profile name as it goes into a member op. Settings validate it on
   /// their own; a name saved before the limits is cleaned and shortened
   /// rather than blocking every new group.
   static String _profileName(Profile profile) {
-    final t = TextRules.clean(profile.displayName);
-    if (TextRules.isBlank(t)) {
+    final t = NameText.normalize(profile.displayName);
+    if (!NameText.isValid(t)) {
       _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
     }
     if (TextRules.tooLong(t, TextRules.memberName) == null) return t;

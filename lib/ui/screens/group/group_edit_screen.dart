@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
+import '../../../core/name_text.dart';
 import '../../../data/repositories.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
@@ -74,7 +75,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   /// Adds the typed person; false when the name is already in the list.
   bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
-    if (n.isEmpty) return true;
+    if (!NameText.isValid(n)) return true;
     // You are a member of every new group too (Members refuses your name
     // for the same reason).
     final me = ref.read(profileProvider).value?.displayName;
@@ -98,7 +99,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   Future<void> _save(Group? original, Map<PersonId, String> people) async {
     setState(() => _tried = true);
     final name = _name.text.trim();
-    if (name.isEmpty || _saving) {
+    if (!NameText.isValid(name) || _saving) {
       Haptics.invalid(context);
       return;
     }
@@ -249,7 +250,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               hintText: S.groupNameHint,
               controller: _name,
               maxLength: 60,
-              errorText: _tried && _name.text.trim().isEmpty
+              errorText: _tried && !NameText.isValid(_name.text)
                   ? S.nameNeeded
                   : null,
               onChanged: (_) => setState(() {}),
@@ -347,7 +348,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
                 onSubmitted: (_) => _addPerson(people),
                 onChanged: (_) => setState(() => _personError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: _person.text.trim().isEmpty
+                  onPressed: !NameText.isValid(_person.text)
                       ? null
                       : () => _addPerson(people),
                   style: KitButtonStyles.small(context),

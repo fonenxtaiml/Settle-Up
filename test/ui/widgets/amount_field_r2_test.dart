@@ -59,8 +59,9 @@ void main() {
       final inr = Currencies.of('INR');
       expect(parseAmountInput('Rs. 500', inr), 50000);
       expect(parseAmountInput('Rs.500', inr), 50000);
-      expect(parseAmountInput('Rs . 500', inr), 50000);
-      expect(parseAmountInput('approx. 300', inr), 30000);
+      // A dot apart from the mark, and a word, are not the grammar.
+      expect(parseAmountInput('Rs . 500', inr), isNull);
+      expect(parseAmountInput('approx. 300', inr), isNull);
       expect(parseAmountInput('500 Rs.', inr), 50000);
       expect(parseAmountInput('Rs. 1,234.50', inr), 123450);
       // A point after a digit is still a decimal point.
@@ -80,11 +81,14 @@ void main() {
       expect(parseAmountInput('10,500', kwd), 10500000);
     });
 
-    test('typing allows a short last comma group, finished text does not', () {
-      expect(normalizeAmountInput('1,234,5', typing: true), '12345');
-      expect(normalizeAmountInput('1,234,', typing: true), '1234');
-      expect(normalizeAmountInput('1,234,5'), isNull);
-      expect(normalizeAmountInput('1,2,3', typing: true), isNull);
+    test('a short last comma group is no amount, typed or pasted', () {
+      // One grammar for typing and pasting: "1,234,5" is on its way to
+      // "1,234,567" and holds no amount until it gets there.
+      final usd = Currencies.of('USD');
+      expect(parseAmountInput('1,234,5', usd), isNull);
+      expect(parseAmountInput('1,234,', usd), isNull);
+      expect(parseAmountInput('1,2,3', usd), isNull);
+      expect(parseAmountInput('1,234,567', usd), 123456700);
     });
   });
 
@@ -102,9 +106,10 @@ void main() {
       expect(await _type(t, 'EUR', '12,500'), (1250, '12.50'));
       // A second decimal comma is refused in a decimal-comma currency.
       expect(await _type(t, 'EUR', '12,5,0'), (1250, '12.50'));
-      // KWD writes a dot; a second comma groups there (on its way to
-      // 1,250,750).
-      expect(await _type(t, 'KWD', '1,250,75'), (125075000, '125,075'));
+      // KWD writes a dot; a second comma groups there: "1,250,75" is on
+      // its way to 1,250,750 and holds no amount until then (round 7).
+      expect(await _type(t, 'KWD', '1,250,75'), (null, '1,250,75'));
+      expect(await _type(t, 'KWD', '1,250,750'), (1250750000, '1,250,750'));
     });
 
     testWidgets('a single comma with four digits after it is refused, not '

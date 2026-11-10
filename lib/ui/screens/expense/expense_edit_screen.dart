@@ -1405,7 +1405,13 @@ class _WeightPromptState extends State<_WeightPrompt> {
       autofocus: true,
       keyboardType: TextInputType.number,
       inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
+        // Digits only, and an edit that brings anything else is refused
+        // whole: a paste of "1 2" or "1e3" is never joined into 12 or 13
+        // (the digits-only filter dropped the rest and joined them).
+        TextInputFormatter.withFunction(
+          (old, next) =>
+              RegExp(r'^[0-9]*$').hasMatch(next.text) ? next : old,
+        ),
         LengthLimitingTextInputFormatter(4),
       ],
       decoration: InputDecoration(
@@ -1549,24 +1555,20 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, Space.sm, 16, Space.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.tonal(
-                      onPressed: widget.total > 0 ? _splitEvenly : null,
-                      child: const Text(S.splitRestEqually),
-                    ),
-                  ),
-                  const SizedBox(width: Space.sm),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: left == 0 && sum > 0 && !_unreadable
-                          ? () => Navigator.of(context).pop(_values)
-                          : null,
-                      child: const Text(S.done),
-                    ),
-                  ),
-                ],
+              // Side by side only when both labels fit their half on one
+              // line; stacked full width otherwise (VISUAL-R6-01).
+              child: ButtonPair(
+                labels: const [S.splitRestEqually, S.done],
+                first: FilledButton.tonal(
+                  onPressed: widget.total > 0 ? _splitEvenly : null,
+                  child: const Text(S.splitRestEqually),
+                ),
+                second: FilledButton(
+                  onPressed: left == 0 && sum > 0 && !_unreadable
+                      ? () => Navigator.of(context).pop(_values)
+                      : null,
+                  child: const Text(S.done),
+                ),
               ),
             ),
           ],

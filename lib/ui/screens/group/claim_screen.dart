@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
+import '../../../core/name_text.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
 import '../../router.dart';
@@ -79,7 +80,7 @@ class ClaimScreen extends ConsumerWidget {
       );
       if (other == null || !context.mounted) return;
       name = other.trim();
-      if (name.isEmpty) return;
+      if (!NameText.isValid(name)) return;
       final still = sameName();
       if (still != null) {
         Haptics.invalid(context);

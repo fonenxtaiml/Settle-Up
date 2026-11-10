@@ -43,15 +43,24 @@ void main() {
       0x2061, 0x2063, 0x2064, 0x3164, 0xFE00, 0xFE0F, 0xFFA0, 0xE0001,
     ]) {
       final m = String.fromCharCode(mark);
-      for (final name in ['Rahul$m', '${m}Rahul', 'Ra${m}hul', 'rahul $m']) {
+      // A Hangul filler draws as wide as a space: "Ra" + U+3164 + "hul"
+      // looks like "Ra hul" (UIFLOW-R6-01).
+      final spaceWide = const [0x115F, 0x3164, 0xFFA0].contains(mark);
+      for (final name in [
+        'Rahul$m',
+        '${m}Rahul',
+        if (!spaceWide) 'Ra${m}hul',
+        'rahul $m',
+      ]) {
         expect(
           duplicateName(name, existing),
           'Rahul',
           reason: 'U+${mark.toRadixString(16)} in $name',
         );
       }
-      // An existing name stored with the mark is matched as well.
-      expect(duplicateName('Rahul', ['Rahul$m']), TextClean.clean('Rahul$m'));
+      // An existing name stored with the mark is matched as well, and
+      // named as it is shown.
+      expect(duplicateName('Rahul', ['Rahul$m']), 'Rahul');
     }
     // A name made only of blank marks is not a duplicate of anything (the
     // Ledger refuses it as blank), and different names stay different.

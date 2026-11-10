@@ -9,7 +9,7 @@ import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
-import '../../core/text_clean.dart';
+import '../../core/name_text.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
@@ -454,32 +454,36 @@ Set<ExpenseId> _findDuplicatePayments(GroupState g) {
 /// SPEC 5.16: member display names are 1..40 characters.
 const int kMemberNameMax = 40;
 
-/// The existing name [candidate] would duplicate (case and spaces
-/// ignored: "priya " is "Priya"), or null. Both sides are compared as the
-/// Ledger saves them (TextClean.clean), so a name carrying an invisible
-/// mark (U+200B, U+200E, ...) is the plain name it will be stored as
-/// (UIFLOW-R4-01). The marks the Ledger keeps inside a name but that draw
-/// nothing after a letter (soft hyphen, ZWJ, variation selectors,
-/// invisible operators; TextClean.isBlankMark) are left out of the
-/// comparison too, never out of what is stored: "Rahul" with a soft hyphen
-/// looks like "Rahul" everywhere (UIFLOW-R5-01).
+/// The existing name [candidate] would duplicate, as it is shown, or null.
+/// Both sides are compared in the one form names are stored and shown in
+/// ([NameText.key]): case ignored, a character that draws nothing left
+/// out ("Ra" + soft hyphen + "hul" is "Rahul", UIFLOW-R4-01, UIFLOW-R5-01)
+/// and one that draws a blank as wide as a space read as a space ("Rahul"
+/// + U+3164 + "Kumar" is "Rahul Kumar", never "RahulKumar", UIFLOW-R6-01).
+/// A candidate with no letter or number is no name and matches nothing.
 String? duplicateName(String candidate, Iterable<String> existing) {
-  String key(String n) => String.fromCharCodes(
-    TextClean.clean(n).runes.where((r) => !TextClean.isBlankMark(r)),
-  ).toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-  final k = key(candidate);
-  if (k.isEmpty) return null;
+  if (!NameText.isValid(candidate)) return null;
+  final k = NameText.key(candidate);
   for (final e in existing) {
-    if (key(e) == k) return TextClean.clean(e);
+    if (NameText.key(e) == k) return NameText.display(e);
   }
   return null;
 }
+
+/// The year this release was built in: a clock that reads an earlier year
+/// is wrong (reset or never set), never the real date.
+const int entryDateFloorYear = 2026;
 
 /// The date picker the expense, payment and settle-up editors open: from
 /// 2000 to the end of next year, widened to take in [initial] when the
 /// stored date lies outside that range (a phone with a reset clock writes
 /// 1970, and a peer may send any date the remote check accepts), so the
 /// user can always see the date and correct it (SECURITY-R5-01).
+///
+/// The end of the range never falls before the end of the year after
+/// [entryDateFloorYear], whatever the clock says: a phone whose clock was
+/// reset to 1970 starts a new expense dated 1970, and its user must still
+/// be able to choose the real date (SECURITY-R6-01).
 Future<DateTime?> pickEntryDate(
   BuildContext context, {
   required DateTime initial,
@@ -487,7 +491,8 @@ Future<DateTime?> pickEntryDate(
 }) {
   final day = DateTime(initial.year, initial.month, initial.day);
   final first = DateTime(2000);
-  final last = DateTime(now.year + 1, 12, 31);
+  final year = now.year < entryDateFloorYear ? entryDateFloorYear : now.year;
+  final last = DateTime(year + 1, 12, 31);
   return showDatePicker(
     context: context,
     initialDate: day,
