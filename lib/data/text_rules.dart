@@ -88,7 +88,10 @@ abstract final class TextRules {
       r == 0x3000 ||
       r == 0xFEFF;
 
-  /// Characters that render as nothing (or as blank space) by themselves.
+  /// Characters that render as nothing (or as blank space) by themselves:
+  /// every range of Unicode's Default_Ignorable_Code_Point (including the
+  /// unassigned code points reserved there, which text shaping also draws
+  /// as nothing, SECURITY-R3-02) plus a few visible-as-blank fillers.
   static bool _isBlankMark(int r) =>
       r == 0x00AD || // soft hyphen
       r == 0x034F || // combining grapheme joiner
@@ -99,16 +102,15 @@ abstract final class TextRules {
       (r >= 0x180B && r <= 0x180F) || // Mongolian selectors and separator
       r == 0x200C || // ZWNJ
       r == 0x200D || // ZWJ
-      (r >= 0x2061 && r <= 0x2064) || // invisible operators
-      (r >= 0x206A && r <= 0x206F) || // deprecated format characters
+      (r >= 0x2060 && r <= 0x206F) || // joiner, operators, isolates, ...
       r == 0x2800 || // braille blank
       r == 0x3164 || // Hangul filler
       (r >= 0xFE00 && r <= 0xFE0F) || // variation selectors
       r == 0xFFA0 || // halfwidth Hangul filler
+      (r >= 0xFFF0 && r <= 0xFFF8) || // reserved specials
       (r >= 0x1BCA0 && r <= 0x1BCA3) || // shorthand format controls
       (r >= 0x1D173 && r <= 0x1D17A) || // musical format controls
-      (r >= 0xE0000 && r <= 0xE007F) || // tag characters
-      (r >= 0xE0100 && r <= 0xE01EF); // variation selectors supplement
+      (r >= 0xE0000 && r <= 0xE0FFF); // tags, selectors supplement, ...
 
   /// Number of user-perceived characters in [value].
   static int length(String value) => value.characters.length;
@@ -292,8 +294,7 @@ abstract final class TextRules {
     bool keys(Map<Object?, Object?> m, Set<String> known) =>
         m.length == known.length && m.keys.every(known.contains);
     bool ints(Object? m) =>
-        m is Map &&
-        m.entries.every((e) => e.key is String && e.value is int);
+        m is Map && m.entries.every((e) => e.key is String && e.value is int);
     bool spec(Object? s) =>
         s is Map &&
         keys(s, _specKeys) &&
