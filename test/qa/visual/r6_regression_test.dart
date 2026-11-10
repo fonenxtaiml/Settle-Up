@@ -518,6 +518,10 @@ void main() {
         v6(360, 1.0, Brightness.dark),
         v6(360, 1.3),
         v6(320, 2.0),
+        v6(320, 2.0, Brightness.dark),
+        v6(411, 1.3),
+        v6(411, 2.0),
+        v6(360, 1.6),
       ]) {
         await pumpVisual(
           tester,
@@ -536,13 +540,36 @@ void main() {
         await settleFrames(tester);
         final sheet = find.byType(MultiPayerSheet);
         expect(sheet, findsOneWidget);
+        final rest = tester.getRect(
+          find.ancestor(
+            of: find.descendant(
+              of: sheet,
+              matching: find.text('Split the rest equally'),
+            ),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        final done = tester.getRect(
+          find.ancestor(
+            of: find.descendant(of: sheet, matching: find.text('Done')),
+            matching: find.byType(FilledButton),
+          ),
+        );
+        final stacked = done.top >= rest.bottom;
+        if (stacked && (rest.width - done.width).abs() > 0.5) {
+          problems.add('${variantName(v)}: stacked buttons differ in width');
+        }
         for (final label in ['Split the rest equally', 'Done']) {
           final p = tester.renderObject<RenderParagraph>(
             find.descendant(of: sheet, matching: find.text(label)),
           );
           final lines = (p.size.height / p.preferredLineHeight).round();
           final word = p.getMinIntrinsicWidth(double.infinity);
-          if (lines > 1 || p.size.width + 0.5 < word) {
+          final line = p.getMaxIntrinsicWidth(double.infinity);
+          // A label wider than a full-width button (320 dp at 2.0x) may
+          // only wrap once the buttons are stacked, between words.
+          final mayWrap = stacked && line > p.size.width + 0.5;
+          if ((lines > 1 && !mayWrap) || p.size.width + 0.5 < word) {
             problems.add(
               '${variantName(v)}: "$label" on $lines lines in a '
               '${p.size.width.toStringAsFixed(1)} dp box (one line needs '
@@ -556,6 +583,5 @@ void main() {
       await tester.runAsync(w.phone.dispose);
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true, // VISUAL-R6-01
   );
 }
