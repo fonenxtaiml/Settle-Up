@@ -7,6 +7,7 @@ import 'dart:math';
 import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/text_clean.dart';
 import 'package:settle_up/data/text_rules.dart';
 import 'package:settle_up/ui/format/text_cap_formatter.dart';
 import 'package:settle_up/ui/screens/common.dart';
@@ -461,6 +462,81 @@ void main() {
                 reason: reason,
               );
               expect(pasted.text, head + insert + tail, reason: reason);
+            }
+          }
+        });
+      }
+    }
+  });
+
+  group('UIFLOW-R19-01: the counter shows room exactly when a letter typed '
+      'at the end goes in', () {
+    test('line breaks and spaces at the end count once a letter would '
+        'follow them, up to the cap', () {
+      final f = TextCapFormatter(10);
+      int c(String s) => TextCapFormatter.counted(s, 10);
+      expect(c('a' * 8), 8);
+      expect(c('${'a' * 8}\n'), 9);
+      expect(c('${'a' * 8}\n\n'), 10);
+      expect(c('${'a' * 8}  '), 10);
+      expect(c('${'a' * 8}\r\n'), 9);
+      // A full note may end with more breaks: they take no room while
+      // nothing follows them, and the counter stays at the cap.
+      expect(c('${'a' * 10}\n\n\n'), 10);
+      // Leading spaces and breaks, and hidden characters, take no room.
+      expect(c('\n\n  ${'a' * 3}'), 3);
+      expect(c('${'a' * 3}\u200B\u200E'), 3);
+      expect(c('   '), 0);
+      // A held note over the cap shows its length.
+      expect(c('a' * 12), 12);
+      final eight = _at('${'a' * 8}\n\n', 10);
+      expect(_type(f, eight, 'b').text, eight.text);
+      final nine = _at('${'a' * 8}\n', 9);
+      expect(_type(f, nine, 'b').text, '${'a' * 8}\nb');
+    });
+
+    for (final seed in List.generate(6, (i) => 1900 + i)) {
+      for (final multiline in [true, false]) {
+        test('seed $seed, multiline $multiline', () {
+          final r = Random(seed);
+          const ends = [' ', '\n', '\r\n', '\r', '\t', '\u2028', '\u200B'];
+          for (var i = 0; i < 400; i++) {
+            final limit = 1 + r.nextInt(30);
+            final f = TextCapFormatter(limit, multiline: multiline);
+            final b = StringBuffer(_random(r, r.nextInt(40)));
+            for (var k = r.nextInt(5); k > 0; k--) {
+              b.write(ends[r.nextInt(ends.length)]);
+            }
+            final text = b.toString();
+            final stored = TextClean.clean(text, multiline: multiline);
+            // Over the Ledger's code units the field says it is too long
+            // (and counts the code units): not what this measures.
+            if (TextCap.length(stored) > limit &&
+                stored.characters.length <= limit) {
+              continue;
+            }
+            final shown = TextCapFormatter.counted(
+              text,
+              limit,
+              multiline: multiline,
+            );
+            final reason = 'limit $limit, text ${text.runes.toList()}';
+            expect(
+              shown,
+              greaterThanOrEqualTo(TextCap.length(stored)),
+              reason: reason,
+            );
+            expect(
+              shown,
+              lessThanOrEqualTo(max(limit, TextCap.length(stored))),
+              reason: reason,
+            );
+            for (final letter in const ['b', '7', '中']) {
+              final v = _at(text, text.length);
+              final typed = _type(f, v, letter).text;
+              final went = typed == text + letter;
+              if (!went) expect(typed, text, reason: '$reason, $letter');
+              expect(went, shown < limit, reason: '$reason, $letter');
             }
           }
         });

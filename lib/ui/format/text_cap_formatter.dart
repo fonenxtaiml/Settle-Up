@@ -80,6 +80,23 @@ class TextCapFormatter extends TextInputFormatter {
   static int length(String text, {bool multiline = true}) =>
       TextClean.clean(text, multiline: multiline).characters.length;
 
+  /// The length a counter shows for [text] in a field capped at [limit]:
+  /// what the cap leaves no room for, so the counter shows room exactly
+  /// when a character typed at the end goes in (UIFLOW-R19-01).
+  ///
+  /// It is the note as the Ledger stores it ([TextCap.length]), or, when
+  /// that is less, the room taken once text follows (the spaces, tabs and
+  /// line breaks at the end count: trimmed while they end the note, they
+  /// are stored, and held to the cap, as soon as a character follows
+  /// them), up to [limit]: spaces and breaks at the end take no room
+  /// while nothing follows them, so a full note may end with more of them
+  /// and the counter stays at the limit, with no "too long" for them.
+  static int counted(String text, int limit, {bool multiline = true}) {
+    final stored = TextCap.length(TextClean.clean(text, multiline: multiline));
+    final pending = _Run.of(text, multiline).count;
+    return math.max(stored, math.min(limit, pending));
+  }
+
   @override
   TextEditingValue formatEditUpdate(
     TextEditingValue oldValue,
