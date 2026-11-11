@@ -92,9 +92,5 @@ void main() {
       t.platformDispatcher.clearAllTestValues();
       expect(problems, isEmpty);
     },
-    // QA VISUAL-R17-01: a long currency symbol pushes the currency code
-    // behind the ellipsis on the New group, Edit group and onboarding
-    // currency tile at 2.0x.
-    skip: true,
   );
 }
