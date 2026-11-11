@@ -7,7 +7,10 @@ import 'dart:math';
 import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/data/text_rules.dart';
 import 'package:settle_up/ui/format/text_cap_formatter.dart';
+import 'package:settle_up/ui/screens/common.dart';
+import 'package:settle_up/ui/strings.dart';
 
 int _len(String s) => s.characters.length;
 
@@ -41,6 +44,11 @@ const _pieces = [
   '👩',
   '❤️',
   '\u{1F468}‍\u{1F469}‍\u{1F467}',
+  // A family of four (11 code units) and a letter under four stacked
+  // combining marks (5 code units): one character each, heavier than the
+  // Ledger's 4 code units a character.
+  '\u{1F468}‍\u{1F469}‍\u{1F467}‍\u{1F466}',
+  'e\u0301\u0302\u0303\u0304',
   '🇮',
   '🇳',
   '🇺',
@@ -163,6 +171,52 @@ void main() {
     );
     final out = f.formatEditUpdate(composing, _at('abcdefgh', 8));
     expect(out.text, 'abcde');
+  });
+
+  // UIFLOW-R17-02: every free-text counter and "too long" message measures
+  // as the Ledger does.
+  group('TextCap is the Ledger\'s measure (seeded)', () {
+    for (final seed in List.generate(4, (i) => 1700 + i)) {
+      test('seed $seed: fits == TextRules.tooLong is null, length agrees, and '
+          'notesInputError / descriptionInputError say what the Ledger '
+          'says', () {
+        final r = Random(seed);
+        for (var i = 0; i < 2000; i++) {
+          final limit = 1 + r.nextInt(40);
+          final t = _random(r, r.nextInt(80));
+          final ledger = TextRules.tooLong(t, limit) == null;
+          expect(TextCap.fits(t, limit), ledger, reason: 'limit $limit "$t"');
+          expect(TextCap.length(t) <= limit, ledger, reason: '"$t"');
+        }
+        for (var i = 0; i < 200; i++) {
+          final big = _random(r, 200 + r.nextInt(1200));
+          final cleaned = TextRules.clean(big, multiline: true);
+          expect(
+            notesInputError(big) == null,
+            TextRules.tooLong(cleaned, TextRules.notes) == null,
+          );
+          expect(
+            descriptionInputError(big) == null,
+            TextRules.tooLong(cleaned, TextRules.description) == null,
+          );
+          if (notesInputError(big) != null) {
+            expect(notesInputError(big), S.errTooLong);
+          }
+        }
+      });
+    }
+  });
+
+  test('400 family emoji: 400 characters but over the Ledger\'s code units '
+      'for 1000; counted as 1100', () {
+    final t = List.filled(
+      400,
+      '\u{1F468}‍\u{1F469}‍\u{1F467}‍\u{1F466}',
+    ).join();
+    expect(t.characters.length, 400);
+    expect(TextCap.length(t), 1100);
+    expect(TextCap.fits(t, 1000), isFalse);
+    expect(notesInputError(t), S.errTooLong);
   });
 
   group('property (seeded)', () {

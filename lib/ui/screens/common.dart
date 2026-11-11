@@ -308,8 +308,18 @@ class _TextPromptState extends State<_TextPrompt> {
     super.dispose();
   }
 
+  /// "Too long" under a free text the Ledger would refuse for its length
+  /// ([TextCap], the measure the editors' notes fields use too), so Save
+  /// never takes a note that Record then refuses (UIFLOW-R17-02).
+  String? get _freeTextError {
+    final max = widget.maxLength;
+    if (widget.isName || max == null) return null;
+    return _overLimit(_controller.text, max) ? S.errTooLong : null;
+  }
+
   bool get _accepted {
     final text = _controller.text;
+    if (_freeTextError != null) return false;
     if (widget.optional) return true;
     if (!widget.isName) return text.trim().isNotEmpty;
     final max = widget.maxLength;
@@ -328,11 +338,16 @@ class _TextPromptState extends State<_TextPrompt> {
       listenable: _controller,
       builder: (context, _) {
         final max = widget.maxLength;
-        // A name counts as it is stored ([NameLimit.length]), so the
-        // counter never says a name fits that Save would refuse.
-        final count = widget.isName && max != null
+        // A name counts as it is stored ([NameLimit.length]) and a free
+        // text as the Ledger measures it ([TextCap.length]), so the
+        // counter never says a text fits that Save would refuse.
+        final count = max == null
+            ? null
+            : widget.isName
             ? NameLimit.length(_controller.text)
-            : null;
+            : TextCap.length(
+                TextClean.clean(_controller.text, multiline: true),
+              );
         return TextField(
           controller: _controller,
           autofocus: true,
@@ -360,7 +375,7 @@ class _TextPromptState extends State<_TextPrompt> {
             helperMaxLines: 3,
             errorText: widget.isName
                 ? nameInputError(_controller.text, limit: max)
-                : null,
+                : _freeTextError,
             errorMaxLines: 3,
             counterText: count == null ? null : '$count/$max',
             semanticCounterText: count == null
@@ -578,11 +593,8 @@ List<TextInputFormatter> descriptionFormatters() => [
 /// description or note: cleaned ([TextClean.clean], line breaks kept),
 /// then in user-perceived characters and at most
 /// [NameText.unitsPerChar] code units for each.
-bool _overLimit(String text, int limit) {
-  final t = TextClean.clean(text, multiline: true);
-  return t.length > limit * NameText.unitsPerChar ||
-      t.characters.length > limit;
-}
+bool _overLimit(String text, int limit) =>
+    !TextCap.fits(TextClean.clean(text, multiline: true), limit);
 
 /// The message under a description holding more than [kDescriptionMax]
 /// characters (one a peer or an earlier build saved); null otherwise.

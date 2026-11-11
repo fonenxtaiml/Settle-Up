@@ -178,10 +178,12 @@ void main() {
       final gid = await w.seedGroup();
       final before = w.group(gid).group!.name;
       await _openEditGroup(tester, w, gid);
-      // Sync brings Priya's rename while the form is open.
+      // Sync brings Priya's rename while the form is open. Its clock is
+      // ahead of this phone's (an op older than the group's own create op
+      // would lose and never reach the screen).
       await _remote(w, gid, EntityType.group, gid, {
         GroupFields.name: 'Goa 2026',
-      }, afterMs: -1000);
+      });
       await qaSettle(tester);
       expect(w.group(gid).group!.name, 'Goa 2026');
       // The name field was never touched; only Simplify is switched off.
@@ -196,35 +198,30 @@ void main() {
       );
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R17-01: Edit group sends a field the user never touched when another phone changed it while the form was open
   );
 
-  testWidgets(
-    'UIFLOW-R17-01: Edit group open while another phone changes the '
-    'currency: saving a Simplify change keeps the new currency',
-    (tester) async {
-      qaPhone(tester);
-      final w = await RealWorld.create(name: 'Arjun');
-      final gid = await w.seedGroup();
-      expect(w.group(gid).group!.currency, 'INR');
-      await _openEditGroup(tester, w, gid);
-      await _remote(w, gid, EntityType.group, gid, {
-        GroupFields.currency: 'EUR',
-      }, afterMs: -1000);
-      await qaSettle(tester);
-      expect(w.group(gid).group!.currency, 'EUR');
-      await qaTap(tester, find.byType(Switch).first);
-      await qaTap(tester, find.text(S.saveChanges));
-      expect(w.group(gid).group!.simplifyDebts, isFalse);
-      expect(
-        w.group(gid).group!.currency,
-        'EUR',
-        reason: 'the untouched, stale currency in the form was sent',
-      );
-      await w.shutdown(tester);
-    },
-    skip: true, // QA UIFLOW-R17-01: Edit group sends a field the user never touched when another phone changed it while the form was open
-  );
+  testWidgets('UIFLOW-R17-01: Edit group open while another phone changes the '
+      'currency: saving a Simplify change keeps the new currency', (
+    tester,
+  ) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup();
+    expect(w.group(gid).group!.currency, 'INR');
+    await _openEditGroup(tester, w, gid);
+    await _remote(w, gid, EntityType.group, gid, {GroupFields.currency: 'EUR'});
+    await qaSettle(tester);
+    expect(w.group(gid).group!.currency, 'EUR');
+    await qaTap(tester, find.byType(Switch).first);
+    await qaTap(tester, find.text(S.saveChanges));
+    expect(w.group(gid).group!.simplifyDebts, isFalse);
+    expect(
+      w.group(gid).group!.currency,
+      'EUR',
+      reason: 'the untouched, stale currency in the form was sent',
+    );
+    await w.shutdown(tester);
+  });
 
   // ------------------------------------------------- UIFLOW-R15-02 --
 
@@ -359,11 +356,14 @@ void main() {
       expect(w.group(gid).liveExpenses.where((e) => e.isPayment), isEmpty);
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R17-02: the Settle up notes prompt takes a note the Ledger refuses as too long, and says nothing until Record
   );
 
-  testWidgets('R17 probe (premise of UIFLOW-R17-02): the same note in Edit '
-      'payment says "too long" and Settle up refuses it only at Record', (
+  // Was the premise of UIFLOW-R17-02 (the prompt took the note and only
+  // Record refused it). Since the fix the prompt measures the note as the
+  // Ledger does: it says "too long", keeps Save off and counts 1100/1000;
+  // a note shortened to fit is recorded whole.
+  testWidgets('UIFLOW-R17-02: the Settle up notes prompt says a note the '
+      'Ledger refuses is too long, and one shortened to fit is recorded', (
     tester,
   ) async {
     qaPhone(tester);
@@ -373,7 +373,25 @@ void main() {
     await qaTap(tester, find.text(S.notes));
     await tester.enterText(_promptField, note);
     await tester.pump();
-    expect(_text(tester, _promptField), note, reason: 'prompt took it all');
+    // Nothing of the note is cut inside an emoji.
+    expect(_text(tester, _promptField), note);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(S.errTooLong),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('1100/1000'), findsOneWidget);
+    final save = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(FilledButton),
+    );
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    // 363 family emoji are 3993 code units: within the Ledger's 4000.
+    final fits = List.filled(363, _family).join();
+    await tester.enterText(_promptField, fits);
+    await tester.pump();
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
@@ -381,13 +399,14 @@ void main() {
       ),
       findsNothing,
     );
+    expect(find.text('999/1000'), findsOneWidget);
     await qaTap(tester, _promptSave);
     expect(find.byType(AlertDialog), findsNothing);
     await _record(tester);
-    // Record is refused by the Ledger.
-    expect(w.group(gid).liveExpenses.where((e) => e.isPayment), isEmpty);
-    expect(find.text(S.errTooLong), findsOneWidget);
-    expect(find.textContaining('longer than'), findsNothing);
+    final payments = w.group(gid).liveExpenses.where((e) => e.isPayment);
+    expect(payments, hasLength(1));
+    expect(payments.single.notes, fits);
+    expect(find.text(S.errTooLong), findsNothing);
     await w.shutdown(tester);
   });
 

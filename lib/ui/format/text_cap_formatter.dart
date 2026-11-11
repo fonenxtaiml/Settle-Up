@@ -1,11 +1,44 @@
 // The length cap of a free-text field (notes): what the user adds is kept
-// within the cap, and text the field already holds is never cut.
+// within the cap, and text the field already holds is never cut. TextCap is
+// the one measure the Ledger, the counters and the "too long" messages use.
+import 'dart:math' as math;
+
 import 'package:characters/characters.dart';
 import 'package:flutter/services.dart';
+
+import '../../core/name_text.dart';
+
+/// The Ledger's measure of a free text (TextRules.tooLong, SPEC 5.16): a
+/// text fits a limit when it has at most that many user-perceived
+/// characters and at most [unitsPerChar] UTF-16 code units for each. Every
+/// counter and "too long" message of a free-text field uses it, so none
+/// says a note fits that the Ledger would refuse (UIFLOW-R17-02).
+abstract final class TextCap {
+  /// Code units one character may take (the Ledger's rule).
+  static const int unitsPerChar = NameText.unitsPerChar;
+
+  /// The length a counter shows: the larger of the characters and the
+  /// code units divided by [unitsPerChar], rounded up. A text [fits] a
+  /// limit exactly when this is at most that limit.
+  static int length(String text) => math.max(
+    text.characters.length,
+    (text.length + unitsPerChar - 1) ~/ unitsPerChar,
+  );
+
+  /// Whether [text] fits [limit] as the Ledger measures it.
+  static bool fits(String text, int limit) =>
+      text.length <= limit * unitsPerChar && text.characters.length <= limit;
+}
 
 /// Keeps a free-text field within [limit] user-perceived characters, as
 /// the Ledger counts them (SPEC 5.16), without ever cutting text the field
 /// already holds.
+///
+/// It caps characters only. A text within the characters but over the
+/// Ledger's code units (a note of emoji sequences or stacked combining
+/// marks) is kept whole, never cut inside an emoji, and the field says it
+/// is too long by [TextCap] (notesInputError, the notes prompt) until it is
+/// shortened.
 ///
 /// [LengthLimitingTextInputFormatter] (what `TextField.maxLength` adds)
 /// truncates the whole value as soon as it is over the cap, so a note a
