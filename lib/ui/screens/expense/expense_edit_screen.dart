@@ -62,6 +62,12 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   bool _ready = false;
   Expense? _editing;
 
+  /// What the form held right after it loaded the expense being edited.
+  /// Save sends the live value of every field still holding it, so a
+  /// change another phone made to a field the user never touched while
+  /// the form was open is not undone (UIFLOW-R17-01).
+  _FormValues? _loaded;
+
   GroupId? _groupId;
   // A 1:1 group to create on save: (personId, name).
   (PersonId, String)? _direct;
@@ -154,6 +160,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       _split.load(e.money.owedBy, currency);
       _order = _orderFor(g, profile.personId);
       _syncInputs();
+      _loaded = _formValues();
       return;
     }
 
@@ -284,6 +291,18 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   }
 
   // ------------------------------------------------------------ derived --
+
+  /// The values Save would send, as the form holds them now.
+  _FormValues _formValues() => (
+    description: _description.text.trim(),
+    notes: _notes.text.trim(),
+    category: _category,
+    date: _date,
+    currency: _currency,
+    total: _amount,
+    paid: _paidSpec,
+    owed: _split.spec(_cur),
+  );
 
   SplitSpec get _paidSpec {
     final multi = _multiPaid;
@@ -487,7 +506,8 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         paid = remap(paid);
         owed = remap(owed);
       }
-      final draft = ExpenseDraft(
+      final notes = _notes.text.trim();
+      var draft = ExpenseDraft(
         groupId: groupId!,
         description: description,
         total: amount,
@@ -496,10 +516,38 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         owedBy: owed,
         category: _category,
         date: _date.toUtc(),
-        notes: _notes.text.trim(),
+        notes: notes,
       );
-      if (_editing != null) {
-        await ledger.updateExpense(_editing!.id, draft);
+      final editing = _editing;
+      final base = _loaded;
+      if (editing != null && base != null) {
+        // A field still holding what the form loaded takes the live
+        // value, so another phone's change to it stays (UIFLOW-R17-01).
+        // The money (total, currency, who paid, the split) is one field.
+        final live =
+            ledger.current.state.expenseIn(editing.groupId, editing.id) ??
+            editing;
+        final moneyKept =
+            amount == base.total &&
+            _currency == base.currency &&
+            paid == base.paid &&
+            owed == base.owed;
+        draft = ExpenseDraft(
+          groupId: draft.groupId,
+          description: description == base.description
+              ? live.description
+              : description,
+          total: moneyKept ? live.money.total : amount,
+          currency: moneyKept ? live.money.currency : _currency,
+          paidBy: moneyKept ? live.money.paidBy : paid,
+          owedBy: moneyKept ? live.money.owedBy : owed,
+          category: _category == base.category ? live.category : _category,
+          date: _date == base.date ? live.date : _date.toUtc(),
+          notes: notes == base.notes ? live.notes : notes,
+        );
+      }
+      if (editing != null) {
+        await ledger.updateExpense(editing.id, draft);
       } else {
         final id = await ledger.addExpense(draft);
         if (!mounted) return;
@@ -1596,3 +1644,15 @@ abstract final class Summaries2 {
         if (m.personId != me) m.personId: m.displayName,
   };
 }
+
+/// The values of the expense form that Save sends.
+typedef _FormValues = ({
+  String description,
+  String notes,
+  String category,
+  DateTime date,
+  String currency,
+  int? total,
+  SplitSpec paid,
+  SplitSpec owed,
+});
