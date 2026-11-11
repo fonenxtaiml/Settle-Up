@@ -1,7 +1,11 @@
 // Names people give each other, their groups and their phones: one form,
 // used to store, show and compare them, on this phone and for names that
 // come from other phones. Pure Dart (SPEC 5.16).
+import 'dart:math' as math;
+import 'dart:typed_data';
+
 import 'package:characters/characters.dart';
+import 'package:meta/meta.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import 'text_clean.dart';
@@ -22,8 +26,20 @@ abstract final class NameText {
   /// they do: in an emoji sequence ("👩‍💻", "❤️", the flag of England) and,
   /// for ZWJ and ZWNJ, between two letters of a script that joins or forms
   /// conjuncts (Arabic, Devanagari and the other Indic scripts).
-  static String normalize(String raw) {
-    final runes = unorm.nfkc(raw).runes.toList();
+  ///
+  /// Text of characters that neither decompose nor compose (ASCII, most
+  /// letters of most scripts) is its own NFKC and NFC form, so it is not
+  /// run through them: only its controls and spaces change.
+  static String normalize(String raw) => _normalize(raw, _isStable(raw));
+
+  static String _normalizeHead(String head) => _normalize(head, true);
+
+  /// [normalize] with NFKC and NFC run on every text. For tests.
+  @visibleForTesting
+  static String normalizeReference(String raw) => _normalize(raw, false);
+
+  static String _normalize(String raw, bool stable) {
+    final runes = stable ? raw.runes.toList() : unorm.nfkc(raw).runes.toList();
     final out = <int>[];
     var space = false;
     for (var i = 0; i < runes.length; i++) {
@@ -43,8 +59,77 @@ abstract final class NameText {
       out.add(r);
     }
     // A mark left out may have stood between a letter and its accent.
-    return unorm.nfc(String.fromCharCodes(out));
+    final t = String.fromCharCodes(out);
+    if (stable) return t;
+    unormUnits += raw.length + t.length;
+    return unorm.nfc(t);
   }
+
+  /// Code units run through NFKC and NFC so far: what normalising costs.
+  /// For tests.
+  @visibleForTesting
+  static int unormUnits = 0;
+
+  /// Whether NFKC and NFC leave [s] as it is, and leave it so once
+  /// characters that draw nothing are taken out of it: no character of it
+  /// decomposes (canonically or for compatibility), none is a mark (every
+  /// character that composes with the one before it or is reordered is
+  /// one, but for the Hangul vowel and final jamo) nor such a jamo.
+  static bool _isStable(String s) {
+    for (var i = 0; i < s.length; i++) {
+      final u = s.codeUnitAt(i);
+      if (u < 0x80) continue;
+      if (u >= 0xD800 && u <= 0xDFFF) return false; // astral or lone
+      if (_props(u) & _stable == 0) return false;
+    }
+    return true;
+  }
+
+  static const int _stable = 1;
+
+  /// The NFKD form of the character starts with one that nothing before it
+  /// composes with or is reordered with (no mark, no Hangul vowel or final
+  /// jamo): NFKC of a text is NFKC of the text before it followed by NFKC
+  /// of the rest.
+  static const int _safe = 2;
+
+  /// [_stable], [_safe] and, from bit 2 up, how many characters the NFKD
+  /// form of [r] holds (at most 18), cached: BMP characters in [_bmp] (0
+  /// for not yet known), the others in [_astral].
+  static int _props(int r) {
+    if (r < 0x80) return 1 << 2 | _safe | _stable;
+    if (r <= 0xFFFF) {
+      final known = _bmp[r];
+      if (known != 0) return known;
+      return _bmp[r] = _computeProps(r);
+    }
+    return _astral[r] ??= _computeProps(r);
+  }
+
+  static final Uint8List _bmp = Uint8List(0x10000);
+  static final Map<int, int> _astral = {};
+
+  static int _computeProps(int r) {
+    final c = String.fromCharCode(r);
+    final d = unorm.nfkd(c).runes.toList();
+    if (d.isEmpty) return 1 << 2;
+    final first = d.first;
+    final safe = !_jamo(first) && !_mark.hasMatch(String.fromCharCode(first));
+    final stable = safe && d.length == 1 && first == r;
+    return d.length.clamp(1, 63) << 2 |
+        (safe ? _safe : 0) |
+        (stable ? _stable : 0);
+  }
+
+  static final RegExp _mark = RegExp(r'\p{M}', unicode: true);
+
+  /// The Hangul vowel and final consonant jamo, which compose with the
+  /// character before them without being marks (a leading consonant and a
+  /// vowel make a syllable, a syllable and a final consonant another).
+  static bool _jamo(int r) =>
+      (r >= 0x1160 && r <= 0x11FF) ||
+      (r >= 0xD7B0 && r <= 0xD7C6) ||
+      (r >= 0xD7CB && r <= 0xD7FB);
 
   /// The limit of a member name, your name and the phone name (SPEC 5.16,
   /// 8.9), the shortest name limit, and so the one a name is checked and
@@ -67,8 +152,21 @@ abstract final class NameText {
   /// and NFKC can make it longer ("\u337F" is four characters, "\uFDFA"
   /// eighteen, "\u2026" three), so a name that fits the field always fits
   /// what is saved (DATA-R8-01). Idempotent: fit(fit(x)) == fit(x).
-  static String fit(String raw, [int limit = maxLength]) {
-    var t = normalize(raw);
+  static String fit(String raw, [int limit = maxLength]) =>
+      _cut(_normalizedHead(raw, limit), limit);
+
+  /// The normalised name [t] cut to [limit] characters.
+  ///
+  /// A head of a text in NFKC and NFC is in NFKC and NFC: nothing in it
+  /// composes or decomposes that did not in all of it. So all a cut can
+  /// change in [normalize] is at its end, a space or a joiner left with
+  /// nothing after it, and the cut is normalised without NFKC and NFC
+  /// ([fitReference] checks that against normalising it all).
+  static String _cut(
+    String t,
+    int limit, [
+    String Function(String) normalize = _normalizeHead,
+  ]) {
     while (!fits(t, limit)) {
       final units = limit * unitsPerChar;
       final out = StringBuffer();
@@ -94,6 +192,59 @@ abstract final class NameText {
     }
     return t;
   }
+
+  /// Characters past the limit the normal form of a head must hold, so the
+  /// rest of the name cannot change the ones that are kept.
+  static const int _margin = 4;
+
+  /// The [normalize]d form of [raw], or of a head of it whose normal form
+  /// holds at least [limit] + [_margin] characters. What [fit] keeps of a
+  /// name is its first [limit] characters, and the rest of a name changes
+  /// at most the last character or two of the normal form of a head (an
+  /// accent, a joiner or a jamo after it, a space before the next word), so
+  /// [fit] gives the same with either.
+  ///
+  /// NFKC can make a name 18 times as long ("\uFDFA" is 18 characters), and
+  /// normalising all of a name a peer sent (160 code units, 240 for a group)
+  /// took over 1 ms. The reducer shows names in this form on every op it
+  /// applies (DATA-R15-01), so the work is bounded by [limit], not by what
+  /// NFKC makes of a name: a name whose NFKD form is no longer than
+  /// [limit] x [unitsPerChar] (every name this phone saves) is normalised
+  /// whole, a longer one a head at a time, the head growing until its
+  /// normal form holds enough.
+  static String _normalizedHead(String raw, int limit) {
+    if (_isStable(raw)) return normalize(raw); // cannot grow
+    final runes = raw.runes.toList();
+    var size = 0;
+    for (final r in runes) {
+      size += _props(r) >> 2;
+    }
+    if (size <= limit * unitsPerChar) return normalize(raw);
+    var budget = limit + _margin;
+    var units = 0;
+    size = 0;
+    for (final r in runes) {
+      final p = _props(r);
+      if (size >= budget && p & _safe != 0) {
+        final head = normalize(raw.substring(0, units));
+        final shown = head.characters.length;
+        if (shown >= limit + _margin) return head;
+        // Every character takes one unit at least: enough for twice what is
+        // missing, and at least half as much again, so a name of marks or
+        // invisible characters takes a few heads, not one per unit.
+        budget = size + math.max(2 * (limit + _margin - shown), size);
+      }
+      size += p >> 2;
+      units += r > 0xFFFF ? 2 : 1;
+    }
+    return normalize(raw);
+  }
+
+  /// [fit] as it is defined: all of [raw] normalised ([normalizeReference])
+  /// and cut. For tests.
+  @visibleForTesting
+  static String fitReference(String raw, [int limit = maxLength]) =>
+      _cut(normalizeReference(raw), limit, normalizeReference);
 
   /// Whether [t] holds at most [limit] characters and [limit] x
   /// [unitsPerChar] code units.

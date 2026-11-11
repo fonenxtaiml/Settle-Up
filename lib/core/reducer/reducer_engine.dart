@@ -2,7 +2,8 @@
 //
 // State per entity key (groupId, entityType, entityId): `created` and one
 // LWW register per field. A materialized model is rebuilt from that state
-// whenever an op touches the entity. Every visible value is "the max-HLC
+// whenever an op touches the entity (after the last op of a batch, for
+// applyAll). Every visible value is "the max-HLC
 // write per field over the op set", so the result does not depend on the
 // order ops arrive in, or on duplicates.
 //
@@ -53,19 +54,49 @@ final class ReducerEngine {
   LedgerState? _snapshot;
 
   bool apply(Operation op) {
-    if (!_applied.add(op.id)) return false;
-    if (op.isFromNewerSchema) return false;
+    final folded = _fold(op);
+    if (folded == null) return false;
+    final changed = _rematerialize(op.groupId, op.entityType, op.entityId);
+    return folded.newGroup || changed;
+  }
+
+  /// Applies [ops] and rebuilds each entity they touch once, after the
+  /// last of them, not once per op: a replay of many ops to one entity
+  /// (renames of a member, edits of an expense) builds its model, and
+  /// normalises its name for display, once (DATA-R15-01). Returns the
+  /// ids of the entities whose model the batch changed, and of those whose
+  /// op made a group appear.
+  Set<String> applyAll(Iterable<Operation> ops) {
+    final changed = <String>{};
+    final touched = <_EntityKey>{};
+    for (final op in ops) {
+      final folded = _fold(op);
+      if (folded == null) continue;
+      if (folded.newGroup) changed.add(op.entityId);
+      touched.add(folded.key);
+    }
+    for (final k in touched) {
+      if (_rematerialize(k.groupId, k.type, k.id)) changed.add(k.id);
+    }
+    return changed;
+  }
+
+  /// Folds [op] into the LWW registers of its entity without rebuilding
+  /// the entity's model; null when it is not applied (seen before, from a
+  /// newer schema, or a group op for another group).
+  ({_EntityKey key, bool newGroup})? _fold(Operation op) {
+    if (!_applied.add(op.id)) return null;
+    if (op.isFromNewerSchema) return null;
     if (op.entityType == EntityType.group && op.entityId != op.groupId) {
-      return false;
+      return null;
     }
 
-    var changed = false;
-    final material = _groups[op.groupId];
-    if (material == null) {
+    var newGroup = false;
+    if (_groups[op.groupId] == null) {
       _groups[op.groupId] = _GroupMaterial();
       _dirty.add(op.groupId);
       _snapshot = null;
-      changed = true; // a new GroupState appears
+      newGroup = true; // a new GroupState appears
     }
 
     final key = _EntityKey(op.groupId, op.entityType, op.entityId);
@@ -79,20 +110,13 @@ final class ReducerEngine {
     if (op.kind == OpKind.create) s.created = true;
     final maxHlc = s.maxHlc;
     if (maxHlc == null || op.hlc > maxHlc) s.maxHlc = op.hlc;
-
-    changed |= _rematerialize(op.groupId, op.entityType, op.entityId);
-    return changed;
+    return (key: key, newGroup: newGroup);
   }
 
   /// Max HLC over the ops applied to one entity of [groupId], or null when
   /// none was.
   Hlc? lastHlcOf(GroupId groupId, EntityType type, String id) =>
       _entities[_EntityKey(groupId, type, id)]?.maxHlc;
-
-  Set<String> applyAll(Iterable<Operation> ops) => {
-        for (final op in ops)
-          if (apply(op)) op.entityId,
-      };
 
   LedgerState get state {
     final cached = _snapshot;
