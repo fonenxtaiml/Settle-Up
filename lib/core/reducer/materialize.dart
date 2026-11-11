@@ -39,6 +39,19 @@ final class EntityState {
   Hlc? maxHlc;
 
   Object? operator [](String field) => fields[field]?.value;
+
+  /// The name last shown for this entity and the value it was shown from,
+  /// so an op that leaves the name as it is does not normalise it again.
+  ({String raw, String shown})? name;
+}
+
+/// [raw], the name of [s], as it is shown ([NameText.display]).
+String _shown(EntityState s, String raw, int limit) {
+  final last = s.name;
+  if (last != null && last.raw == raw) return last.shown;
+  final shown = NameText.display(raw, limit);
+  s.name = (raw: raw, shown: shown);
+  return shown;
 }
 
 /// Largest |ms| a DateTime accepts.
@@ -82,7 +95,7 @@ Group? buildGroup(GroupId id, EntityState s) {
   return Group(
     id: id,
     // Shown as names typed here are stored, whichever phone wrote it.
-    name: NameText.display(name, NameText.maxGroupLength),
+    name: _shown(s, name, NameText.maxGroupLength),
     type: enumByName(GroupType.values, type, GroupType.other),
     currency: currency,
     simplifyDebts: simplify,
@@ -104,7 +117,7 @@ Member? buildMember(GroupId groupId, MemberId id, EntityState s) {
   return Member(
     id: id,
     groupId: groupId,
-    displayName: NameText.display(displayName),
+    displayName: _shown(s, displayName, NameText.maxLength),
     personId: personId,
     createdAt: createdAt,
     deviceId: _nonEmpty(s, MemberFields.deviceId),
