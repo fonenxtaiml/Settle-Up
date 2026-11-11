@@ -3363,6 +3363,7 @@ This is the same session staying in LIVE. The UI sets `liveMode = true` while th
 | A link from a web page makes the phone dial out | Only local-network IP addresses are dialed (8.6). |
 | A stranger on the hotspot holds the host's session slot | Handshakes run in parallel; only an authenticated session takes the slot (8.7.1). |
 | A stranger reconnects in a tight loop to push friends' handshakes out | New connections only evict silent ones (no HELLO yet), oldest first and from the same source first; 64 may wait, so a friend's HELLO has many connections' worth of time to arrive (8.7.1). |
+| A stranger floods discovery with forged adverts (many mDNS services or Nearby endpoints that never say goodbye) | A sighting costs O(log n) in the transport's `SightingCache` (indexed by address and advert id, never a scan of the other sightings), and the engine's `NearbyRegistry` rebuilds only the rows a sighting touches; an unchanged re-report publishes nothing (SECURITY-R15-01). |
 | Replay of an old session | Fresh nonces in HELLO; strictly sequential frame counters. |
 | QR photographed by someone | The QR is the membership secret. It auto-hides after 2 min and sharing is explicit with a warning. Rotation is Phase 2. |
 | Member forges another member's op | Accepted risk for MVP (friends). Phase 2 adds Ed25519 signatures. |
