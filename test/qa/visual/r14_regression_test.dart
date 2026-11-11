@@ -367,7 +367,6 @@ void main() {
     'QA VISUAL-R14-01: rotating the phone or switching the theme while the '
     'year list is open throws away where the user scrolled and jumps back '
     'to the selected year',
-    skip: true, // QA VISUAL-R14-01: rotating or a theme change resets the year list scroll
     (tester) async {
       final problems = <String>[];
       // Rotation, through the expense editor as the user meets it.
