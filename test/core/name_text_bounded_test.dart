@@ -253,20 +253,25 @@ void main() {
       });
     }
 
-    test('and so is the time: 159 x U+FDFA is shown in under a fifth of '
-        'the time it takes to normalise all of it', () {
+    test('and so is the time: a name NFKC makes 4 to 18 times as long is '
+        'shown in about the time an ordinary name of its length is', () {
       double cost(String Function() show) {
-        for (var i = 0; i < 20; i++) {
+        // Warm up until the code is optimised: the first calls run
+        // unoptimised code, which costs many times as much.
+        for (var i = 0; i < 1000; i++) {
           show();
         }
         final sw = Stopwatch()..start();
-        const n = 100;
+        const n = 200;
         for (var i = 0; i < n; i++) {
           show();
         }
         return sw.elapsedMicroseconds / n;
       }
 
+      final ordinary = cost(
+        () => NameText.display('Person ${'x' * 150}1', NameText.maxLength),
+      );
       for (final (s, limit) in [
         ('\uFDFA' * 159 + '1', NameText.maxLength),
         ('\uFDFA' * 240, NameText.maxGroupLength),
@@ -278,9 +283,11 @@ void main() {
         print(
           '[perf] ${_hex(s.substring(0, 1))} x ${s.length}: shown in '
           '${shown.toStringAsFixed(1)} us, all of it normalised in '
-          '${whole.toStringAsFixed(1)} us',
+          '${whole.toStringAsFixed(1)} us, an ordinary name in '
+          '${ordinary.toStringAsFixed(1)} us',
         );
-        expect(shown, lessThan(whole / 5));
+        expect(shown, lessThan(4 * ordinary + 20));
+        expect(shown, lessThan(whole));
       }
     });
   });
