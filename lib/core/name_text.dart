@@ -803,8 +803,7 @@ abstract final class NameText {
       (r >= 0xFE00 && r <= 0xFE0F) ||
       r == 0xFEFF ||
       (r >= 0xFFF0 && r <= 0xFFFB) ||
-      r == 0xFFFE ||
-      r == 0xFFFF ||
+      TextClean.isNoncharacter(r) ||
       r == 0x110BD ||
       r == 0x110CD ||
       (r >= 0x13430 && r <= 0x1343F) ||

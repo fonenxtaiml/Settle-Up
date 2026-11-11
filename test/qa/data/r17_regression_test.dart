@@ -7,11 +7,15 @@
 //
 // Tests named "QA <id>" with `skip:` are failing repros for open findings;
 // they pass once the finding is fixed.
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/ops.dart';
 
+import '../../data/name_replay_perf_test.dart'
+    show MarkCost, cpuMicros, expectWithinMarkBudget, nameCost;
 import 'qa_data_harness.dart';
 import 'r15_regression_test.dart' show logPhone, peerD;
 
@@ -43,58 +47,93 @@ List<Operation> memberCreates(
 /// remote limit of a member name.
 String markName(int i) => 'x${'̈́' * 158}${i % 10}';
 
+/// The CPU time one [NameText.display] of [name]s takes, in us: the
+/// fastest of three runs of 300 after a warm-up, so neither the load the
+/// suite runs under nor a burst of it decides (DATA-R21-01).
 double displayMicros(String Function(int) name, int limit) {
   for (var i = 0; i < 50; i++) {
     NameText.display(name(i), limit);
   }
-  final sw = Stopwatch()..start();
-  for (var i = 0; i < 300; i++) {
-    NameText.display(name(i), limit);
+  var best = 1 << 62;
+  for (var k = 0; k < 3; k++) {
+    final t = cpuMicros();
+    for (var i = 0; i < 300; i++) {
+      NameText.display(name(i), limit);
+    }
+    best = min(best, cpuMicros() - t);
   }
-  return sw.elapsedMicroseconds / 300;
+  return best / 300;
+}
+
+/// What the DATA-R15-01 reverification measures.
+typedef R17Cost = ({
+  double ordinary,
+  double marks,
+  double group,
+  MarkCost open,
+  int applyMs,
+});
+
+/// Measures what names of combining marks NFKC expands cost: one display
+/// of such a name against an ordinary one, and 4,000 peer members created
+/// with them against as many with ordinary names ([nameCost]: the CPU
+/// time the names add, and each open the faster of two, measured beside
+/// an ordinary one).
+Future<R17Cost> measureR17() async {
+  final ordinary = displayMicros((i) => 'Person ${'x' * 150}$i', 40);
+  final marks = displayMicros(markName, 40);
+  final group = displayMicros(
+    (i) => 'x${'ཷ' * 238}${i % 10}',
+    NameText.maxGroupLength,
+  );
+  final open = await nameCost(markName);
+  final r = await logPhone(memberCreates(4000, markName), base: false);
+  final sw = Stopwatch()..start();
+  await r.phone.ledger.applyRemote(
+    'group-1',
+    memberCreates(1000, markName, from: 10000),
+  );
+  final applyMs = sw.elapsedMilliseconds;
+  await r.phone.close();
+  r.phone.dir.deleteSync(recursive: true);
+  return (
+    ordinary: ordinary,
+    marks: marks,
+    group: group,
+    open: open,
+    applyMs: applyMs,
+  );
+}
+
+/// The charter: about 0.1 ms an op, so 4,000 ops open in < 400 ms on a
+/// warm, quiet host whatever names they carry within the remote limits.
+///
+/// Held as the replay tests hold it ([expectWithinMarkBudget]): what the
+/// names add in CPU time, which the load of the full suite (-j 2 on a
+/// shared host) does not change, and the open on the wall clock against
+/// an open of ordinary names measured beside it. One wall-clock open
+/// against an absolute 400 ms failed whenever that load slowed ordinary
+/// replay toward 400 ms (DATA-R21-01).
+void expectR17(R17Cost r) {
+  expectWithinMarkBudget(r.open);
+  expect(r.marks, lessThan(5 * r.ordinary + 50));
+  expect(r.group, lessThan(5 * r.ordinary + 50));
 }
 
 void main() {
-  test(
-    'QA DATA-R15-01: names of combining marks that NFKC expands are still '
-    'normalised whole, ~25x an ordinary name; 4,000 such peer members open '
-    'in ~2.8 s',
-    () async {
-      final ordinary = displayMicros((i) => 'Person ${'x' * 150}$i', 40);
-      final marks = displayMicros(markName, 40);
-      final group = displayMicros(
-        (i) => 'x${'ཷ' * 238}${i % 10}',
-        NameText.maxGroupLength,
-      );
-      final ok = await logPhone(
-        memberCreates(4000, (i) => 'Person $i'),
-        base: false,
-      );
-      await ok.phone.close();
-      ok.phone.dir.deleteSync(recursive: true);
-      final r = await logPhone(memberCreates(4000, markName), base: false);
-      final sw = Stopwatch()..start();
-      await r.phone.ledger.applyRemote(
-        'group-1',
-        memberCreates(1000, markName, from: 10000),
-      );
-      final applyMs = sw.elapsedMilliseconds;
-      await r.phone.close();
-      r.phone.dir.deleteSync(recursive: true);
-      // ignore: avoid_print
-      print(
-        '[perf] display: ordinary ${ordinary.toStringAsFixed(0)} us, '
-        'x+158 U+0344 ${marks.toStringAsFixed(0)} us, group x+238 U+0F77 '
-        '${group.toStringAsFixed(0)} us; 4k distinct members open: '
-        'ordinary ${ok.openMs} ms, marks ${r.openMs} ms; applyRemote 1k '
-        'marks $applyMs ms',
-      );
-      // Charter: about 0.1 ms an op, so 4,000 ops open in < 400 ms on this
-      // small log whatever names they carry within the remote limits.
-      expect(r.openMs, lessThan(400));
-      expect(marks, lessThan(5 * ordinary + 50));
-      expect(group, lessThan(5 * ordinary + 50));
-    },
-    timeout: const Timeout(Duration(minutes: 3)),
-  );
+  test('QA DATA-R15-01: names of combining marks that NFKC expands are still '
+      'normalised whole, ~25x an ordinary name; 4,000 such peer members open '
+      'in ~2.8 s', () async {
+    final r = await measureR17();
+    // ignore: avoid_print
+    print(
+      '[perf] display (CPU): ordinary ${r.ordinary.toStringAsFixed(0)} us, '
+      'x+158 U+0344 ${r.marks.toStringAsFixed(0)} us, group x+238 U+0F77 '
+      '${r.group.toStringAsFixed(0)} us; 4k distinct members open: '
+      'ordinary ${r.open.ordinaryMs} ms, marks ${r.open.openMs} ms, the '
+      'names ${r.open.cpuMs} ms of CPU; applyRemote 1k marks '
+      '${r.applyMs} ms',
+    );
+    expectR17(r);
+  }, timeout: const Timeout(Duration(minutes: 3)));
 }
