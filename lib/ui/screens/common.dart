@@ -584,6 +584,22 @@ String? nameInputError(String text, {int? limit}) {
 bool isSavableName(String text, int limit) =>
     NameText.isValid(text, limit) && NameLimit.fits(text, limit);
 
+/// Whether [typed], the text a name prompt or field is saved with, is the
+/// name [opened] it opened with: the same text once trimmed (the field
+/// opens with [opened] cut to [limit], [NameLimit.fit]), or the same name
+/// once saved ([NameText.fit]: a space added or doubled, a character that
+/// shows nothing, a compatibility form). A name saved as it opened is no
+/// rename: sending it would undo a rename another phone made meanwhile, or
+/// the name a group has for me (UIFLOW-R17-01, UIFLOW-R21-01). A typed
+/// text that saves as no name at all is never "the same", so it is still
+/// refused as a name.
+bool isNameAsOpened(String typed, String opened, int limit) {
+  final t = typed.trim();
+  if (t == NameLimit.fit(opened, limit).trim()) return true;
+  final saved = NameText.fit(t, limit);
+  return saved.isNotEmpty && saved == NameText.fit(opened, limit);
+}
+
 /// SPEC 5.16: notes are at most 1000 characters. The one cap of every
 /// notes field: Settle up, Edit payment and the expense editor
 /// (UIFLOW-R15-02). Equal to the Ledger's TextRules.notes (pinned by

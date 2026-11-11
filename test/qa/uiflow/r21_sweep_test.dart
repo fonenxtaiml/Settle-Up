@@ -209,7 +209,6 @@ void settingsNameProbes() {
   testWidgets(
     'UIFLOW-R21-01: Settings, Your name saved unchanged leaves the name a '
     'group has for me alone',
-    skip: true, // QA UIFLOW-R21-01: Settings, Your name saved unchanged renames me in every group
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');
@@ -247,7 +246,6 @@ void settingsNameProbes() {
   testWidgets(
     'UIFLOW-R21-01: Settings, Your name saved unchanged does not undo a '
     'rename a friend\'s phone gave me in a group',
-    skip: true, // QA UIFLOW-R21-01: Settings, Your name saved unchanged renames me in every group
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');
