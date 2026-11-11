@@ -82,6 +82,63 @@ class ListSection extends StatelessWidget {
   }
 }
 
+/// [ListSection] as a sliver whose rows are built lazily: only the rows on
+/// screen (and the scroll view's cache extent) are built and laid out, so a
+/// list whose length someone else decides (phones a stranger announces
+/// nearby, SECURITY-R17-01) costs a frame the same at 5 rows or 5,000.
+/// Looks the same as a [ListSection]: one white card with a 20 dp radius
+/// and inset hairline dividers, drawn a row at a time. Place it in a
+/// [CustomScrollView]; it insets itself by the 16 dp container gutter.
+class SliverListSection extends StatelessWidget {
+  const SliverListSection({
+    super.key,
+    required this.itemCount,
+    required this.itemBuilder,
+    this.dividerIndent = Space.rowInset,
+  });
+
+  final int itemCount;
+  final IndexedWidgetBuilder itemBuilder;
+
+  /// As [ListSection.dividerIndent].
+  final double dividerIndent;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = Theme.of(context).colorScheme.surfaceContainerLowest;
+    const r = Radius.circular(Radii.lg);
+    return SliverPadding(
+      padding: const EdgeInsets.symmetric(horizontal: Space.screen),
+      sliver: SliverList.builder(
+        itemCount: itemCount,
+        itemBuilder: (context, i) {
+          final first = i == 0;
+          final last = i == itemCount - 1;
+          return Material(
+            color: color,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(
+                top: first ? r : Radius.zero,
+                bottom: last ? r : Radius.zero,
+              ),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!first)
+                  Divider(indent: dividerIndent, height: 1, thickness: 1),
+                itemBuilder(context, i),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 /// Section heading on stone: 16/22 semibold, 18 dp above and 8 dp below,
 /// with an optional trailing action aligned on the baseline.
 class SectionHeading extends StatelessWidget {

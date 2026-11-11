@@ -222,6 +222,12 @@ class CategoryChip extends StatelessWidget {
 /// A picker button on Add expense ("Paid by Priya", "Date Today, 9 Nov"):
 /// white, 12 dp radius, a leading avatar or icon, a small label above the
 /// value, and an expand chevron.
+///
+/// The value comes first (VISUAL-R17-01): a wide leading (a currency
+/// symbol at large text, [SymbolText]) takes only the width the value can
+/// spare and scales down in it, so the value shows whole in two lines
+/// whenever it would beside the 26 dp an avatar takes. A value that does
+/// not fit two lines even then takes as many as it needs, up to four.
 class PickerTile extends StatelessWidget {
   const PickerTile({
     super.key,
@@ -236,10 +242,62 @@ class PickerTile extends StatelessWidget {
   final Widget? leading;
   final VoidCallback? onTap;
 
+  /// The slot an avatar or icon takes; a wider leading never gets less.
+  static const double _leadingMin = 26;
+
+  /// The most lines a value takes before it ends in an ellipsis: enough
+  /// for the longest currency name with its code ("Bosnia and Herzegovina
+  /// convertible mark (BAM)") at 2.0x on a 320 dp phone.
+  static const int _maxLines = 4;
+
+  /// The gaps beside the value (10 + 10) and the 20 dp chevron.
+  static const double _chrome = 10 + 10 + 20;
+
+  /// The narrowest whole-dp width that shows [text] in [style] within
+  /// [maxLines], or null when even [max] does not.
+  static double? _narrowestFit(
+    BuildContext context,
+    String text,
+    TextStyle style,
+    int maxLines,
+    double max,
+  ) {
+    final painter = TextPainter(
+      text: TextSpan(text: text, style: style),
+      textDirection: Directionality.of(context),
+      textScaler: MediaQuery.textScalerOf(context),
+      maxLines: maxLines,
+      ellipsis: '\u2026',
+      locale: Localizations.maybeLocaleOf(context),
+    );
+    bool fits(double w) {
+      painter.layout(maxWidth: w);
+      return !painter.didExceedMaxLines;
+    }
+
+    try {
+      if (!fits(max)) return null;
+      var lo = 0;
+      var hi = max.floor();
+      while (lo < hi) {
+        final mid = (lo + hi) >> 1;
+        if (fits(mid.toDouble())) {
+          hi = mid;
+        } else {
+          lo = mid + 1;
+        }
+      }
+      return hi.toDouble();
+    } finally {
+      painter.dispose();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
+    final valueStyle = theme.textTheme.titleSmall;
     return ButtonSemantics(
       label: '$label, $value',
       onTap: onTap,
@@ -253,44 +311,78 @@ class PickerTile extends StatelessWidget {
             constraints: const BoxConstraints(minHeight: 56),
             child: Padding(
               padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 10, 8),
-              child: Row(
-                children: [
-                  if (leading != null) ...[
-                    // 26 dp for an avatar or icon; a wider leading (a
-                    // currency symbol at large text) takes what it needs.
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(minWidth: 26),
-                      child: Center(child: leading),
-                    ),
-                    const SizedBox(width: 10),
-                  ],
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          label,
-                          style: theme.textTheme.labelSmall!
-                              .withWeight(FontWeight.w500)
-                              .copyWith(color: scheme.onSurfaceVariant),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  var maxLines = 2;
+                  var leadingMax = double.infinity;
+                  final room = constraints.maxWidth - _chrome;
+                  if (leading != null && room.isFinite) {
+                    final style = DefaultTextStyle.of(context).style
+                        .merge(valueStyle);
+                    // The fewest lines (two, up to [_maxLines]) the value
+                    // fits beside the narrowest leading, and the narrowest
+                    // width it needs in them.
+                    double? need;
+                    for (; maxLines <= _maxLines; maxLines++) {
+                      need = _narrowestFit(
+                        context,
+                        value,
+                        style,
+                        maxLines,
+                        room - _leadingMin,
+                      );
+                      if (need != null) break;
+                    }
+                    if (maxLines > _maxLines) maxLines = _maxLines;
+                    leadingMax = need == null
+                        ? _leadingMin
+                        : (room - need).floorToDouble();
+                    if (leadingMax < _leadingMin) leadingMax = _leadingMin;
+                  }
+                  return Row(
+                    children: [
+                      if (leading != null) ...[
+                        // 26 dp for an avatar or icon; a wider leading (a
+                        // currency symbol at large text) takes what it
+                        // needs, up to what the value can spare.
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            minWidth: _leadingMin,
+                            maxWidth: leadingMax,
+                          ),
+                          child: Center(widthFactor: 1, child: leading),
                         ),
-                        Text(
-                          value,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: theme.textTheme.titleSmall,
-                        ),
+                        const SizedBox(width: 10),
                       ],
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Icon(
-                    Icons.expand_more_rounded,
-                    size: 20,
-                    color: scheme.onSurfaceVariant,
-                  ),
-                ],
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              label,
+                              style: theme.textTheme.labelSmall!
+                                  .withWeight(FontWeight.w500)
+                                  .copyWith(color: scheme.onSurfaceVariant),
+                            ),
+                            Text(
+                              value,
+                              maxLines: maxLines,
+                              overflow: TextOverflow.ellipsis,
+                              style: valueStyle,
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Icon(
+                        Icons.expand_more_rounded,
+                        size: 20,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
           ),

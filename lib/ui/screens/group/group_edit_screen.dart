@@ -48,6 +48,13 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   bool _tried = false;
   bool _saving = false;
 
+  /// The group as it was when the form was loaded. Save compares the form
+  /// with these, not with the live group, so a field the user never
+  /// touched is sent as null (left alone) even when sync brought another
+  /// phone's change to it while the form was open (UIFLOW-R17-01).
+  Group? _loadedGroup;
+  GroupType? _loadedType;
+
   bool get _isNew => widget.groupId == null;
 
   @override
@@ -61,8 +68,10 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     if (_loaded) return;
     _loaded = true;
     if (g == null) return;
+    _loadedGroup = g;
     _name.text = g.name;
     _type = g.type == GroupType.direct ? GroupType.other : g.type;
+    _loadedType = _type;
     _currency = g.currency;
     _emoji = g.emoji;
     _simplify = g.simplifyDebts;
@@ -100,19 +109,23 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     return true;
   }
 
-  /// Whether the name field still holds the name the group has. A name
-  /// this phone already holds never blocks a change to anything else
-  /// (UIFLOW-R8-02 for profile names, UIFLOW-R15-01): one an older phone
-  /// or an earlier build gave the group may have no letter or number, or
-  /// be longer than [kGroupNameMax], and is kept as it is unless the user
-  /// edits it. Only a name the user types is checked.
-  bool _nameKept(Group? original) =>
-      original != null && _name.text.trim() == original.name.trim();
+  /// Whether the name field still holds the name the form was loaded
+  /// with. A name this phone already holds never blocks a change to
+  /// anything else (UIFLOW-R8-02 for profile names, UIFLOW-R15-01): one an
+  /// older phone or an earlier build gave the group may have no letter or
+  /// number, or be longer than [kGroupNameMax], and is kept as it is
+  /// unless the user edits it. Only a name the user types is checked. The
+  /// loaded name, not the live one, is the reference: a rename another
+  /// phone made while the form was open is not undone (UIFLOW-R17-01).
+  bool get _nameKept {
+    final loaded = _loadedGroup;
+    return loaded != null && _name.text.trim() == loaded.name.trim();
+  }
 
-  Future<void> _save(Group? original, Map<PersonId, String> people) async {
+  Future<void> _save(Map<PersonId, String> people) async {
     setState(() => _tried = true);
     final name = _name.text.trim();
-    final kept = !_isNew && _nameKept(original);
+    final kept = !_isNew && _nameKept;
     if ((!kept && !isSavableName(name, kGroupNameMax)) || _saving) {
       Haptics.invalid(context);
       return;
@@ -146,12 +159,14 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           ),
         );
       } else {
-        final o = original!;
+        // Each field is compared with the value the form was loaded with
+        // (UIFLOW-R17-01): only what the user changed is sent.
+        final o = _loadedGroup!;
         await ledger.updateGroup(
           widget.groupId!,
           GroupPatch(
             name: kept ? null : name,
-            type: _type == o.type ? null : _type,
+            type: _type == _loadedType ? null : _type,
             currency: currency == o.currency ? null : currency,
             emoji: _emoji == o.emoji ? null : (_emoji ?? ''),
             simplifyDebts: _simplify == null || _simplify == o.simplifyDebts
@@ -248,7 +263,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: FilledButton(
-            onPressed: _saving ? null : () => _save(original, people),
+            onPressed: _saving ? null : () => _save(people),
             style: KitButtonStyles.block,
             child: Text(_isNew ? S.createGroupAction : S.saveChanges),
           ),
@@ -267,7 +282,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               inputFormatters: nameFormatters(kGroupNameMax),
               errorText: _name.text.trim().isEmpty
                   ? (_tried ? S.nameNeeded : null)
-                  : _nameKept(original)
+                  : _nameKept
                   ? null
                   : nameInputError(_name.text, limit: kGroupNameMax),
               onChanged: (_) => setState(() {}),
