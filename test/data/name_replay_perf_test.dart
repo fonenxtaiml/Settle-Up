@@ -125,6 +125,10 @@ typedef MarkCost = ({int cpuMs, int openMs, int ordinaryMs});
 /// nothing else running (about 0.01 ms an op).
 const int quietOrdinaryMs = 40;
 
+/// The ms the 20k ops of the base log and 5,000 ordinary member creates
+/// take to open on a warm host with nothing else running.
+const int quietBaseOrdinaryMs = 700;
+
 /// The charter: 0.1 ms an op in all; ordinary ops take about 0.01 ms of it
 /// on a warm host, so such a name may add 0.075 ms: 300 ms for 4,000.
 ///
@@ -157,14 +161,22 @@ void main() {
 
   test('20k ops + 5,000 members created with distinct 159 x U+FDFA names '
       'open within the budget of 0.1 ms an op', () async {
-    final ordinary = await openMs(creates(5000, (i) => 'Person $i'));
-    final heavyMs = await openMs(creates(5000, heavy));
+    final ordinaryNames = [for (var i = 1; i <= 5000; i++) 'Person $i'];
+    final heavyNames = [for (var i = 1; i <= 5000; i++) heavy(i)];
+    final ordinary = await openMs(creates(5000, (i) => ordinaryNames[i - 1]));
+    final heavyMs = await openMs(creates(5000, (i) => heavyNames[i - 1]));
+    final cpuMs = showCpuMs(heavyNames) - showCpuMs(ordinaryNames);
     // ignore: avoid_print
     print(
       '[perf] 20k ops + 5k member creates: ordinary $ordinary ms, '
-      'heavy $heavyMs ms',
+      'heavy $heavyMs ms, the names $cpuMs ms of CPU',
     );
-    expect(heavyMs - ordinary, lessThan(500)); // 5,000 x 0.1 ms
+    // As for the marks below: what the names add in CPU time, which load
+    // does not change, and the open on the wall clock with room for the
+    // load the suite runs under (DATA-R18-02).
+    expect(cpuMs, lessThan(500)); // 5,000 x 0.1 ms
+    final load = max(1.0, ordinary / quietBaseOrdinaryMs);
+    expect(heavyMs - ordinary, lessThan(1000 * load));
   }, timeout: const Timeout(Duration(minutes: 4)));
 
   test('applyRemote of 1,000 renames with such names takes about as long '
