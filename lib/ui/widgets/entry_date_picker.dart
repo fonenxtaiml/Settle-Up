@@ -25,13 +25,23 @@
 // * Dates are written and read day first, as everywhere else in the app,
 //   and the date field's label names the format (VISUAL-R11-01): the
 //   picker runs with [AppMaterialLocalizations] whatever app hosts it.
+// * The year list opens on the selected year at every text size
+//   (VISUAL-R13-01). The stock [YearPicker] places its list from three
+//   columns of 52 dp rows, but its own grid lays the rows out taller with
+//   the text and in two columns past 1.65x, so above 1.0x the list opened
+//   rows (for a far date, thousands of years) away from the year. The
+//   picker's year list is placed here from the grid's real layout, read
+//   from the list's own grid delegate, before its first frame.
 //
 // Every decision is taken from the room the dialog really has (the safe
 // area it is laid out in) and the phone's text size, never from a list of
 // known screens.
 import 'dart:math' as math;
 
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:flutter/services.dart';
 
 import '../format/app_material_localizations.dart';
 
@@ -298,8 +308,191 @@ class EntryDatePicker extends StatelessWidget {
             insetPadding: layout.insetPadding,
           ),
         );
-        return MediaQuery(data: shape, child: dialog);
+        return MediaQuery(
+          data: shape,
+          child: ScrollConfiguration(
+            behavior: YearListScrollBehavior(ScrollConfiguration.of(context)),
+            child: dialog,
+          ),
+        );
       },
     );
   }
+}
+
+/// The scroll offset that opens a [YearPicker]'s list on its selected year.
+///
+/// [grid] is the list's own grid layout for a viewport [viewport] dp tall,
+/// [padding] its main axis padding before and after the grid and
+/// [childCount] the number of tiles. The selected tile's row is put two
+/// rows below the top, as the stock picker means to (at 1.0x this is the
+/// stock offset), or centred when the list is too short for that, and the
+/// offset stays inside the list, so it never springs back.
+double yearListOffset({
+  required SliverGridLayout grid,
+  required int index,
+  required int childCount,
+  required double viewport,
+  double paddingBefore = 0,
+  double paddingAfter = 0,
+}) {
+  if (childCount <= 0) return 0;
+  final i = index.clamp(0, childCount - 1);
+  final tile = grid.getGeometryForChildIndex(i);
+  final top = paddingBefore + tile.scrollOffset;
+  final lead = math.min(
+    2 * tile.mainAxisExtent,
+    math.max(0.0, (viewport - tile.mainAxisExtent) / 2),
+  );
+  final content =
+      paddingBefore + grid.computeMaxScrollOffset(childCount) + paddingAfter;
+  final max = math.max(0.0, content - viewport);
+  return (top - lead).clamp(0.0, max);
+}
+
+/// The index of [YearPicker]'s tile for its selected year, as the stock
+/// picker builds its tiles (short ranges are padded with disabled years).
+int yearPickerIndex(YearPicker picker) {
+  const minYears = 18;
+  final count = picker.lastDate.year - picker.firstDate.year + 1;
+  final backfill = count < minYears ? (minYears - count) ~/ 2 : 0;
+  final year = (picker.selectedDate ?? picker.firstDate).year;
+  return year - picker.firstDate.year + backfill;
+}
+
+/// The scroll behavior of the editors' date picker: [parent]'s, except
+/// that a [YearPicker]'s list is placed on its selected year before its
+/// first frame (VISUAL-R13-01), and again if the selected year changes.
+class YearListScrollBehavior extends ScrollBehavior {
+  const YearListScrollBehavior(this.parent);
+
+  /// The behavior every other scrollable in the dialog keeps.
+  final ScrollBehavior parent;
+
+  /// The year each year list was last placed on.
+  static final Expando<int> _placed = Expando<int>('yearListPlaced');
+
+  @override
+  Widget buildScrollbar(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) {
+    final controller = details.controller;
+    final picker = context.findAncestorWidgetOfExactType<YearPicker>();
+    final grid = context.findAncestorWidgetOfExactType<GridView>();
+    if (controller != null &&
+        picker != null &&
+        grid != null &&
+        identical(grid.controller, controller) &&
+        axisDirectionToAxis(details.direction) == Axis.vertical) {
+      final direction = Directionality.maybeOf(context) ?? TextDirection.ltr;
+      final list = child;
+      return parent.buildScrollbar(
+        context,
+        LayoutBuilder(
+          builder: (context, constraints) {
+            _place(controller, picker, grid, constraints, direction);
+            return list;
+          },
+        ),
+        details,
+      );
+    }
+    return parent.buildScrollbar(context, child, details);
+  }
+
+  /// Places [controller]'s list, laid out in [constraints], on [picker]'s
+  /// selected year unless it is already placed there. Runs in the layout
+  /// before the list's own, so the first frame shows the year.
+  static void _place(
+    ScrollController controller,
+    YearPicker picker,
+    GridView grid,
+    BoxConstraints constraints,
+    TextDirection direction,
+  ) {
+    if (!controller.hasClients || controller.positions.length != 1) return;
+    final position = controller.position;
+    final year = (picker.selectedDate ?? picker.firstDate).year;
+    if (_placed[position] == year) return;
+    final count = grid.childrenDelegate.estimatedChildCount;
+    if (count == null ||
+        !constraints.hasBoundedHeight ||
+        !constraints.hasBoundedWidth) {
+      return;
+    }
+    final padding = (grid.padding ?? EdgeInsets.zero).resolve(direction);
+    final viewport = constraints.maxHeight;
+    final cross = math.max(0.0, constraints.maxWidth - padding.horizontal);
+    final layout = grid.gridDelegate.getLayout(
+      SliverConstraints(
+        axisDirection: AxisDirection.down,
+        growthDirection: GrowthDirection.forward,
+        userScrollDirection: ScrollDirection.idle,
+        scrollOffset: 0,
+        precedingScrollExtent: 0,
+        overlap: 0,
+        remainingPaintExtent: viewport,
+        crossAxisExtent: cross,
+        crossAxisDirection: direction == TextDirection.rtl
+            ? AxisDirection.left
+            : AxisDirection.right,
+        viewportMainAxisExtent: viewport,
+        remainingCacheExtent: viewport,
+        cacheOrigin: 0,
+      ),
+    );
+    _placed[position] = year;
+    position.correctPixels(
+      yearListOffset(
+        grid: layout,
+        index: yearPickerIndex(picker),
+        childCount: count,
+        viewport: viewport,
+        paddingBefore: padding.top,
+        paddingAfter: padding.bottom,
+      ),
+    );
+  }
+
+  @override
+  Widget buildOverscrollIndicator(
+    BuildContext context,
+    Widget child,
+    ScrollableDetails details,
+  ) => parent.buildOverscrollIndicator(context, child, details);
+
+  @override
+  Set<PointerDeviceKind> get dragDevices => parent.dragDevices;
+
+  @override
+  Set<LogicalKeyboardKey> get pointerAxisModifiers =>
+      parent.pointerAxisModifiers;
+
+  @override
+  MultitouchDragStrategy getMultitouchDragStrategy(BuildContext context) =>
+      parent.getMultitouchDragStrategy(context);
+
+  @override
+  TargetPlatform getPlatform(BuildContext context) =>
+      parent.getPlatform(context);
+
+  @override
+  ScrollPhysics getScrollPhysics(BuildContext context) =>
+      parent.getScrollPhysics(context);
+
+  @override
+  ScrollViewKeyboardDismissBehavior getKeyboardDismissBehavior(
+    BuildContext context,
+  ) => parent.getKeyboardDismissBehavior(context);
+
+  @override
+  GestureVelocityTrackerBuilder velocityTrackerBuilder(BuildContext context) =>
+      parent.velocityTrackerBuilder(context);
+
+  @override
+  bool shouldNotify(covariant YearListScrollBehavior oldDelegate) =>
+      parent.runtimeType != oldDelegate.parent.runtimeType ||
+      parent.shouldNotify(oldDelegate.parent);
 }
