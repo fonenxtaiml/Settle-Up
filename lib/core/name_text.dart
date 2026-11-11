@@ -22,8 +22,50 @@ abstract final class NameText {
   /// they do: in an emoji sequence ("👩‍💻", "❤️", the flag of England) and,
   /// for ZWJ and ZWNJ, between two letters of a script that joins or forms
   /// conjuncts (Arabic, Devanagari and the other Indic scripts).
+  ///
+  /// Idempotent by construction: normalize(normalize(x)) == normalize(x)
+  /// (PLATFORM-R15-01). Whether a joiner stays depends on what stands
+  /// next to it once the rest is cleaned, and leaving a mark out can
+  /// change that: NFC then puts the accents around it in their canonical
+  /// order ("\u0301" and the nukta "\u093C" swap once a ZWNJ between them
+  /// is gone), so a ZWJ after them may no longer follow a Devanagari mark.
+  /// One clean-up pass is therefore repeated until it changes nothing. A
+  /// pass that changes the text always leaves a character out, so this
+  /// ends; nearly every name takes one pass and a second to confirm it.
   static String normalize(String raw) {
+    var t = _clean(raw);
+    var length = t.runes.length;
+    while (true) {
+      final again = _clean(t);
+      if (again == t) return t;
+      final n = again.runes.length;
+      if (n >= length) return again; // cannot happen; never loop
+      t = again;
+      length = n;
+    }
+  }
+
+  /// One clean-up pass of [normalize].
+  static String _clean(String raw) {
     final runes = unorm.nfkc(raw).runes.toList();
+    // What a joiner or selector sits before is the next character that is
+    // always kept, not the next code point: that one may be an invisible
+    // one left out ("\u0628\u200D\u061C" is beh, ZWJ and an Arabic letter
+    // mark, and the ZWJ has nothing after it to join once the mark is
+    // gone). A space or a line break counts as a space; null is the end
+    // of the text. One pass from the end, so a long run of invisibles
+    // costs no more than its length.
+    final after = List<int?>.filled(runes.length, null);
+    int? kept;
+    for (var i = runes.length - 1; i >= 0; i--) {
+      after[i] = kept;
+      final r = runes[i];
+      if (isSpaceLike(r)) {
+        kept = 0x20;
+      } else if (!isInvisible(r)) {
+        kept = r;
+      }
+    }
     final out = <int>[];
     var space = false;
     for (var i = 0; i < runes.length; i++) {
@@ -34,8 +76,7 @@ abstract final class NameText {
       }
       if (isInvisible(r)) {
         final prev = out.isEmpty || space ? null : out.last;
-        final next = i + 1 < runes.length ? runes[i + 1] : null;
-        if (_keeps(r, prev, next)) out.add(r);
+        if (_keeps(r, prev, after[i])) out.add(r);
         continue;
       }
       if (space && out.isNotEmpty) out.add(0x20);
@@ -183,7 +224,8 @@ abstract final class NameText {
       (r >= 0xE0000 && r <= 0xE0FFF);
 
   /// Whether the invisible [r] between [prev] (what is kept before it, null
-  /// after a space or at the start) and [next] changes how they draw.
+  /// after a space or at the start) and [next] (the next character that is
+  /// always kept, a space, or null at the end) changes how they draw.
   static bool _keeps(int r, int? prev, int? next) {
     if (prev == null) return false;
     if (r == 0x200D) {
