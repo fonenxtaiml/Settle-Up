@@ -258,8 +258,10 @@ final class Ledger implements LedgerRepository, SyncStore {
     // One sort beats many mid-list inserts for a large sync batch.
     final bulk = added.length > 64;
     if (bulk) _ops.addAll(added);
+    // One rebuild per entity, not per op: a peer's batch of renames of one
+    // member normalises the name once (DATA-R15-01).
+    _reducer.applyAll(added);
     for (final op in added) {
-      _reducer.apply(op);
       if (!bulk) _insertSorted(_ops, op, _byHlc);
       if (op.deviceId == me) {
         _insertSorted(_mine[op.groupId] ??= [], op,

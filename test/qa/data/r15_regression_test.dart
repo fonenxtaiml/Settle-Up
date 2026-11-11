@@ -338,9 +338,6 @@ void main() {
         r.phone.dir.deleteSync(recursive: true);
         expect(r.openMs, lessThan(400));
       },
-      skip:
-          'QA DATA-R15-01: member and group names that NFKC expands '
-          'make every replay ~80x slower per op',
       timeout: const Timeout(Duration(minutes: 3)),
     );
   });
