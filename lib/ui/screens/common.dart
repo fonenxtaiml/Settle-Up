@@ -563,6 +563,26 @@ const int kNotesMax = TextRules.notes;
 /// never cut ([TextCapFormatter]).
 List<TextInputFormatter> notesFormatters() => [TextCapFormatter(kNotesMax)];
 
+/// SPEC 5.16: a description is at most 120 characters.
+const int kDescriptionMax = TextRules.description;
+
+/// The formatters the description field caps its text with: as
+/// [notesFormatters], a description the field already holds is never cut.
+List<TextInputFormatter> descriptionFormatters() => [
+  TextCapFormatter(kDescriptionMax),
+];
+
+/// The message under a description holding more than [kDescriptionMax]
+/// characters (one a peer or an earlier build saved); null otherwise.
+String? descriptionInputError(String text) =>
+    TextRules.tooLong(
+          TextRules.clean(text.trim(), multiline: true),
+          kDescriptionMax,
+        ) ==
+        null
+    ? null
+    : S.errTooLong;
+
 /// The message under a notes field holding more than [kNotesMax]
 /// characters (a note a peer or an earlier build saved), which the Ledger
 /// will not save until it is shortened; null otherwise.

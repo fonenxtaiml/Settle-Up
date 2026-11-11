@@ -42,8 +42,9 @@ class LabeledTextField extends StatelessWidget {
   /// cap.
   final List<TextInputFormatter>? inputFormatters;
 
-  /// The field grows with its text and keeps line breaks (notes); a
-  /// one-line field joins the lines of a text it holds on the first key.
+  /// The field grows with its text and keeps line breaks (notes and the
+  /// description, SPEC 5.16); a one-line field joins the lines of a text
+  /// it holds on the first key.
   final bool multiline;
 
   static const double _fieldPad = 8;
@@ -82,7 +83,15 @@ class LabeledTextField extends StatelessWidget {
                   inputFormatters: inputFormatters,
                   minLines: 1,
                   maxLines: multiline ? null : 1,
-                  keyboardType: multiline ? TextInputType.multiline : null,
+                  // With an action of its own (Done on the description)
+                  // the key performs it: line breaks the field holds are
+                  // kept, none is typed.
+                  keyboardType: !multiline
+                      ? null
+                      : textInputAction == null ||
+                            textInputAction == TextInputAction.newline
+                      ? TextInputType.multiline
+                      : TextInputType.text,
                   textCapitalization: TextCapitalization.sentences,
                   style: valueStyle,
                   decoration: InputDecoration(

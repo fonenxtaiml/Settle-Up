@@ -1,7 +1,8 @@
 // Notes fields (UIFLOW-R15-02, UIFLOW-R15-03): one cap everywhere, the
 // SPEC's 1000 characters (Settle up, Edit payment, the expense editor); a
 // note the field already holds is never cut or joined into one line; and
-// a note is optional everywhere, so clearing it takes it out.
+// a note is optional everywhere, so clearing it takes it out. The
+// expense description follows the same rule with its 120.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
@@ -169,6 +170,7 @@ void main() {
           ? await _expenseWithNote(w, gid, 'short')
           : await _paymentWithNote(w, gid, 'short');
       await _heldLongNote(w, gid, id);
+      expect(w.state.expense(id)!.notes, _note(1500));
       await _openEdit(tester, w, id);
       final f = fieldLabeled(S.notes);
       expect(_text(tester, f), _note(1500));
@@ -185,6 +187,85 @@ void main() {
       await w.shutdown(tester);
     });
   }
+
+  group('description (cap ${TextRules.description})', () {
+    testWidgets('takes 120 characters and refuses the 121st', (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await w.seedGroup();
+      final id = await _expenseWithNote(w, gid, '');
+      await _openEdit(tester, w, id);
+      final f = fieldLabeled(S.description);
+      await tester.enterText(f, _note(121));
+      await tester.pump();
+      expect(_text(tester, f), _note(120));
+      await qaTap(tester, _save);
+      expect(w.state.expense(id)!.description, _note(120));
+      await w.shutdown(tester);
+    });
+
+    testWidgets('a held description longer than 120 is never cut: it says '
+        'so, refuses more and takes a shortening', (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await w.seedGroup();
+      final id = await _expenseWithNote(w, gid, '');
+      await _heldLongNote(
+        w,
+        gid,
+        id,
+        field: ExpenseFields.description,
+        length: 300,
+      );
+      expect(w.state.expense(id)!.description, _note(300));
+      await _openEdit(tester, w, id);
+      final f = fieldLabeled(S.description);
+      expect(_text(tester, f), _note(300));
+      expect(find.text(S.errTooLong), findsOneWidget);
+      await tester.enterText(f, '${_note(300)}x');
+      await tester.pump();
+      expect(_text(tester, f), _note(300));
+      await tester.enterText(f, _note(100));
+      await tester.pump();
+      expect(find.text(S.errTooLong), findsNothing);
+      await qaTap(tester, _save);
+      expect(w.state.expense(id)!.description, _note(100));
+      await w.shutdown(tester);
+    });
+
+    testWidgets('a held description with a line break keeps it when a word '
+        'is added', (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await w.seedGroup();
+      final id = await _expenseWithNote(w, gid, '');
+      await w.ledger.updateExpense(
+        id,
+        ExpenseDraft(
+          groupId: gid,
+          description: 'Dinner\nand drinks',
+          total: 60000,
+          currency: 'INR',
+          paidBy: SplitSpec.single(w.member(gid, 'Arjun'), 60000),
+          owedBy: SplitSpec(SplitMethod.equal, {
+            w.member(gid, 'Arjun'): 1,
+            w.member(gid, 'Priya'): 1,
+          }),
+          category: 'food.dining',
+          date: DateTime.utc(2026, 11, 5),
+        ),
+      );
+      expect(w.state.expense(id)!.description, 'Dinner\nand drinks');
+      await _openEdit(tester, w, id);
+      final f = fieldLabeled(S.description);
+      await tester.enterText(f, 'Dinner\nand drinks ok');
+      await tester.pump();
+      expect(_text(tester, f), 'Dinner\nand drinks ok');
+      await qaTap(tester, _save);
+      expect(w.state.expense(id)!.description, 'Dinner\nand drinks ok');
+      await w.shutdown(tester);
+    });
+  });
 
   testWidgets('Settle up: the notes prompt caps a paste at 1000 characters '
       'and the payment records them', (tester) async {
@@ -267,7 +348,13 @@ const _olderPhone = 'dddddddd-0000-7000-8000-000000000003';
 
 /// [id]'s note as an older phone wrote it: the remote check allows up to
 /// 4 code units per allowed character, so 1500 ASCII characters pass.
-Future<void> _heldLongNote(RealWorld w, GroupId gid, ExpenseId id) async {
+Future<void> _heldLongNote(
+  RealWorld w,
+  GroupId gid,
+  ExpenseId id, {
+  String field = ExpenseFields.notes,
+  int length = 1500,
+}) async {
   final added = await w.ledger.applyRemote(gid, [
     Operation(
       id: '$gid/$_olderPhone/1',
@@ -278,9 +365,8 @@ Future<void> _heldLongNote(RealWorld w, GroupId gid, ExpenseId id) async {
       entityType: EntityType.expense,
       entityId: id,
       kind: OpKind.update,
-      payload: {ExpenseFields.notes: _note(1500)},
+      payload: {field: _note(length)},
     ),
   ]);
   expect(added, hasLength(1));
-  expect(w.state.expense(id)!.notes, _note(1500));
 }
