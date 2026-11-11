@@ -11,13 +11,22 @@
 // such as U+0F77 becomes three) cost close to a millisecond to normalise.
 // Here the properties of a code point are looked up once and kept in flat
 // tables, and a run of combining marks is ordered with one stable sort.
+//
+// The memory these tables take is bounded whatever text is normalised
+// (DATA-R18-01): a fixed table for the BMP, and outside it only the code
+// points the normaliser's data lists (about 2,400), read once. Every other
+// code point outside the BMP (unassigned planes and noncharacters
+// included) is a starter that neither decomposes nor composes, and is
+// known as such without being stored. unorm_dart's own lookup, which keeps
+// every code point it is asked about in a cache it never trims, is not
+// used: its data is read directly.
 import 'dart:typed_data';
 
 import 'package:meta/meta.dart';
 
-// The normaliser's own tables, so the forms are exactly its forms.
+// The normaliser's own data, so the forms are exactly its forms.
 // ignore: implementation_imports
-import 'package:unorm_dart/src/uchar.dart' show UChar, initUCharCache;
+import 'package:unorm_dart/src/unormdata.dart' show unormdata;
 
 abstract final class NormalForm {
   /// Canonical decomposition followed by canonical composition.
@@ -39,6 +48,15 @@ abstract final class NormalForm {
   /// it: [r] is a non-starter (combining marks are reordered), or a
   /// starter that composes with the character before it.
   static bool joinsPrevious(int r) => _info(r) & _second != 0;
+
+  /// Whether NFKD changes [r] (every character NFD changes, NFKD changes).
+  static bool decomposes(int r) => _info(r) & _compat != 0;
+
+  /// How many code points outside the BMP the tables hold. For tests: it
+  /// does not grow with the text normalised (DATA-R18-01).
+  @visibleForTesting
+  static int get astralEntries =>
+      _astral.length + _canonDecomp.length + _compatDecomp.length;
 
   static String _normalize(
     String s, {
@@ -100,7 +118,7 @@ abstract final class NormalForm {
       if (j - i > 1) _sortRun(d, cc, i, j);
       i = j;
     }
-    if (!compose) return String.fromCharCodes(d, 0, n);
+    if (!compose) return stringOf(d, n);
 
     // Canonical composition, as unorm_dart composes: each character with
     // the first character of its segment when nothing between them blocks
@@ -131,7 +149,29 @@ abstract final class NormalForm {
       lastClass = c;
       out[length++] = u;
     }
-    return String.fromCharCodes(out, 0, length);
+    return stringOf(out, length);
+  }
+
+  /// The text of the first [n] code points of [cps]. Through code units:
+  /// String.fromCharCodes reads a Uint16List several times as fast as an
+  /// Int32List, and names are made of hundreds of code points at most.
+  static String stringOf(Int32List cps, int n) {
+    var units = n;
+    for (var i = 0; i < n; i++) {
+      if (cps[i] > 0xFFFF) units++;
+    }
+    final u = Uint16List(units);
+    var k = 0;
+    for (var i = 0; i < n; i++) {
+      final r = cps[i];
+      if (r > 0xFFFF) {
+        u[k++] = 0xD7C0 + (r >> 10);
+        u[k++] = 0xDC00 + (r & 0x3FF);
+      } else {
+        u[k++] = r;
+      }
+    }
+    return String.fromCharCodes(u);
   }
 
   /// Sorts [d] from [from] to [to] by the classes [cc], stably.
@@ -254,18 +294,41 @@ abstract final class NormalForm {
       startersThatCompose.contains(r);
 
   /// The properties of [r]: its combining class and the flags above,
-  /// cached in [_bmp] (0 for not yet known) or [_astral].
+  /// cached in [_bmp] (0 for not yet known) or, outside the BMP, read from
+  /// [_astral], which holds every code point there with any property.
+  @pragma('vm:prefer-inline')
   static int _info(int r) {
     if (r <= 0xFFFF) {
       final known = _bmp[r];
       if (known != 0) return known;
       return _bmp[r] = _compute(r);
     }
-    return _astral[r] ??= _compute(r);
+    return _astral[r] ?? _plain;
   }
 
+  /// A starter that neither decomposes nor composes.
+  static const int _plain = _known;
+
   static final Uint16List _bmp = Uint16List(0x10000);
-  static final Map<int, int> _astral = {};
+
+  /// The properties of the code points outside the BMP that are not
+  /// [_plain]: those the data lists and the starters that compose with
+  /// the character before them. Built once, on first use.
+  static final Map<int, int> _astral = () {
+    final out = <int, int>{};
+    for (final block in unormdata.values) {
+      for (final r in block.keys) {
+        if (r > 0xFFFF) out[r] = _compute(r);
+      }
+    }
+    for (final r in startersThatCompose) {
+      if (r > 0xFFFF) out[r] = _compute(r);
+    }
+    out.removeWhere((_, info) => info == _plain);
+    return out;
+  }();
+
+  /// Decompositions, of the code points that have one (bounded by the data).
   static final Map<int, List<int>> _canonDecomp = {};
   static final Map<int, List<int>> _compatDecomp = {};
 
@@ -274,12 +337,12 @@ abstract final class NormalForm {
   static const int _pairKey = 0x110000;
 
   static int _compute(int r) {
-    initUCharCache();
-    final u = UChar.fromCharCode(r, true)!;
-    final ccc = u.getCanonicalClass();
+    final f = _feature(r);
+    final flags = f[1] as int?;
+    final ccc = flags != null && flags > 0 ? flags & 0xFF : 0;
     var info = _known | ccc;
     if (ccc != 0 || _startersThatCompose(r)) info |= _second;
-    final next = u.feature![2];
+    final next = f[2];
     if (next is Map) {
       for (final e in next.entries) {
         if (e.key is int && e.value is int && (e.value as int) > 0) {
@@ -306,9 +369,11 @@ abstract final class NormalForm {
   static List<int>? _decompose(int r, bool canonical) {
     final out = <int>[];
     void add(int cp) {
-      final u = UChar.fromCharCode(cp, true)!;
-      final d = u.getDecomp();
-      if (d != null && !(canonical && u.isCompatibility())) {
+      final f = _feature(cp);
+      final d = f[0] as List<int>?;
+      final flags = f[1] as int?;
+      final compatibility = flags != null && flags > 0 && flags & 0x100 != 0;
+      if (d != null && !(canonical && compatibility)) {
         d.forEach(add);
       } else {
         out.add(cp);
@@ -319,4 +384,48 @@ abstract final class NormalForm {
     if (out.length == 1 && out[0] == r) return null;
     return List<int>.unmodifiable(out);
   }
+
+  /// What unorm_dart knows of [cp], as its UChar.fromCharCode gives it
+  /// (decomposition, flags and combining class, compositions), without its
+  /// cache: the same filter, the same Hangul rules, then the same data.
+  static List<Object?> _feature(int cp) {
+    if (cp < 60 || (13311 < cp && cp < 42607)) return _none;
+    if (cp < _lBase ||
+        (_lBase + _lCount <= cp && cp < _sBase) ||
+        _sBase + _sCount < cp) {
+      return unormdata[cp & 0xFF00]?[cp] ?? _none;
+    }
+    if (cp < _lBase + _lCount) {
+      // A leading consonant composes with every vowel.
+      final base = (cp - _lBase) * _vCount;
+      return [
+        null,
+        null,
+        {
+          for (var i = 0; i < _vCount; i++)
+            _vBase + i: _sBase + _tCount * (i + base),
+        },
+      ];
+    }
+    final s = cp - _sBase;
+    final t = s % _tCount;
+    if (t != 0) {
+      return [
+        [_sBase + s - t, _tBase + t],
+        null,
+        null,
+      ];
+    }
+    // A syllable of a consonant and a vowel composes with every final.
+    return [
+      [_lBase + s ~/ _nCount, _vBase + (s % _nCount) ~/ _tCount],
+      null,
+      {for (var j = 1; j < _tCount; j++) _tBase + j: cp + j},
+    ];
+  }
+
+  static const List<Object?> _none = [null, 0, null];
+  static const int _sBase = 0xAC00, _lBase = 0x1100, _vBase = 0x1161;
+  static const int _tBase = 0x11A7, _lCount = 19, _vCount = 21, _tCount = 28;
+  static const int _nCount = _vCount * _tCount, _sCount = 19 * _nCount;
 }
