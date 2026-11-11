@@ -49,9 +49,6 @@ void main() {
           reason: 'parse took ${took.inMilliseconds} ms',
         );
       },
-      skip:
-          'QA SECURITY-R15-02: a crafted link name makes invite and '
-          'connect link parsing quadratic',
     );
 
     test(
@@ -69,9 +66,6 @@ void main() {
           reason: 'parse took ${took.inMilliseconds} ms',
         );
       },
-      skip:
-          'QA SECURITY-R15-02: a crafted link name makes invite and '
-          'connect link parsing quadratic',
     );
 
     test(
@@ -89,9 +83,6 @@ void main() {
           reason: 'parse took ${took.inMilliseconds} ms',
         );
       },
-      skip:
-          'QA SECURITY-R15-02: a crafted link name makes invite and '
-          'connect link parsing quadratic',
     );
 
     test('control: a long name without combining marks parses fast', () {
