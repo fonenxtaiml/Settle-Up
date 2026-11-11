@@ -6,12 +6,8 @@ import 'dart:typed_data';
 
 import 'package:characters/characters.dart';
 import 'package:meta/meta.dart';
-// The normaliser's own table of canonical combining classes, so the runs
-// [NameText.normalize] bounds are exactly the runs it reorders.
-// ignore: implementation_imports
-import 'package:unorm_dart/src/uchar.dart' show UChar;
-import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
+import 'normal_form.dart';
 import 'text_clean.dart';
 
 abstract final class NameText {
@@ -35,11 +31,11 @@ abstract final class NameText {
   /// letters of most scripts) is its own NFKC and NFC form, so it is not
   /// run through them: only its controls and spaces change.
   ///
-  /// Time is linear in the length of [raw], whatever it holds: a run of
-  /// combining marks (Unicode non-starters) longer than [maxMarkRun] is
-  /// cut to that many before NFKC, which reorders such a run in time
-  /// quadratic in its length (SECURITY-R15-02). No name is saved with that
-  /// many marks in a row, so the cut never changes what [fit] keeps.
+  /// Time is linear in the length of [raw], whatever it holds: NFKC and
+  /// NFC are [NormalForm]'s, linear in the text (DATA-R15-01), and a run
+  /// of combining marks (Unicode non-starters) longer than [maxMarkRun] is
+  /// cut to that many before NFKC (SECURITY-R15-02). No name is saved with
+  /// that many marks in a row, so the cut never changes what [fit] keeps.
   ///
   /// Idempotent by construction: normalize(normalize(x)) == normalize(x)
   /// (PLATFORM-R15-01). Whether a joiner stays depends on what stands
@@ -54,17 +50,30 @@ abstract final class NameText {
 
   static String _normalizeHead(String head) => _normalize(head, true);
 
-  /// [normalize] with NFKC and NFC run on every text. For tests.
+  /// [normalize] as it is defined, without its shortcuts: NFKC and NFC run
+  /// on every text, and the clean-up pass repeated until it changes
+  /// nothing. For tests.
   @visibleForTesting
-  static String normalizeReference(String raw) => _normalize(raw, false);
+  static String normalizeReference(String raw) =>
+      _normalize(raw, false, full: true);
 
-  static String _normalize(String raw, bool stable) {
-    var t = _clean(raw, stable);
+  static String _normalize(String raw, bool stable, {bool full = false}) {
+    final (first, joined) = _clean(raw, stable, full: full);
+    // A pass after which NFC changes nothing gives the same again: what it
+    // keeps of an invisible character depends only on what is kept around
+    // it, a space or the end of the text alike.
+    if (!joined && !full) return first;
+    var t = first;
     var length = t.runes.length;
     while (true) {
       // The text is now in NFKC and NFC, so the passes that follow skip
       // NFKC, and NFC too unless they leave something out.
-      final again = _clean(t, stable || _isStable(t), normalized: true);
+      final (again, _) = _clean(
+        t,
+        stable || _isStable(t),
+        normalized: true,
+        full: full,
+      );
       if (again == t) return t;
       final n = again.runes.length;
       if (n >= length) return again; // cannot happen; never loop
@@ -75,55 +84,166 @@ abstract final class NameText {
 
   /// One clean-up pass of [normalize], with NFKC and NFC unless [stable].
   /// When [raw] is [normalized] (the output of a pass, so in NFKC and NFC
-  /// already) NFKC is skipped, and NFC is run only when the pass changed
-  /// something.
-  static String _clean(String raw, bool stable, {bool normalized = false}) {
-    final runes = stable || normalized
-        ? raw.runes.toList()
-        : unorm.nfkc(boundMarkRuns(raw)).runes.toList();
+  /// already) NFKC is skipped. NFC is run only when the pass leaves out a
+  /// character before one NFC may then change, and the result says
+  /// whether it did. When [full], NFC is run as it is defined: whenever
+  /// [raw] is not [normalized] or the pass changed it.
+  static (String, bool) _clean(
+    String raw,
+    bool stable, {
+    bool normalized = false,
+    bool full = false,
+  }) {
+    final source = stable || normalized
+        ? raw
+        : NormalForm.nfkc(boundMarkRuns(raw));
+    // Most names hold nothing a pass leaves out or changes.
+    if (!full && !_hasSpaceOrInvisible(source)) {
+      if (!stable && !normalized) unormUnits += raw.length + source.length;
+      return (source, false);
+    }
+    final runes = _codePoints(source);
+    final n = runes.length;
     // What a joiner or selector sits before is the next character that is
     // always kept, not the next code point: that one may be an invisible
     // one left out ("\u0628\u200D\u061C" is beh, ZWJ and an Arabic letter
     // mark, and the ZWJ has nothing after it to join once the mark is
-    // gone). A space or a line break counts as a space; null is the end
-    // of the text. One pass from the end, so a long run of invisibles
-    // costs no more than its length.
-    final after = List<int?>.filled(runes.length, null);
-    int? kept;
-    for (var i = runes.length - 1; i >= 0; i--) {
+    // gone). A space or a line break counts as a space; -1 is the end of
+    // the text. One pass from the end, so a long run of invisibles costs
+    // no more than its length.
+    final after = Int32List(n);
+    var kept = -1;
+    for (var i = n - 1; i >= 0; i--) {
       after[i] = kept;
       final r = runes[i];
-      if (isSpaceLike(r)) {
+      final k = _kind(r);
+      if (k == _space) {
         kept = 0x20;
-      } else if (!isInvisible(r)) {
+      } else if (k != _invisible) {
         kept = r;
       }
     }
-    final out = <int>[];
+    final out = Int32List(n);
+    var length = 0;
     var space = false;
-    for (var i = 0; i < runes.length; i++) {
+    // Whether a character was left out right before the next one kept,
+    // and whether one was before a character NFC may then reorder or
+    // compose with what now stands before it.
+    var dropped = false;
+    var joined = false;
+    for (var i = 0; i < n; i++) {
       final r = runes[i];
-      if (isSpaceLike(r)) {
+      final k = _kind(r);
+      if (k == _space) {
         space = true;
         continue;
       }
-      if (isInvisible(r)) {
-        final prev = out.isEmpty || space ? null : out.last;
-        if (_keeps(r, prev, after[i])) out.add(r);
+      if (k == _invisible) {
+        final prev = length == 0 || space ? null : out[length - 1];
+        final next = after[i];
+        if (_keeps(r, prev, next < 0 ? null : next)) {
+          if (dropped && !space && NormalForm.joinsPrevious(r)) joined = true;
+          dropped = false;
+          out[length++] = r;
+        } else {
+          dropped = true;
+        }
         continue;
       }
-      if (space && out.isNotEmpty) out.add(0x20);
+      if (space && length > 0) {
+        out[length++] = 0x20;
+      } else if (dropped && NormalForm.joinsPrevious(r)) {
+        joined = true;
+      }
+      dropped = false;
       space = false;
-      out.add(r);
+      out[length++] = r;
     }
     // A mark left out may have stood between a letter and its accent.
     // Leaving out the invisibles may also join two runs of marks into one
     // longer than [maxMarkRun]: bound that run too.
-    final t = String.fromCharCodes(out);
-    if (stable || (normalized && t == raw)) return t;
-    unormUnits += (normalized ? 0 : raw.length) + t.length;
-    return unorm.nfc(boundMarkRuns(t));
+    //
+    // Text NFKC gives is in NFC, and stays so when only its spaces change
+    // or a character left out stood before a starter that composes with
+    // nothing before it: a space, like every character that draws as one,
+    // composes with no character before or after it, a run of spaces
+    // collapsed to one still stands between what stood around it, and NFC
+    // reorders only marks and composes only a character that composes
+    // with the one before it. So only a pass that leaves out a character
+    // before such a one ([NormalForm.joinsPrevious]) needs NFC.
+    final t = String.fromCharCodes(out, 0, length);
+    if (full) {
+      if (stable || (normalized && t == raw)) return (t, true);
+      unormUnits += (normalized ? 0 : raw.length) + t.length;
+      return (NormalForm.nfc(boundMarkRuns(t)), true);
+    }
+    if (stable) return (t, joined);
+    if (!normalized) {
+      unormUnits += raw.length + t.length;
+    } else if (joined) {
+      unormUnits += t.length;
+    }
+    if (!joined) return (t, false);
+    return (NormalForm.nfc(boundMarkRuns(t)), true);
   }
+
+  /// Whether [s] holds a character a pass of [normalize] leaves out or
+  /// replaces with a plain space: one that draws as a blank or draws
+  /// nothing, or a space that is not plain (two plain spaces in a row, or
+  /// one at an end).
+  static bool _hasSpaceOrInvisible(String s) {
+    var space = true; // at the start
+    for (final r in s.runes) {
+      if (r == 0x20) {
+        if (space) return true;
+        space = true;
+        continue;
+      }
+      if (_kind(r) != _drawn) return true;
+      space = false;
+    }
+    return space && s.isNotEmpty;
+  }
+
+  /// The code points of [s], a lone surrogate as itself (as [String.runes]
+  /// reads it).
+  static Int32List _codePoints(String s) {
+    final out = Int32List(s.length);
+    var n = 0;
+    for (var i = 0; i < s.length; i++) {
+      var r = s.codeUnitAt(i);
+      if (r >= 0xD800 && r <= 0xDBFF && i + 1 < s.length) {
+        final low = s.codeUnitAt(i + 1);
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          r = 0x10000 + ((r - 0xD800) << 10) + (low - 0xDC00);
+          i++;
+        }
+      }
+      out[n++] = r;
+    }
+    return n == s.length ? out : Int32List.sublistView(out, 0, n);
+  }
+
+  static const int _drawn = 1, _space = 2, _invisible = 3;
+
+  /// Whether [r] [isSpaceLike] ([_space]), [isInvisible] ([_invisible]) or
+  /// neither ([_drawn]), cached for the BMP.
+  static int _kind(int r) {
+    if (r <= 0xFFFF) {
+      final known = _kinds[r];
+      if (known != 0) return known;
+      return _kinds[r] = _computeKind(r);
+    }
+    return _computeKind(r);
+  }
+
+  static int _computeKind(int r) => isSpaceLike(r)
+      ? _space
+      : isInvisible(r)
+      ? _invisible
+      : _drawn;
+
+  static final Uint8List _kinds = Uint8List(0x10000);
 
   /// Code units run through NFKC and NFC so far: what normalising costs.
   /// For tests.
@@ -171,7 +291,7 @@ abstract final class NameText {
 
   static int _computeProps(int r) {
     final c = String.fromCharCode(r);
-    final d = unorm.nfkd(c).runes.toList();
+    final d = NormalForm.nfkd(c).runes.toList();
     if (d.isEmpty) return 1 << 2;
     final first = d.first;
     final safe = !_jamo(first) && !_mark.hasMatch(String.fromCharCode(first));
@@ -233,32 +353,41 @@ abstract final class NameText {
   static int _marks(int r) {
     // Below U+00A8 nothing decomposes; lone surrogates are left out later.
     if (r < 0xA8 || (r >= 0xD800 && r <= 0xDFFF)) return 0;
-    final known = _marksCache[r];
+    if (r <= 0xFFFF) {
+      final known = _marksBmp[r];
+      if (known != 0) return known & ~_marksKnown;
+      final m = _computeMarks(r);
+      _marksBmp[r] = m | _marksKnown;
+      return m;
+    }
+    final known = _marksAstral[r];
     if (known != null) return known;
-    final d = unorm.nfkd(String.fromCharCode(r)).runes.toList();
+    if (_marksAstral.length >= 4096) _marksAstral.clear();
+    return _marksAstral[r] = _computeMarks(r);
+  }
+
+  static int _computeMarks(int r) {
+    final d = NormalForm.nfkd(String.fromCharCode(r)).runes.toList();
     var lead = 0;
     while (lead < d.length && _isNonStarter(d[lead])) {
       lead++;
     }
-    int m;
-    if (lead == d.length) {
-      m = (lead << 16) | _onlyMarks | lead;
-    } else {
-      var trail = 0;
-      while (_isNonStarter(d[d.length - 1 - trail])) {
-        trail++;
-      }
-      m = (lead << 16) | trail;
+    if (lead == d.length) return (lead << 16) | _onlyMarks | lead;
+    var trail = 0;
+    while (_isNonStarter(d[d.length - 1 - trail])) {
+      trail++;
     }
-    if (_marksCache.length >= 4096) _marksCache.clear();
-    _marksCache[r] = m;
-    return m;
+    return (lead << 16) | trail;
   }
 
-  static final Map<int, int> _marksCache = {};
+  /// Set in [_marksBmp] once the marks of a character are known.
+  static const int _marksKnown = 0x40000000;
+
+  static final Int32List _marksBmp = Int32List(0x10000);
+  static final Map<int, int> _marksAstral = {};
 
   static bool _isNonStarter(int r) =>
-      r >= 0x300 && UChar.fromCharCode(r, true)!.getCanonicalClass() != 0;
+      r >= 0x300 && NormalForm.combiningClass(r) != 0;
 
   /// The limit of a member name, your name and the phone name (SPEC 5.16,
   /// 8.9), the shortest name limit, and so the one a name is checked and
@@ -349,11 +478,17 @@ abstract final class NameText {
       size += _props(r) >> 2;
     }
     if (size <= limit * unitsPerChar) return normalize(raw);
+    final total = size;
     var budget = limit + _margin;
     var units = 0;
     size = 0;
     for (final r in runes) {
       final p = _props(r);
+      // A head that holds half the name or more costs about as much as all
+      // of it, and all of it is normalised when the head is not enough: so
+      // such a head is not tried, and a name is normalised at most about
+      // twice over (DATA-R15-01).
+      if (2 * size >= total) break;
       if (size >= budget && p & _safe != 0) {
         final head = normalize(raw.substring(0, units));
         final shown = head.characters.length;
