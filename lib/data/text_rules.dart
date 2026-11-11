@@ -182,6 +182,15 @@ abstract final class TextRules {
   /// Null if a peer's [op] payload is within the limits, else the reason.
   /// Deterministic: code units only, no Unicode segmentation.
   static String? remoteProblem(Operation op) {
+    // Every string of the op, ids, keys and the fields this version does
+    // not know included, is well-formed UTF-16: a lone surrogate (valid
+    // JSON as "\ud800") makes the text engine refuse the whole line it
+    // is in (SECURITY-R21-01).
+    for (final id in [op.id, op.groupId, op.deviceId, op.entityId]) {
+      if (!TextClean.isWellFormed(id)) return 'an id is not well-formed UTF-16';
+    }
+    final bad = _illFormedField(op.payload);
+    if (bad != null) return '$bad is not well-formed UTF-16';
     final v1 = !op.isFromNewerSchema;
     final limits = _fields[op.entityType] ?? const <String, int>{};
     final tokens = _tokens[op.entityType] ?? const <String>{};
@@ -328,6 +337,29 @@ abstract final class TextRules {
         ints(value['paid']) &&
         ints(value['owed']) &&
         parseMoney(value) != null;
+  }
+
+  /// The payload field whose name or value holds a string that is not
+  /// well-formed UTF-16 at any depth (map keys included), or null.
+  static String? _illFormedField(Map<String, Object?> payload) {
+    bool bad(Object? v, int depth) => switch (v) {
+      final String s => !TextClean.isWellFormed(s),
+      final Map<Object?, Object?> m =>
+        depth > 64 ||
+            m.entries.any(
+              (e) =>
+                  (e.key is String &&
+                      !TextClean.isWellFormed(e.key! as String)) ||
+                  bad(e.value, depth + 1),
+            ),
+      final List<Object?> l => depth > 64 || l.any((e) => bad(e, depth + 1)),
+      _ => false,
+    };
+    for (final MapEntry(:key, :value) in payload.entries) {
+      if (!TextClean.isWellFormed(key)) return 'a field name';
+      if (bad(value, 0)) return key;
+    }
+    return null;
   }
 
   static bool _hasControl(String value) {

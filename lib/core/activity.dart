@@ -6,6 +6,7 @@ import 'ledger_state.dart';
 import 'models.dart';
 import 'ops.dart';
 import 'reducer/canonical.dart';
+import 'text_clean.dart';
 
 enum ActivityKind {
   groupCreated,
@@ -25,6 +26,12 @@ enum ActivityKind {
   paymentDeleted,
   paymentRestored,
 }
+
+/// A field's JSON [value] as a change shows it: text without the lone
+/// surrogates an op stored before peers' text was checked for them may
+/// hold, which the text engine refuses (SECURITY-R21-01).
+Object? _shown(Object? value) =>
+    value is String ? TextClean.wellFormed(value) : value;
 
 @immutable
 final class FieldChange {
@@ -154,9 +161,10 @@ abstract final class ActivityBuilder {
         final changes = <String, FieldChange>{};
         op.payload.forEach((field, after) {
           if (op.kind == OpKind.create) {
-            changes[field] = FieldChange(null, after);
+            changes[field] = FieldChange(null, _shown(after));
           } else if (!jsonEquals(current[field], after)) {
-            changes[field] = FieldChange(current[field], after);
+            changes[field] =
+                FieldChange(_shown(current[field]), _shown(after));
           }
           current[field] = after;
         });
