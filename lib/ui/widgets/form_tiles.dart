@@ -247,7 +247,12 @@ class PickerTile extends StatelessWidget {
               child: Row(
                 children: [
                   if (leading != null) ...[
-                    SizedBox(width: 26, child: Center(child: leading)),
+                    // 26 dp for an avatar or icon; a wider leading (a
+                    // currency symbol at large text) takes what it needs.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 26),
+                      child: Center(child: leading),
+                    ),
                     const SizedBox(width: 10),
                   ],
                   Expanded(

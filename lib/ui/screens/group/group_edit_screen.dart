@@ -285,9 +285,10 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
             PickerTile(
               label: S.currency,
               value: '${currency.name} (${currency.code})',
-              leading: Text(
+              leading: SymbolText(
                 currency.symbol,
                 style: theme.textTheme.titleMedium,
+                maxWidth: SymbolText.maxLeadingWidth(context),
               ),
               onTap: () async {
                 final code = await pickCurrency(
