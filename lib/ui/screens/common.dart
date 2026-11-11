@@ -13,8 +13,8 @@ import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
 import '../../core/name_text.dart';
+import '../../core/text_clean.dart';
 import '../../data/repositories.dart';
-import '../../data/text_rules.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
 import '../format/text_cap_formatter.dart';
@@ -555,16 +555,18 @@ bool isSavableName(String text, int limit) =>
 
 /// SPEC 5.16: notes are at most 1000 characters. The one cap of every
 /// notes field: Settle up, Edit payment and the expense editor
-/// (UIFLOW-R15-02).
-const int kNotesMax = TextRules.notes;
+/// (UIFLOW-R15-02). Equal to the Ledger's TextRules.notes (pinned by
+/// test/ui/flows/notes_fields_test.dart).
+const int kNotesMax = 1000;
+
+/// SPEC 5.16: a description is at most 120 characters (TextRules
+/// .description).
+const int kDescriptionMax = 120;
 
 /// The formatters every notes field caps its text with: what is typed or
 /// pasted stays within [kNotesMax], and a note the field already holds is
 /// never cut ([TextCapFormatter]).
 List<TextInputFormatter> notesFormatters() => [TextCapFormatter(kNotesMax)];
-
-/// SPEC 5.16: a description is at most 120 characters.
-const int kDescriptionMax = TextRules.description;
 
 /// The formatters the description field caps its text with: as
 /// [notesFormatters], a description the field already holds is never cut.
@@ -572,28 +574,26 @@ List<TextInputFormatter> descriptionFormatters() => [
   TextCapFormatter(kDescriptionMax),
 ];
 
+/// Whether [text] is longer than [limit] as the Ledger measures a
+/// description or note: cleaned ([TextClean.clean], line breaks kept),
+/// then in user-perceived characters and at most
+/// [NameText.unitsPerChar] code units for each.
+bool _overLimit(String text, int limit) {
+  final t = TextClean.clean(text, multiline: true);
+  return t.length > limit * NameText.unitsPerChar ||
+      t.characters.length > limit;
+}
+
 /// The message under a description holding more than [kDescriptionMax]
 /// characters (one a peer or an earlier build saved); null otherwise.
 String? descriptionInputError(String text) =>
-    TextRules.tooLong(
-          TextRules.clean(text.trim(), multiline: true),
-          kDescriptionMax,
-        ) ==
-        null
-    ? null
-    : S.errTooLong;
+    _overLimit(text, kDescriptionMax) ? S.errTooLong : null;
 
 /// The message under a notes field holding more than [kNotesMax]
 /// characters (a note a peer or an earlier build saved), which the Ledger
 /// will not save until it is shortened; null otherwise.
 String? notesInputError(String text) =>
-    TextRules.tooLong(
-          TextRules.clean(text.trim(), multiline: true),
-          kNotesMax,
-        ) ==
-        null
-    ? null
-    : S.errTooLong;
+    _overLimit(text, kNotesMax) ? S.errTooLong : null;
 
 /// The formatters every name field caps its text with ([NameLimit]).
 List<TextInputFormatter> nameFormatters(int limit) => [

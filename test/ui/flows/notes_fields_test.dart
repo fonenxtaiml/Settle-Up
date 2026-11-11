@@ -3,6 +3,8 @@
 // note the field already holds is never cut or joined into one line; and
 // a note is optional everywhere, so clearing it takes it out. The
 // expense description follows the same rule with its 120.
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
@@ -96,6 +98,44 @@ void main() {
   test('one notes cap, the Ledger\'s', () {
     expect(kNotesMax, TextRules.notes);
     expect(kNotesMax, 1000);
+    expect(kDescriptionMax, TextRules.description);
+  });
+
+  test('the fields say "too long" exactly when the Ledger would refuse '
+      '(seeded random texts around both caps)', () {
+    const pieces = [
+      'a',
+      ' ',
+      '\n',
+      '\r\n',
+      '\t',
+      'e\u0301',
+      '\u200B',
+      '\u202E',
+      '👍🏽',
+      '\u{1F468}\u200D\u{1F469}',
+      '🇮🇳',
+      '中',
+      '\u0000',
+    ];
+    final r = Random(16);
+    for (var i = 0; i < 400; i++) {
+      for (final (limit, check) in [
+        (kNotesMax, notesInputError),
+        (kDescriptionMax, descriptionInputError),
+      ]) {
+        final n = limit - 20 + r.nextInt(40);
+        final t = List.generate(
+          n,
+          (_) => pieces[r.nextInt(pieces.length)],
+        ).join();
+        final ledger = TextRules.tooLong(
+          TextRules.clean(t.trim(), multiline: true),
+          limit,
+        );
+        expect(check(t) != null, ledger != null, reason: t);
+      }
+    }
   });
 
   testWidgets('the expense editor keeps an 800-character note when a word '
