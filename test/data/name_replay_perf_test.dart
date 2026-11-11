@@ -148,8 +148,16 @@ void expectWithinMarkBudget(MarkCost r) {
 void main() {
   test('20k ops + 20,000 renames with distinct 159 x U+FDFA names open '
       'about as fast as with ordinary names', () async {
-    final ordinary = await openMs(renames(20000, (i) => 'Person $i'));
-    final heavyMs = await openMs(renames(20000, heavy));
+    // Each measured twice, alternately, and the faster run taken, so a
+    // burst of load on the shared host does not decide it (DATA-R18-02).
+    var ordinary = 1 << 30, heavyMs = 1 << 30;
+    for (var k = 0; k < 2; k++) {
+      ordinary = min(
+        ordinary,
+        await openMs(renames(20000, (i) => 'Person $i')),
+      );
+      heavyMs = min(heavyMs, await openMs(renames(20000, heavy)));
+    }
     // ignore: avoid_print
     print(
       '[perf] 20k ops + 20k renames: ordinary $ordinary ms, '
@@ -196,13 +204,24 @@ void main() {
       return ms;
     }
 
-    final ordinary = await apply((i) => 'Person $i');
-    final heavyMs = await apply(heavy);
+    // Each measured twice, alternately, and the faster run taken; and what
+    // the names add in CPU time, which load does not change, as for the
+    // opens above (DATA-R18-02): the -j 2 suite on the shared host once
+    // made one heavy run 232 ms against 88.
+    var ordinary = 1 << 30, heavyMs = 1 << 30;
+    for (var k = 0; k < 2; k++) {
+      ordinary = min(ordinary, await apply((i) => 'Person $i'));
+      heavyMs = min(heavyMs, await apply(heavy));
+    }
+    final cpuMs =
+        showCpuMs([for (var i = 1; i <= 1000; i++) heavy(i)]) -
+        showCpuMs([for (var i = 1; i <= 1000; i++) 'Person $i']);
     // ignore: avoid_print
     print(
       '[perf] applyRemote of 1,000 renames: ordinary $ordinary ms, '
-      'heavy $heavyMs ms',
+      'heavy $heavyMs ms, the names $cpuMs ms of CPU',
     );
+    expect(cpuMs, lessThan(50)); // 1,000 x 0.05 ms
     expect(heavyMs, lessThan(ordinary * 1.5 + 100));
   }, timeout: const Timeout(Duration(minutes: 2)));
 
