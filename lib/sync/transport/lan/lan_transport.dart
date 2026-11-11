@@ -278,11 +278,12 @@ final class LanTransport implements SyncTransport, HostingDetails {
       ctl.add(p);
     }
 
-    // An address no longer shown through mDNS goes back to the probe.
+    // An address no longer shown through mDNS goes back to the probe. An
+    // index lookup, not a scan of the cache: this runs for every sighting,
+    // and a stranger can announce thousands (SECURITY-R15-01).
     void forget(Iterable<DiscoveredPeer> peers) {
-      final shown = {for (final p in cache.visible) p.address};
       for (final p in peers) {
-        if (!shown.contains(p.address)) _mdnsSeen.remove(p.address);
+        if (!cache.showsAddress(p.address)) _mdnsSeen.remove(p.address);
       }
     }
 
