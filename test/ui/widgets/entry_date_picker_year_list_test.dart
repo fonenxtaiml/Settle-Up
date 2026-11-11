@@ -268,6 +268,143 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
   });
 
+  // VISUAL-R14-01 class: every change that makes the list's Scrollable
+  // replace its ScrollPosition while the year list is open (rotation, the
+  // app or system theme, the text size either way, the keyboard, insets,
+  // bold text, high contrast), alone and in seeded random sequences. The
+  // list stays where the user scrolled it, as the stock picker keeps it.
+  testWidgets('where the user scrolls is kept across every change that '
+      'replaces the list position, alone and in random sequences', (
+    tester,
+  ) async {
+    final theme = ValueNotifier(ThemeMode.light);
+    addTearDown(theme.dispose);
+    final changes = <String, void Function()>{
+      'rotate': () =>
+          tester.view.physicalSize = tester.view.physicalSize.flipped,
+      'app dark mode': () => theme.value = theme.value == ThemeMode.dark
+          ? ThemeMode.light
+          : ThemeMode.dark,
+      'system dark mode': () {
+        theme.value = ThemeMode.system;
+        final b = tester.platformDispatcher.platformBrightness;
+        tester.platformDispatcher.platformBrightnessTestValue =
+            b == Brightness.dark ? Brightness.light : Brightness.dark;
+      },
+      'text larger': () => tester.platformDispatcher.textScaleFactorTestValue =
+          tester.platformDispatcher.textScaleFactor + 0.4,
+      'text smaller': () => tester.platformDispatcher.textScaleFactorTestValue =
+          math.max(1.0, tester.platformDispatcher.textScaleFactor - 0.7),
+      'keyboard': () =>
+          tester.view.viewInsets = tester.view.viewInsets.bottom == 0
+          ? const FakeViewPadding(bottom: 600)
+          : FakeViewPadding.zero,
+      'insets': () =>
+          tester.view.padding = const FakeViewPadding(top: 90, bottom: 60),
+      'bold text': () =>
+          tester.platformDispatcher.accessibilityFeaturesTestValue =
+              const FakeAccessibilityFeatures(boldText: true),
+      'high contrast': () =>
+          tester.platformDispatcher.accessibilityFeaturesTestValue =
+              const FakeAccessibilityFeatures(highContrast: true),
+    };
+    addTearDown(tester.platformDispatcher.clearAllTestValues);
+
+    Future<void> openAt(Size size, double scale) async {
+      tester.view.reset();
+      tester.platformDispatcher.clearAllTestValues();
+      theme.value = ThemeMode.light;
+      tester.view.physicalSize = size * 3;
+      tester.view.devicePixelRatio = 3;
+      tester.platformDispatcher.textScaleFactorTestValue = scale;
+      await tester.pumpWidget(const SizedBox.shrink());
+      late BuildContext ctx;
+      await tester.pumpWidget(
+        ValueListenableBuilder<ThemeMode>(
+          valueListenable: theme,
+          builder: (_, mode, _) => MaterialApp(
+            theme: AppTheme.light(),
+            darkTheme: AppTheme.dark(),
+            themeMode: mode,
+            localizationsDelegates: const [AppMaterialLocalizations.delegate],
+            home: Builder(
+              builder: (c) {
+                ctx = c;
+                return const Scaffold();
+              },
+            ),
+          ),
+        ),
+      );
+      pickEntryDate(ctx, initial: DateTime(2026, 11, 9), now: _now).ignore();
+      await tester.pumpAndSettle();
+      expect(await _openYears(tester, 2026), isTrue);
+      await tester.pumpAndSettle();
+    }
+
+    final problems = <String>[];
+    var replaced = 0;
+    Future<void> check(String where, List<String> sequence) async {
+      await tester.drag(_yearList.first, const Offset(0, 100));
+      await tester.pumpAndSettle();
+      for (final name in sequence) {
+        final before = _position(tester);
+        final scrolled = before.pixels;
+        changes[name]!();
+        await tester.pumpAndSettle();
+        if (find.byType(YearPicker).evaluate().isEmpty) {
+          problems.add('$where $name: year list closed');
+          return;
+        }
+        final after = _position(tester);
+        if (!identical(before, after)) replaced++;
+        final expected = scrolled.clamp(
+          after.minScrollExtent,
+          after.maxScrollExtent,
+        );
+        if ((after.pixels - expected).abs() > 0.5) {
+          problems.add(
+            '$where $name: list at ${after.pixels}, user had it at $scrolled',
+          );
+          return;
+        }
+      }
+    }
+
+    for (final (size, scale) in [
+      (const Size(411, 891), 1.0),
+      (const Size(411, 891), 2.0),
+      (const Size(360, 640), 1.0),
+      (const Size(360, 640), 1.5),
+    ]) {
+      for (final name in changes.keys) {
+        await openAt(size, scale);
+        await check('$size @${scale}x', [name]);
+      }
+    }
+    final random = math.Random(1401);
+    final names = changes.keys.toList();
+    for (var run = 0; run < 12; run++) {
+      final size = sizes[random.nextInt(sizes.length)];
+      final scale = scales[random.nextInt(scales.length)];
+      final sequence = [
+        for (var i = 0; i < 4; i++) names[random.nextInt(names.length)],
+      ];
+      await openAt(size, scale);
+      await check('run $run $size @${scale}x', sequence);
+    }
+    // The sweep exercises the class: the position really is replaced.
+    expect(replaced, greaterThan(20));
+    expect(problems, isEmpty, reason: problems.join('\n'));
+
+    // A fresh year list is still placed on the selected year.
+    await openAt(const Size(411, 891), 2.0);
+    final handle = tester.ensureSemantics();
+    expect(_problem(tester, 2026), isNull);
+    handle.dispose();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('the other scrollables in the dialog keep the app behavior', (
     tester,
   ) async {
