@@ -149,7 +149,6 @@ void main() {
       expect(pay.notes, isEmpty);
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R15-03: a note added on Settle up cannot be removed: the notes prompt keeps Save off while empty
   );
 
   testWidgets('R15 probe (premise of UIFLOW-R15-03): Cancel on the notes '

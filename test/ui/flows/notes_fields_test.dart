@@ -14,6 +14,7 @@ import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/screens/common.dart';
 import 'package:settle_up/ui/strings.dart';
 
+import '../../qa/uiflow/r2_regression_test.dart' show promptAndSave;
 import '../../qa/uiflow/real_harness.dart';
 
 String _note(int n) => List.generate(n, (i) => 'abcdefghij'[i % 10]).join();
@@ -204,6 +205,43 @@ void main() {
     await _record(tester);
     final pay = w.group(gid).liveExpenses.singleWhere((e) => e.isPayment);
     expect(pay.notes, _note(1000));
+    await w.shutdown(tester);
+  });
+
+  testWidgets('Settle up: a note of only spaces is no note', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await _openSettle(tester, w);
+    await qaTap(tester, find.text(S.notes));
+    await promptAndSave(tester, 'GPay');
+    await qaTap(tester, find.text('GPay'));
+    await promptAndSave(tester, '   ');
+    expect(find.text('GPay'), findsNothing);
+    expect(find.text(S.optional), findsOneWidget);
+    await _record(tester);
+    final pay = w.group(gid).liveExpenses.singleWhere((e) => e.isPayment);
+    expect(pay.notes, isEmpty);
+    await w.shutdown(tester);
+  });
+
+  testWidgets('Settle up: an empty notes prompt saved at once leaves no '
+      'note', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await _openSettle(tester, w);
+    await qaTap(tester, find.text(S.notes));
+    await qaTap(
+      tester,
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(S.save),
+      ),
+    );
+    expect(find.byType(AlertDialog), findsNothing);
+    expect(find.text(S.optional), findsOneWidget);
+    await _record(tester);
+    final pay = w.group(gid).liveExpenses.singleWhere((e) => e.isPayment);
+    expect(pay.notes, isEmpty);
     await w.shutdown(tester);
   });
 
