@@ -8,6 +8,7 @@
 // Tests named "QA DATA-R15-NN" with `skip:` are failing repros for open
 // findings; they pass once the finding is fixed.
 import 'dart:convert';
+import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -19,6 +20,8 @@ import 'package:settle_up/core/version_vector.dart';
 import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/data/schema.dart';
 
+import '../../data/name_replay_perf_test.dart'
+    show expectWithinMarkBudget, showCpuMs;
 import 'durability_restart_test.dart' show expectSameSnapshot;
 import 'performance_test.dart' as perf;
 import 'qa_data_harness.dart';
@@ -307,38 +310,48 @@ void main() {
       r.phone.dir.deleteSync(recursive: true);
     }, timeout: const Timeout(Duration(minutes: 3)));
 
-    test(
-      'QA DATA-R15-01: member ops from a peer whose names NFKC expands '
-      'cost over 1 ms each on every open, ~80x an ordinary op',
-      () async {
-        // Budget of the charter: 20k ops open in < 2 s, 0.1 ms an op. 4,000
-        // renames of 159 x U+FDFA (18 characters each in NFKC, within the
-        // 160-unit remote limit) on a small log must open in < 400 ms;
-        // the same 4,000 renames with ordinary names open in ~60 ms.
+    test('QA DATA-R15-01: member ops from a peer whose names NFKC expands '
+        'cost over 1 ms each on every open, ~80x an ordinary op', () async {
+      // Budget of the charter: 20k ops open in < 2 s, 0.1 ms an op. 4,000
+      // renames of 159 x U+FDFA (18 characters each in NFKC, within the
+      // 160-unit remote limit) on a small log must open in < 400 ms on a
+      // warm, quiet host; the same 4,000 renames with ordinary names
+      // open in ~60 ms.
+      //
+      // Held as the replay tests hold it (expectWithinMarkBudget): the
+      // CPU time the names add, which the load of the full suite (-j 2
+      // on a shared host) does not change, and each open the faster of
+      // two, against an ordinary open measured beside it. One wall-clock
+      // open against an absolute 400 ms fails whenever that load slows
+      // ordinary replay toward 400 ms (DATA-R21-01).
+      String heavy(int i) => 'ﷺ' * 159 + '${i % 10}';
+      var ordinary = 1 << 30, ms = 1 << 30;
+      for (var k = 0; k < 2; k++) {
         final ok = await logPhone(
           renames(4000, (i) => 'Person $i'),
           base: false,
         );
         await ok.phone.close();
         ok.phone.dir.deleteSync(recursive: true);
-        final r = await logPhone(
-          renames(4000, (i) => 'ﷺ' * 159 + '${i % 10}'),
-          base: false,
-        );
-        // ignore: avoid_print
-        print(
-          '[perf] 4k renames: ordinary ${ok.openMs} ms, '
-          '159 x U+FDFA ${r.openMs} ms',
-        );
+        ordinary = min(ordinary, ok.openMs);
+        final r = await logPhone(renames(4000, heavy), base: false);
         expect(
           r.phone.group('group-1').members['group-1-m1']!.displayName,
           hasLength(39),
         );
         await r.phone.close();
         r.phone.dir.deleteSync(recursive: true);
-        expect(r.openMs, lessThan(400));
-      },
-      timeout: const Timeout(Duration(minutes: 3)),
-    );
+        ms = min(ms, r.openMs);
+      }
+      final cpuMs =
+          showCpuMs([for (var i = 1; i <= 4000; i++) heavy(i)]) -
+          showCpuMs([for (var i = 1; i <= 4000; i++) 'Person $i']);
+      // ignore: avoid_print
+      print(
+        '[perf] 4k renames: ordinary $ordinary ms, '
+        '159 x U+FDFA $ms ms, the names $cpuMs ms of CPU',
+      );
+      expectWithinMarkBudget((cpuMs: cpuMs, openMs: ms, ordinaryMs: ordinary));
+    }, timeout: const Timeout(Duration(minutes: 3)));
   });
 }
