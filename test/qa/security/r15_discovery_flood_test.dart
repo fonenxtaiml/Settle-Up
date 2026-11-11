@@ -85,9 +85,6 @@ void main() {
           reason: '$_flood sightings took ${sw.elapsedMilliseconds} ms',
         );
       },
-      skip:
-          'QA SECURITY-R15-01: a stranger flooding mDNS adverts makes '
-          'discovery cubic and freezes the Sync screen',
     );
 
     test(
@@ -122,9 +119,6 @@ void main() {
           reason: '$_flood sightings took ${sw.elapsedMilliseconds} ms',
         );
       },
-      skip:
-          'QA SECURITY-R15-01: a stranger flooding mDNS adverts makes '
-          'discovery cubic and freezes the Sync screen',
     );
 
     test('a single service re-announced many times stays cheap', () {
