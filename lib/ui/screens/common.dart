@@ -14,8 +14,10 @@ import '../../core/ledger_state.dart';
 import '../../core/models.dart';
 import '../../core/name_text.dart';
 import '../../data/repositories.dart';
+import '../../data/text_rules.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
+import '../format/text_cap_formatter.dart';
 import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
@@ -236,6 +238,7 @@ Future<String?> promptText(
   String confirmLabel = S.save,
   int? maxLength,
   bool isName = false,
+  bool multiline = false,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -246,6 +249,7 @@ Future<String?> promptText(
     confirmLabel: confirmLabel,
     maxLength: maxLength,
     isName: isName,
+    multiline: multiline,
   ),
 );
 
@@ -258,6 +262,7 @@ class _TextPrompt extends StatefulWidget {
     this.helper,
     this.maxLength,
     this.isName = false,
+    this.multiline = false,
   });
 
   final String title;
@@ -272,6 +277,10 @@ class _TextPrompt extends StatefulWidget {
   /// The text is a name: Save needs a letter or number in it
   /// ([NameText.isValid]), as the Ledger and Settings do (DATA-R6-02).
   final bool isName;
+
+  /// Line breaks are kept (notes, SPEC 5.16), so a held text with them is
+  /// never joined into one line.
+  final bool multiline;
 
   @override
   State<_TextPrompt> createState() => _TextPromptState();
@@ -320,10 +329,23 @@ class _TextPromptState extends State<_TextPrompt> {
           controller: _controller,
           autofocus: true,
           maxLength: max,
-          inputFormatters: widget.isName && max != null
-              ? nameFormatters(max)
+          minLines: 1,
+          maxLines: widget.multiline ? null : 1,
+          keyboardType: widget.multiline ? TextInputType.multiline : null,
+          // A free text keeps its own cap ([TextCapFormatter]): the
+          // TextField's would cut the end of the text when a paste in the
+          // middle runs over.
+          maxLengthEnforcement: max != null && !widget.isName
+              ? MaxLengthEnforcement.none
               : null,
-          textCapitalization: TextCapitalization.words,
+          inputFormatters: switch (max) {
+            null => null,
+            final max when widget.isName => nameFormatters(max),
+            final max => [TextCapFormatter(max)],
+          },
+          textCapitalization: widget.multiline
+              ? TextCapitalization.sentences
+              : TextCapitalization.words,
           decoration: InputDecoration(
             hintText: widget.hint,
             helperText: widget.helper,
@@ -522,6 +544,28 @@ String? nameInputError(String text, {int? limit}) {
 /// number in what is saved of it, and short enough once stored.
 bool isSavableName(String text, int limit) =>
     NameText.isValid(text, limit) && NameLimit.fits(text, limit);
+
+/// SPEC 5.16: notes are at most 1000 characters. The one cap of every
+/// notes field: Settle up, Edit payment and the expense editor
+/// (UIFLOW-R15-02).
+const int kNotesMax = TextRules.notes;
+
+/// The formatters every notes field caps its text with: what is typed or
+/// pasted stays within [kNotesMax], and a note the field already holds is
+/// never cut ([TextCapFormatter]).
+List<TextInputFormatter> notesFormatters() => [TextCapFormatter(kNotesMax)];
+
+/// The message under a notes field holding more than [kNotesMax]
+/// characters (a note a peer or an earlier build saved), which the Ledger
+/// will not save until it is shortened; null otherwise.
+String? notesInputError(String text) =>
+    TextRules.tooLong(
+          TextRules.clean(text.trim(), multiline: true),
+          kNotesMax,
+        ) ==
+        null
+    ? null
+    : S.errTooLong;
 
 /// The formatters every name field caps its text with ([NameLimit]).
 List<TextInputFormatter> nameFormatters(int limit) => [
