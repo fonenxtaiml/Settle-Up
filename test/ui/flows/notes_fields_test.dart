@@ -217,7 +217,9 @@ void main() {
       expect(find.text(S.errTooLong), findsOneWidget);
       await tester.enterText(f, '${_note(1500)} ok');
       await tester.pump();
-      expect(_text(tester, f), _note(1500), reason: 'cut or grown');
+      // The letters are refused; the space before them goes in, as it
+      // takes no room in what is stored (trailing, UIFLOW-R18-01).
+      expect(_text(tester, f), '${_note(1500)} ', reason: 'cut or grown');
       await tester.enterText(f, _note(990));
       await tester.pump();
       expect(_text(tester, f), _note(990));
@@ -381,6 +383,88 @@ void main() {
     );
     expect(save.onPressed, isNull);
     await w.shutdown(tester);
+  });
+
+  // UIFLOW-R18-01: characters the Ledger drops (zero-width spaces, bidi
+  // marks, controls) take no room in any notes or description cap, the
+  // way the counter and the Ledger measure.
+  group('UIFLOW-R18-01: hidden characters take no room', () {
+    String hidden(int n, String mark) => List.filled(n, 'a$mark').join();
+
+    for (final screen in ['expense', 'payment']) {
+      for (final mark in ['\u200B', '\u200E', '\u202E', '\u2066', '\uFEFF']) {
+        final code = mark.runes.first.toRadixString(16).toUpperCase();
+        testWidgets('the $screen editor keeps 1000 letters pasted each with '
+            'U+$code, refuses the 1001st and stores 1000', (tester) async {
+          qaPhone(tester);
+          final w = await RealWorld.create(name: 'Arjun');
+          final gid = await w.seedGroup();
+          final id = screen == 'expense'
+              ? await _expenseWithNote(w, gid, '')
+              : await _paymentWithNote(w, gid, '');
+          await _openEdit(tester, w, id);
+          final f = fieldLabeled(S.notes);
+          await tester.enterText(f, hidden(1000, mark));
+          await tester.pump();
+          expect(_text(tester, f), hidden(1000, mark));
+          await tester.enterText(f, '${hidden(1000, mark)}b');
+          await tester.pump();
+          expect(_text(tester, f), hidden(1000, mark));
+          expect(find.text(S.errTooLong), findsNothing);
+          await qaTap(tester, _save);
+          expect(w.state.expense(id)!.notes, 'a' * 1000);
+          await w.shutdown(tester);
+        });
+      }
+    }
+
+    testWidgets('the description keeps 120 letters pasted each with a bidi '
+        'mark and stores 120', (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await w.seedGroup();
+      final id = await _expenseWithNote(w, gid, '');
+      await _openEdit(tester, w, id);
+      final f = fieldLabeled(S.description);
+      await tester.enterText(f, '${hidden(120, '\u200F')}b');
+      await tester.pump();
+      expect(_text(tester, f), hidden(120, '\u200F'));
+      expect(find.text(S.errTooLong), findsNothing);
+      await qaTap(tester, _save);
+      expect(w.state.expense(id)!.description, 'a' * 120);
+      await w.shutdown(tester);
+    });
+
+    testWidgets('Settle up: the notes prompt keeps 600 letters with 600 '
+        'zero-width spaces, counts 600, takes typing, opens again with all '
+        'of it and records 600 letters', (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await _openSettle(tester, w);
+      await qaTap(tester, find.text(S.notes));
+      await tester.enterText(_promptField, hidden(600, '\u200B'));
+      await tester.pump();
+      expect(_text(tester, _promptField), hidden(600, '\u200B'));
+      expect(find.text('600/1000'), findsOneWidget);
+      await tester.enterText(_promptField, '${hidden(600, '\u200B')}b');
+      await tester.pump();
+      expect(find.text('601/1000'), findsOneWidget);
+      Finder save() => find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(S.save),
+      );
+      await qaTap(tester, save());
+      // Opening the prompt again shows the whole note, not its first 1000
+      // characters as typed.
+      await qaTap(tester, find.text(S.notes));
+      expect(_text(tester, _promptField), '${hidden(600, '\u200B')}b');
+      expect(find.text('601/1000'), findsOneWidget);
+      await qaTap(tester, save());
+      await _record(tester);
+      final pay = w.group(gid).liveExpenses.singleWhere((e) => e.isPayment);
+      expect(pay.notes, '${'a' * 600}b');
+      await w.shutdown(tester);
+    });
   });
 }
 

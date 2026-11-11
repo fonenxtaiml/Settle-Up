@@ -298,7 +298,22 @@ class _TextPromptState extends State<_TextPrompt> {
     text: switch (widget.maxLength) {
       null => widget.initial,
       final max when widget.isName => NameLimit.fit(widget.initial, max),
-      final max => widget.initial.characters.take(max).toString(),
+      // A free text the prompt opens with is cut only past the cap as the
+      // Ledger measures it, the way a paste of it would be: a note with
+      // hidden characters, which take no room, comes back whole
+      // (UIFLOW-R18-01).
+      final max =>
+        TextCapFormatter(max)
+            .formatEditUpdate(
+              TextEditingValue.empty,
+              TextEditingValue(
+                text: widget.initial,
+                selection: TextSelection.collapsed(
+                  offset: widget.initial.length,
+                ),
+              ),
+            )
+            .text,
     },
   );
 
