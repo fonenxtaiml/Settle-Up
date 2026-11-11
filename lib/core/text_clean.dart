@@ -13,13 +13,18 @@ abstract final class TextClean {
     final out = StringBuffer();
     final text = multiline ? value.replaceAll('\r\n', '\n') : value;
     for (final r in text.runes) {
-      if (isBreak(r)) {
-        out.writeCharCode(multiline ? (r == 0x09 ? 0x09 : 0x0A) : 0x20);
-      } else if (!isHidden(r)) {
-        out.writeCharCode(r);
-      }
+      final c = cleanRune(r, multiline: multiline);
+      if (c >= 0) out.writeCharCode(c);
     }
     return out.toString().trim();
+  }
+
+  /// What [clean] makes of the code point [r] on its own: the code point
+  /// it writes in its place, or -1 when it drops it. (In notes, the `\n`
+  /// of a `\r\n` pair is dropped as well, the `\r` standing for both.)
+  static int cleanRune(int r, {bool multiline = false}) {
+    if (isBreak(r)) return multiline ? (r == 0x09 ? 0x09 : 0x0A) : 0x20;
+    return isHidden(r) ? -1 : r;
   }
 
   /// Tab, line feed, vertical tab, form feed, carriage return, NEL, line
