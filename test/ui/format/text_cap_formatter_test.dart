@@ -483,8 +483,7 @@ void main() {
       // A full note may end with more breaks: they take no room while
       // nothing follows them, and the counter stays at the cap.
       expect(c('${'a' * 10}\n\n\n'), 10);
-      // Leading spaces and breaks, and hidden characters, take no room.
-      expect(c('\n\n  ${'a' * 3}'), 3);
+      // Hidden characters take no room.
       expect(c('${'a' * 3}\u200B\u200E'), 3);
       expect(c('   '), 0);
       // A held note over the cap shows its length.
@@ -536,7 +535,116 @@ void main() {
               final typed = _type(f, v, letter).text;
               final went = typed == text + letter;
               if (!went) expect(typed, text, reason: '$reason, $letter');
-              expect(went, shown < limit, reason: '$reason, $letter');
+              // Room shown is room at the end; the counter may be full
+              // from blanks at the start while the end still has room.
+              if (shown < limit) {
+                expect(went, isTrue, reason: '$reason, $letter');
+              }
+            }
+          }
+        });
+      }
+    }
+  });
+
+  group('UIFLOW-R19-01 (reopened): blanks at the start count as the cap '
+      'holds them once a letter is typed before them', () {
+    test('line breaks and spaces at the start count once a letter would '
+        'go before them, up to the cap', () {
+      final f = TextCapFormatter(10);
+      int c(String s) => TextCapFormatter.counted(s, 10);
+      expect(c('\n\n  ${'a' * 3}'), 7);
+      expect(c('\n\n${'a' * 8}'), 10);
+      expect(c('\n${'a' * 8}'), 9);
+      expect(c('\r\n${'a' * 8}'), 9);
+      expect(c('\u200B\u200E${'a' * 8}'), 8);
+      expect(c('\u200B\n\u200E${'a' * 8}'), 9);
+      // Blanks at both ends: the larger edge is what a letter can meet.
+      expect(c('\n${'a' * 6}\n\n'), 8);
+      expect(c('\n\n${'a' * 6}\n'), 8);
+      // A full note may start with more breaks; the counter stays at the
+      // cap and no "too long" is due (the stored note fits).
+      expect(c('\n\n\n${'a' * 10}'), 10);
+      // Only blanks: a letter typed anywhere is the whole note.
+      expect(c('\n \n'), 0);
+      final full = _at('\n\n${'a' * 8}', 0);
+      expect(_type(f, full, 'T').text, full.text);
+      final room = _at('\n${'a' * 8}', 0);
+      expect(_type(f, room, 'T').text, 'T\n${'a' * 8}');
+      // Between the breaks, or after them, the letter goes in (the
+      // counter is conservative there, as at the end).
+      expect(_type(f, _at(full.text, 1), 'T').text, '\nT\n${'a' * 8}');
+      expect(_type(f, _at(full.text, 2), 'T').text, '\n\nT${'a' * 8}');
+    });
+
+    const blanks = [
+      ' ',
+      '\n',
+      '\r\n',
+      '\r',
+      '\t',
+      '\u2028',
+      '\u200B',
+      '\u200E',
+      '\u00A0',
+      '\u3000',
+    ];
+    for (final seed in List.generate(6, (i) => 2000 + i)) {
+      for (final multiline in [true, false]) {
+        test('seed $seed, multiline $multiline: the counter shows room '
+            'exactly when a letter goes in at both ends, and then a letter '
+            'goes in anywhere', () {
+          final r = Random(seed);
+          String edge() {
+            final b = StringBuffer();
+            for (var k = r.nextInt(5); k > 0; k--) {
+              b.write(blanks[r.nextInt(blanks.length)]);
+            }
+            return b.toString();
+          }
+
+          for (var i = 0; i < 300; i++) {
+            final limit = 1 + r.nextInt(30);
+            final f = TextCapFormatter(limit, multiline: multiline);
+            final text = '${edge()}${_random(r, r.nextInt(40))}${edge()}';
+            final stored = TextClean.clean(text, multiline: multiline);
+            // Over the Ledger's code units the field says it is too long
+            // (and counts the code units): not what this measures.
+            if (TextCap.length(stored) > limit &&
+                stored.characters.length <= limit) {
+              continue;
+            }
+            final shown = TextCapFormatter.counted(
+              text,
+              limit,
+              multiline: multiline,
+            );
+            final reason = 'limit $limit, text ${text.runes.toList()}';
+            expect(
+              shown,
+              greaterThanOrEqualTo(TextCap.length(stored)),
+              reason: reason,
+            );
+            expect(
+              shown,
+              lessThanOrEqualTo(max(limit, TextCap.length(stored))),
+              reason: reason,
+            );
+            for (final letter in const ['b', '7', '中']) {
+              bool goesIn(int at) {
+                final typed = _type(f, _at(text, at), letter).text;
+                final went = typed == text.replaceRange(at, at, letter);
+                if (!went) expect(typed, text, reason: '$reason, at $at');
+                return went;
+              }
+
+              final ends = goesIn(0) && goesIn(text.length);
+              expect(ends, shown < limit, reason: '$reason, $letter');
+              if (shown < limit) {
+                for (final at in _plainBoundaries(text)) {
+                  expect(goesIn(at), isTrue, reason: '$reason, at $at');
+                }
+              }
             }
           }
         });
