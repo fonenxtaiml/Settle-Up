@@ -1,7 +1,10 @@
 // Replaying a peer's member and group ops costs about what ordinary ops
 // cost whatever names they carry within the remote limits (DATA-R15-01):
 // on a relaunch and in applyRemote, for renames of a few members and for
-// many members created with names NFKC makes 18 times as long.
+// many members created with names NFKC makes 18 times as long, or of
+// combining marks NFKC expands, which no head of a name can be cut before.
+import 'dart:math';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/name_text.dart';
@@ -93,4 +96,50 @@ void main() {
     );
     expect(heavyMs, lessThan(ordinary * 1.5 + 100));
   }, timeout: const Timeout(Duration(minutes: 2)));
+
+  group('4,000 members created with names of combining marks NFKC expands '
+      'open within the budget of 0.1 ms an op', () {
+    /// A name of 160 units: a number, then [piece] repeated.
+    String Function(int) of(String piece) => (i) {
+      final b = StringBuffer('$i');
+      while (b.length + piece.length <= 160) {
+        b.write(piece);
+      }
+      return b.toString();
+    };
+
+    final classes = <String, String>{
+      'U+0344 (two marks each)': '\u0344',
+      'U+0F73 (a starter, two marks)': '\u0F73',
+      'U+0F75 (a starter, two marks)': '\u0F75',
+      'U+0F77 (three marks)': '\u0F77',
+      'U+0F79 (three marks)': '\u0F79',
+      'halfwidth voiced marks': '\uFF9E\uFF9F',
+      'marks of falling classes': '\u0345\u0301\u0316\u0334',
+      'supplementary marks': '\u{1D165}\u{1D16E}',
+      'marks split by soft hyphens': '\u0F77\u00AD',
+      'marks split by zero-width spaces': '\u0344\u200B',
+      'marks after spaces': '\u0F77 ',
+      'letters with marks between': 'e\u0F77\u0301',
+    };
+    classes.forEach((label, piece) {
+      test(label, () async {
+        // Each measured twice, alternately, and the faster run taken, so
+        // a burst of load on a shared machine does not decide it.
+        var ordinary = 1 << 30, ms = 1 << 30;
+        for (var k = 0; k < 2; k++) {
+          ordinary = min(
+            ordinary,
+            await openMs(creates(4000, (i) => 'Person $i'), base: false),
+          );
+          ms = min(ms, await openMs(creates(4000, of(piece)), base: false));
+        }
+        // ignore: avoid_print
+        print('[perf] 4k members, $label: $ms ms (ordinary $ordinary ms)');
+        // The charter: 0.1 ms an op in all; ordinary ops take about 0.01 ms
+        // of it on a warm host, so such a name may add 0.075 ms.
+        expect(ms - ordinary, lessThan(300)); // 4,000 x 0.075 ms
+      }, timeout: const Timeout(Duration(minutes: 2)));
+    });
+  });
 }
