@@ -442,8 +442,6 @@ void main() {
       await tester.enterText(_promptField, pasted);
       await tester.pump();
       String held() => tester.widget<TextField>(_promptField).controller!.text;
-      // Today: 500 letters and 500 zero-width spaces are kept, the counter
-      // shows 500/1000.
       expect(
         held().replaceAll('\u200B', ''),
         'a' * 600,
@@ -468,12 +466,12 @@ void main() {
       expect(payments.single.notes, '${'a' * 600}b');
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R18-01: hidden characters take room in the notes and description caps, so a paste is cut and typing refused while the counter shows room
   );
 
-  testWidgets('R18 probe (premise of UIFLOW-R18-01): the paste is cut to '
-      '1000 raw characters, the counter shows 500/1000 and a letter typed '
-      'at the end is refused', (tester) async {
+  testWidgets('R18 probe (UIFLOW-R18-01, fixed): the paste is kept whole, '
+      'the counter shows 600/1000 and a letter typed at the end goes in', (
+    tester,
+  ) async {
     qaPhone(tester);
     final w = await RealWorld.create(name: 'Arjun');
     await _openSettle(tester, w);
@@ -482,9 +480,8 @@ void main() {
     await tester.enterText(_promptField, pasted);
     await tester.pump();
     String held() => tester.widget<TextField>(_promptField).controller!.text;
-    expect(held().length, 1000);
-    expect(held().replaceAll('\u200B', ''), 'a' * 500);
-    expect(find.text('500/1000'), findsOneWidget);
+    expect(held(), pasted);
+    expect(find.text('600/1000'), findsOneWidget);
     expect(_promptTooLong, findsNothing);
     final before = held();
     tester.testTextInput.updateEditingValue(
@@ -494,13 +491,15 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(held(), before);
-    expect(find.text('500/1000'), findsOneWidget);
+    expect(held(), '${before}b');
+    expect(find.text('601/1000'), findsOneWidget);
     await w.shutdown(tester);
   });
 
-  testWidgets('R18 probe (UIFLOW-R18-01 in the editor): the expense notes '
-      'field cuts the same paste to 500 stored letters', (tester) async {
+  testWidgets('R18 probe (UIFLOW-R18-01 in the editor, fixed): the expense '
+      'notes field keeps the same paste whole and stores 600 letters', (
+    tester,
+  ) async {
     qaPhone(tester);
     final w = await RealWorld.create(name: 'Arjun');
     final gid = await w.seedGroup();
@@ -516,9 +515,9 @@ void main() {
         .widget<TextField>(fieldLabeled(S.notes))
         .controller!
         .text;
-    expect(held.replaceAll('\u200B', ''), 'a' * 500);
+    expect(held, List.filled(600, 'a\u200B').join());
     await qaTap(tester, _saveExpense);
-    expect(w.state.expense(id)!.notes, 'a' * 500);
+    expect(w.state.expense(id)!.notes, 'a' * 600);
     await w.shutdown(tester);
   });
 }
