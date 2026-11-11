@@ -503,4 +503,49 @@ void main() {
     expect(w.settings.profile?.displayName, '${'a' * 38}bc');
     await w.shutdown(tester);
   });
+
+  testWidgets('R15 probe: Edit expense, clearing the note saves no note and '
+      'writes only the notes field', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final (_, eid) = await seedExpense(w);
+    await pumpReal(tester, w, location: Routes.home);
+    w.push(Routes.editExpense(eid));
+    await qaSettle(tester);
+    await qaReveal(tester, fieldLabeled(S.notes));
+    await tester.enterText(fieldLabeled(S.notes), '');
+    await tester.pump();
+    await qaTap(tester, find.text(S.saveExpense));
+    expect(w.state.expense(eid)!.notes, isEmpty);
+    expect(lastOp(w).payload.keys.toSet(), {ExpenseFields.notes});
+    await w.shutdown(tester);
+  });
+
+  testWidgets('R15 probe: Edit payment, clearing the note saves no note', (
+    tester,
+  ) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup();
+    final pid = await w.ledger.recordPayment(
+      PaymentDraft(
+        groupId: gid,
+        from: w.member(gid, 'Priya'),
+        to: w.member(gid, 'Arjun'),
+        amount: 50000,
+        currency: 'INR',
+        method: PaymentMethod.cash,
+        date: DateTime.utc(2026, 11, 8),
+        notes: 'Wrong note',
+      ),
+    );
+    await pumpReal(tester, w, location: Routes.home);
+    w.push(Routes.editExpense(pid));
+    await qaSettle(tester);
+    await tester.enterText(fieldLabeled(S.notes), '');
+    await tester.pump();
+    await qaTap(tester, find.text(S.saveChanges));
+    expect(w.state.expense(pid)!.notes, isEmpty);
+    await w.shutdown(tester);
+  });
 }
