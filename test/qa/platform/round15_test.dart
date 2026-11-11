@@ -126,32 +126,26 @@ void main() {
     // second pass drops it. So what Ledger and Settings store (fit once)
     // is not what the fold shows (display = fit again), against the
     // documented "Idempotent: fit(fit(x)) == fit(x)" (SPEC 5.16).
-    test(
-      'normalize and fit are idempotent when a joiner precedes a dropped '
-      'invisible in a joining script',
-      () {
-        const cases = <String>[
-          '\u0628\u200D\u061C', // beh, ZWJ, Arabic letter mark
-          'Ali \u0628\u200D\u061C',
-          '\u0628\u200D\u061C x',
-          '\u0915\u200C\u0600 a', // ka, ZWNJ, Arabic number sign
-          '\u0915\u094D\u200D\u17B4', // ka virama, ZWJ, Khmer inherent
-          '\u0915\u200D\u180B', // ka, ZWJ, Mongolian FVS1
-        ];
-        for (final raw in cases) {
-          final hex = raw.runes.map((r) => r.toRadixString(16)).join(' ');
-          final n = NameText.normalize(raw);
-          expect(NameText.normalize(n), n, reason: 'normalize: $hex');
-          final f = NameText.fit(raw);
-          expect(NameText.fit(f), f, reason: 'fit: $hex');
-          // What the fold shows is what was stored.
-          expect(NameText.display(f), f, reason: 'display: $hex');
-        }
-      },
-      skip:
-          'QA PLATFORM-R15-01: NameText.normalize is not idempotent after '
-          'a joiner followed by a dropped invisible',
-    );
+    test('normalize and fit are idempotent when a joiner precedes a dropped '
+        'invisible in a joining script', () {
+      const cases = <String>[
+        '\u0628\u200D\u061C', // beh, ZWJ, Arabic letter mark
+        'Ali \u0628\u200D\u061C',
+        '\u0628\u200D\u061C x',
+        '\u0915\u200C\u0600 a', // ka, ZWNJ, Arabic number sign
+        '\u0915\u094D\u200D\u17B4', // ka virama, ZWJ, Khmer inherent
+        '\u0915\u200D\u180B', // ka, ZWJ, Mongolian FVS1
+      ];
+      for (final raw in cases) {
+        final hex = raw.runes.map((r) => r.toRadixString(16)).join(' ');
+        final n = NameText.normalize(raw);
+        expect(NameText.normalize(n), n, reason: 'normalize: $hex');
+        final f = NameText.fit(raw);
+        expect(NameText.fit(f), f, reason: 'fit: $hex');
+        // What the fold shows is what was stored.
+        expect(NameText.display(f), f, reason: 'display: $hex');
+      }
+    });
 
     test('a very long phone model is cut, not refused', () {
       final long = 'Pixel ' * 2000;
