@@ -24,6 +24,7 @@ class LabeledTextField extends StatelessWidget {
     this.errorText,
     this.maxLength,
     this.inputFormatters,
+    this.multiline = false,
   });
 
   final String label;
@@ -40,6 +41,11 @@ class LabeledTextField extends StatelessWidget {
   /// Run before the [maxLength] cap, e.g. a name field's stored-length
   /// cap.
   final List<TextInputFormatter>? inputFormatters;
+
+  /// The field grows with its text and keeps line breaks (notes and the
+  /// description, SPEC 5.16); a one-line field joins the lines of a text
+  /// it holds on the first key.
+  final bool multiline;
 
   static const double _fieldPad = 8;
 
@@ -75,6 +81,17 @@ class LabeledTextField extends StatelessWidget {
                   textInputAction: textInputAction,
                   maxLength: maxLength,
                   inputFormatters: inputFormatters,
+                  minLines: 1,
+                  maxLines: multiline ? null : 1,
+                  // With an action of its own (Done on the description)
+                  // the key performs it: line breaks the field holds are
+                  // kept, none is typed.
+                  keyboardType: !multiline
+                      ? null
+                      : textInputAction == null ||
+                            textInputAction == TextInputAction.newline
+                      ? TextInputType.multiline
+                      : TextInputType.text,
                   textCapitalization: TextCapitalization.sentences,
                   style: valueStyle,
                   decoration: InputDecoration(
@@ -239,7 +256,12 @@ class PickerTile extends StatelessWidget {
               child: Row(
                 children: [
                   if (leading != null) ...[
-                    SizedBox(width: 26, child: Center(child: leading)),
+                    // 26 dp for an avatar or icon; a wider leading (a
+                    // currency symbol at large text) takes what it needs.
+                    ConstrainedBox(
+                      constraints: const BoxConstraints(minWidth: 26),
+                      child: Center(child: leading),
+                    ),
                     const SizedBox(width: 10),
                   ],
                   Expanded(

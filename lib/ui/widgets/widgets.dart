@@ -25,6 +25,7 @@ export 'nearby.dart';
 export 'person_avatar.dart';
 export 'settle_controls.dart';
 export 'split_controls.dart';
+export 'symbol_text.dart';
 export 'sync_status.dart';
 export 'tether.dart';
 export 'transfer_row.dart';

@@ -692,9 +692,12 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
                 label: S.description,
                 hintText: S.descriptionHint,
                 controller: _description,
-                errorText: descriptionError,
+                errorText:
+                    descriptionError ??
+                    descriptionInputError(_description.text),
                 textInputAction: TextInputAction.done,
-                maxLength: 120,
+                multiline: true,
+                inputFormatters: descriptionFormatters(),
                 onChanged: (_) => setState(_touch),
                 trailing: CategoryChip(
                   categoryId: _category,
@@ -805,7 +808,9 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
                 label: S.notes,
                 hintText: S.notesHint,
                 controller: _notes,
-                maxLength: 500,
+                multiline: true,
+                inputFormatters: notesFormatters(),
+                errorText: notesInputError(_notes.text),
                 onChanged: (_) => setState(_touch),
               ),
             ),

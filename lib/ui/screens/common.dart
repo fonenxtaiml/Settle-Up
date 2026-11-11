@@ -13,9 +13,11 @@ import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
 import '../../core/name_text.dart';
+import '../../core/text_clean.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
+import '../format/text_cap_formatter.dart';
 import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
@@ -236,6 +238,8 @@ Future<String?> promptText(
   String confirmLabel = S.save,
   int? maxLength,
   bool isName = false,
+  bool optional = false,
+  bool multiline = false,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -246,6 +250,8 @@ Future<String?> promptText(
     confirmLabel: confirmLabel,
     maxLength: maxLength,
     isName: isName,
+    optional: optional,
+    multiline: multiline,
   ),
 );
 
@@ -258,7 +264,9 @@ class _TextPrompt extends StatefulWidget {
     this.helper,
     this.maxLength,
     this.isName = false,
-  });
+    this.optional = false,
+    this.multiline = false,
+  }) : assert(!(isName && optional), 'a name is never optional');
 
   final String title;
   final String initial;
@@ -272,6 +280,14 @@ class _TextPrompt extends StatefulWidget {
   /// The text is a name: Save needs a letter or number in it
   /// ([NameText.isValid]), as the Ledger and Settings do (DATA-R6-02).
   final bool isName;
+
+  /// The text may be left empty (a note): Save is on while the field is
+  /// empty and returns '', which takes the text out (UIFLOW-R15-03).
+  final bool optional;
+
+  /// Line breaks are kept (notes, SPEC 5.16), so a held text with them is
+  /// never joined into one line.
+  final bool multiline;
 
   @override
   State<_TextPrompt> createState() => _TextPromptState();
@@ -294,6 +310,7 @@ class _TextPromptState extends State<_TextPrompt> {
 
   bool get _accepted {
     final text = _controller.text;
+    if (widget.optional) return true;
     if (!widget.isName) return text.trim().isNotEmpty;
     final max = widget.maxLength;
     return max == null ? NameText.isValid(text) : isSavableName(text, max);
@@ -320,10 +337,23 @@ class _TextPromptState extends State<_TextPrompt> {
           controller: _controller,
           autofocus: true,
           maxLength: max,
-          inputFormatters: widget.isName && max != null
-              ? nameFormatters(max)
+          minLines: 1,
+          maxLines: widget.multiline ? null : 1,
+          keyboardType: widget.multiline ? TextInputType.multiline : null,
+          // A free text keeps its own cap ([TextCapFormatter]): the
+          // TextField's would cut the end of the text when a paste in the
+          // middle runs over.
+          maxLengthEnforcement: max != null && !widget.isName
+              ? MaxLengthEnforcement.none
               : null,
-          textCapitalization: TextCapitalization.words,
+          inputFormatters: switch (max) {
+            null => null,
+            final max when widget.isName => nameFormatters(max),
+            final max => [TextCapFormatter(max)],
+          },
+          textCapitalization: widget.multiline
+              ? TextCapitalization.sentences
+              : TextCapitalization.words,
           decoration: InputDecoration(
             hintText: widget.hint,
             helperText: widget.helper,
@@ -522,6 +552,48 @@ String? nameInputError(String text, {int? limit}) {
 /// number in what is saved of it, and short enough once stored.
 bool isSavableName(String text, int limit) =>
     NameText.isValid(text, limit) && NameLimit.fits(text, limit);
+
+/// SPEC 5.16: notes are at most 1000 characters. The one cap of every
+/// notes field: Settle up, Edit payment and the expense editor
+/// (UIFLOW-R15-02). Equal to the Ledger's TextRules.notes (pinned by
+/// test/ui/flows/notes_fields_test.dart).
+const int kNotesMax = 1000;
+
+/// SPEC 5.16: a description is at most 120 characters (TextRules
+/// .description).
+const int kDescriptionMax = 120;
+
+/// The formatters every notes field caps its text with: what is typed or
+/// pasted stays within [kNotesMax], and a note the field already holds is
+/// never cut ([TextCapFormatter]).
+List<TextInputFormatter> notesFormatters() => [TextCapFormatter(kNotesMax)];
+
+/// The formatters the description field caps its text with: as
+/// [notesFormatters], a description the field already holds is never cut.
+List<TextInputFormatter> descriptionFormatters() => [
+  TextCapFormatter(kDescriptionMax),
+];
+
+/// Whether [text] is longer than [limit] as the Ledger measures a
+/// description or note: cleaned ([TextClean.clean], line breaks kept),
+/// then in user-perceived characters and at most
+/// [NameText.unitsPerChar] code units for each.
+bool _overLimit(String text, int limit) {
+  final t = TextClean.clean(text, multiline: true);
+  return t.length > limit * NameText.unitsPerChar ||
+      t.characters.length > limit;
+}
+
+/// The message under a description holding more than [kDescriptionMax]
+/// characters (one a peer or an earlier build saved); null otherwise.
+String? descriptionInputError(String text) =>
+    _overLimit(text, kDescriptionMax) ? S.errTooLong : null;
+
+/// The message under a notes field holding more than [kNotesMax]
+/// characters (a note a peer or an earlier build saved), which the Ledger
+/// will not save until it is shortened; null otherwise.
+String? notesInputError(String text) =>
+    _overLimit(text, kNotesMax) ? S.errTooLong : null;
 
 /// The formatters every name field caps its text with ([NameLimit]).
 List<TextInputFormatter> nameFormatters(int limit) => [
