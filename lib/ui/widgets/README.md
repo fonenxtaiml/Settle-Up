@@ -56,6 +56,7 @@ reference screens. Copy its layouts when you build the real screens.
 
 ### Lists and rows
 - **ListSection**: a white grouped list (radius 20) with inset hairlines and an optional heading, action and in-card header. `ListSection({required List<Widget> children, String? title, Widget? titleAction, Widget? header, double dividerIndent = 16, EdgeInsetsGeometry padding = EdgeInsets.zero, String? semanticLabel})`. Use `dividerIndent: Space.avatarRowInset` (70) for avatar rows and 64 for member rows.
+- **SliverListSection**: `ListSection` as a lazily built sliver for a list whose length someone else decides (nearby phones). `SliverListSection({required int itemCount, required IndexedWidgetBuilder itemBuilder, double dividerIndent = 16})`. Put it in a `CustomScrollView`; it adds the 16 dp gutter itself.
 - **SectionHeading**: a heading on stone (18 above, 8 below). `SectionHeading(String title, {Widget? action, EdgeInsetsGeometry padding})`
 - **DateSubhead**: a day label inside a list, for example "Today" or "Sat, 8 Nov". `DateSubhead(String label)`
 - **TextLink**: an underlined ink link with a 32 dp target. `TextLink(String label, {required VoidCallback? onPressed})`
