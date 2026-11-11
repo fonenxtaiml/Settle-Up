@@ -9,7 +9,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
-import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/strings.dart';
