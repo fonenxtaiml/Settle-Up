@@ -330,8 +330,13 @@ abstract final class NameText {
   static const int _sizeShift = 3;
 
   /// [_stable], [_safe], [_nonStarter] and, from bit [_sizeShift] up, how
-  /// many characters the NFKD form of [r] holds (at most 18), cached: BMP characters in [_bmp] (0
-  /// for not yet known), the others in [_astral].
+  /// many characters the NFKD form of [r] holds (at most 18). BMP
+  /// characters are cached in [_bmp] (0 for not yet known). Outside the
+  /// BMP only the few code points that decompose are cached ([_astral],
+  /// bounded by the normaliser's data); the props of every other one are
+  /// read from its combining class and [isAstralMark], so the memory taken
+  /// does not grow with the names shown, whatever code points they hold
+  /// (DATA-R18-01).
   static int _props(int r) {
     if (r < 0x80) return 1 << _sizeShift | _safe | _stable;
     if (r <= 0xFFFF) {
@@ -339,11 +344,88 @@ abstract final class NameText {
       if (known != 0) return known;
       return _bmp[r] = _computeProps(r);
     }
-    return _astral[r] ??= _computeProps(r);
+    if (r > 0x10FFFF || NormalForm.decomposes(r)) {
+      return _astral[r] ??= _computeProps(r);
+    }
+    // NFKD is r itself, which is no jamo.
+    return 1 << _sizeShift |
+        (_isNonStarter(r) ? _nonStarter : 0) |
+        (isAstralMark(r) ? 0 : _safe | _stable);
   }
 
   static final Uint8List _bmp = Uint8List(0x10000);
   static final Map<int, int> _astral = {};
+
+  /// How many code points outside the BMP the caches hold. For tests: no
+  /// more than decompose, whatever names are shown (DATA-R18-01).
+  @visibleForTesting
+  static int get astralEntries => _astral.length + _marksAstral.length;
+
+  /// [_props] of [r] and what it is defined as, for tests: they are the
+  /// same for every code point.
+  @visibleForTesting
+  static (int, int) propsAndReference(int r) => (_props(r), _computeProps(r));
+
+  /// Whether the code point [r], outside the BMP, is a mark (Unicode M*),
+  /// as `\p{M}` matches it: one lookup in [_astralMarks], where matching
+  /// the expression takes about a microsecond a code point.
+  @visibleForTesting
+  static bool isAstralMark(int r) {
+    var lo = 0, hi = _astralMarks.length ~/ 2;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (r < _astralMarks[2 * mid]) {
+        hi = mid;
+      } else if (r > _astralMarks[2 * mid + 1]) {
+        lo = mid + 1;
+      } else {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// The ranges (first, last) of the marks outside the BMP, as `\p{M}`
+  /// matches them on this runtime; name_text_tables_test.dart checks it
+  /// against the expression for every code point.
+  // dart format off
+  static const List<int> _astralMarks = [
+    0x101FD, 0x101FD, 0x102E0, 0x102E0, 0x10376, 0x1037A, 0x10A01, 0x10A03,
+    0x10A05, 0x10A06, 0x10A0C, 0x10A0F, 0x10A38, 0x10A3A, 0x10A3F, 0x10A3F,
+    0x10AE5, 0x10AE6, 0x10D24, 0x10D27, 0x10D69, 0x10D6D, 0x10EAB, 0x10EAC,
+    0x10EFA, 0x10EFF, 0x10F46, 0x10F50, 0x10F82, 0x10F85, 0x11000, 0x11002,
+    0x11038, 0x11046, 0x11070, 0x11070, 0x11073, 0x11074, 0x1107F, 0x11082,
+    0x110B0, 0x110BA, 0x110C2, 0x110C2, 0x11100, 0x11102, 0x11127, 0x11134,
+    0x11145, 0x11146, 0x11173, 0x11173, 0x11180, 0x11182, 0x111B3, 0x111C0,
+    0x111C9, 0x111CC, 0x111CE, 0x111CF, 0x1122C, 0x11237, 0x1123E, 0x1123E,
+    0x11241, 0x11241, 0x112DF, 0x112EA, 0x11300, 0x11303, 0x1133B, 0x1133C,
+    0x1133E, 0x11344, 0x11347, 0x11348, 0x1134B, 0x1134D, 0x11357, 0x11357,
+    0x11362, 0x11363, 0x11366, 0x1136C, 0x11370, 0x11374, 0x113B8, 0x113C0,
+    0x113C2, 0x113C2, 0x113C5, 0x113C5, 0x113C7, 0x113CA, 0x113CC, 0x113D0,
+    0x113D2, 0x113D2, 0x113E1, 0x113E2, 0x11435, 0x11446, 0x1145E, 0x1145E,
+    0x114B0, 0x114C3, 0x115AF, 0x115B5, 0x115B8, 0x115C0, 0x115DC, 0x115DD,
+    0x11630, 0x11640, 0x116AB, 0x116B7, 0x1171D, 0x1172B, 0x1182C, 0x1183A,
+    0x11930, 0x11935, 0x11937, 0x11938, 0x1193B, 0x1193E, 0x11940, 0x11940,
+    0x11942, 0x11943, 0x119D1, 0x119D7, 0x119DA, 0x119E0, 0x119E4, 0x119E4,
+    0x11A01, 0x11A0A, 0x11A33, 0x11A39, 0x11A3B, 0x11A3E, 0x11A47, 0x11A47,
+    0x11A51, 0x11A5B, 0x11A8A, 0x11A99, 0x11B60, 0x11B67, 0x11C2F, 0x11C36,
+    0x11C38, 0x11C3F, 0x11C92, 0x11CA7, 0x11CA9, 0x11CB6, 0x11D31, 0x11D36,
+    0x11D3A, 0x11D3A, 0x11D3C, 0x11D3D, 0x11D3F, 0x11D45, 0x11D47, 0x11D47,
+    0x11D8A, 0x11D8E, 0x11D90, 0x11D91, 0x11D93, 0x11D97, 0x11EF3, 0x11EF6,
+    0x11F00, 0x11F01, 0x11F03, 0x11F03, 0x11F34, 0x11F3A, 0x11F3E, 0x11F42,
+    0x11F5A, 0x11F5A, 0x13440, 0x13440, 0x13447, 0x13455, 0x1611E, 0x1612F,
+    0x16AF0, 0x16AF4, 0x16B30, 0x16B36, 0x16F4F, 0x16F4F, 0x16F51, 0x16F87,
+    0x16F8F, 0x16F92, 0x16FE4, 0x16FE4, 0x16FF0, 0x16FF1, 0x1BC9D, 0x1BC9E,
+    0x1CF00, 0x1CF2D, 0x1CF30, 0x1CF46, 0x1D165, 0x1D169, 0x1D16D, 0x1D172,
+    0x1D17B, 0x1D182, 0x1D185, 0x1D18B, 0x1D1AA, 0x1D1AD, 0x1D242, 0x1D244,
+    0x1DA00, 0x1DA36, 0x1DA3B, 0x1DA6C, 0x1DA75, 0x1DA75, 0x1DA84, 0x1DA84,
+    0x1DA9B, 0x1DA9F, 0x1DAA1, 0x1DAAF, 0x1E000, 0x1E006, 0x1E008, 0x1E018,
+    0x1E01B, 0x1E021, 0x1E023, 0x1E024, 0x1E026, 0x1E02A, 0x1E08F, 0x1E08F,
+    0x1E130, 0x1E136, 0x1E2AE, 0x1E2AE, 0x1E2EC, 0x1E2EF, 0x1E4EC, 0x1E4EF,
+    0x1E5EE, 0x1E5EF, 0x1E6E3, 0x1E6E3, 0x1E6E6, 0x1E6E6, 0x1E6EE, 0x1E6EF,
+    0x1E6F5, 0x1E6F5, 0x1E8D0, 0x1E8D6, 0x1E944, 0x1E94A, 0xE0100, 0xE01EF,
+  ];
+  // dart format on
 
   static int _computeProps(int r) {
     final c = String.fromCharCode(r);
@@ -418,11 +500,19 @@ abstract final class NameText {
       _marksBmp[r] = m | _marksKnown;
       return m;
     }
-    final known = _marksAstral[r];
-    if (known != null) return known;
-    if (_marksAstral.length >= 4096) _marksAstral.clear();
-    return _marksAstral[r] = _computeMarks(r);
+    // A code point outside the BMP that does not decompose is a mark or
+    // not; the others are the few the data lists, so [_marksAstral] holds
+    // a bounded number of them (DATA-R18-01).
+    if (!NormalForm.decomposes(r)) {
+      return _isNonStarter(r) ? (1 << 16) | _onlyMarks | 1 : 0;
+    }
+    return _marksAstral[r] ??= _computeMarks(r);
   }
+
+  /// [_marks] of [r] and what it is defined as, for tests: they are the
+  /// same for every code point.
+  @visibleForTesting
+  static (int, int) marksAndReference(int r) => (_marks(r), _computeMarks(r));
 
   static int _computeMarks(int r) {
     final d = NormalForm.nfkd(String.fromCharCode(r)).runes.toList();
