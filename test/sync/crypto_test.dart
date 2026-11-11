@@ -14,6 +14,7 @@ import 'package:settle_up/sync/protocol/session.dart';
 import 'package:settle_up/sync/sync_engine.dart';
 
 import 'support/harness.dart';
+import 'support/hello_leak.dart';
 import 'support/phone.dart';
 
 Uint8List _key(int seed) => groupKeyOf(seed);
@@ -161,9 +162,27 @@ void main() {
     test('HELLOs carry no group ids in clear and blind per nonce', () async {
       final a = await _start(true, {'g1': _key(1)});
       final b = await _start(false, {'g1': _key(1)});
-      final text = String.fromCharCodes(a.helloFrame);
-      expect(text, isNot(contains('g1')));
+      // Checks the decoded fields, not the raw text: the random ephemeral
+      // key spells "g1" in about 1 of 100 HELLOs (SECURITY-R17-02).
+      expect(helloGroupIdLeaks(a.helloFrame, 'g1'), isEmpty);
+      expect(helloGroupIdLeaks(b.helloFrame, 'g1'), isEmpty);
       expect(a.hello.blindedGroups.single, isNot(b.hello.blindedGroups.single));
+    });
+    test('HELLOs hide real-format group ids, gzipped bodies too', () async {
+      final keys = {for (var i = 0; i < 300; i++) groupIdOf(i): groupKeyOf(i)};
+      final h = await Handshake.start(
+        initiator: true,
+        groupKeys: keys,
+        deviceId: deviceIdOf('a'),
+        deviceName: 'A',
+        maxFrame: 1 << 20,
+        transport: TransportKind.lan,
+        random: Random(1),
+      );
+      expect(h.helloFrame[2] & kFlagGzip, kFlagGzip);
+      for (final id in keys.keys) {
+        expect(helloGroupIdLeaks(h.helloFrame, id), isEmpty, reason: id);
+      }
     });
     test('more shared groups than fit in a HELLO still agree on S', () async {
       final keys = {for (var i = 0; i < 300; i++) groupIdOf(i): groupKeyOf(i)};
@@ -324,9 +343,9 @@ void main() {
     test('window tags resolve to the nearest window within two days', () {
       const w = 2950000;
       int? resolve(int window) => DiscoveryTokens.resolveWindowTag(
-            DiscoveryTokens.parseWindowTag(DiscoveryTokens.windowTag(window))!,
-            w,
-          );
+        DiscoveryTokens.parseWindowTag(DiscoveryTokens.windowTag(window))!,
+        w,
+      );
       expect(DiscoveryTokens.windowTag(w), hasLength(3));
       for (final d in const [0, 1, -1, 12, -144, 288, -288]) {
         expect(resolve(w + d), w + d, reason: 'skew of $d windows');
@@ -337,28 +356,33 @@ void main() {
       expect(DiscoveryTokens.parseWindowTag('1000'), isNull);
     });
 
-    test('advert ids: 8 hex chars, per secret and window, unlinkable', () async {
-      final s1 = DiscoveryTokens.newAdvertSecret();
-      final s2 = DiscoveryTokens.newAdvertSecret();
-      expect(s1, isNot(s2));
-      final a = await DiscoveryTokens.advertId(s1, 7);
-      expect(DiscoveryTokens.isAdvertId(a), isTrue);
-      expect(await DiscoveryTokens.advertId(s1, 7), a);
-      expect(await DiscoveryTokens.advertId(s1, 8), isNot(a));
-      expect(await DiscoveryTokens.advertId(s2, 7), isNot(a));
-    });
+    test(
+      'advert ids: 8 hex chars, per secret and window, unlinkable',
+      () async {
+        final s1 = DiscoveryTokens.newAdvertSecret();
+        final s2 = DiscoveryTokens.newAdvertSecret();
+        expect(s1, isNot(s2));
+        final a = await DiscoveryTokens.advertId(s1, 7);
+        expect(DiscoveryTokens.isAdvertId(a), isTrue);
+        expect(await DiscoveryTokens.advertId(s1, 7), a);
+        expect(await DiscoveryTokens.advertId(s1, 8), isNot(a));
+        expect(await DiscoveryTokens.advertId(s2, 7), isNot(a));
+      },
+    );
 
-    test('an advertiser that names its window is matched at any skew',
-        () async {
-      final keys = {'g1': _key(1)};
-      final hostClock = t0.add(const Duration(hours: 5));
-      final adv = await DiscoveryTokens.advertised(keys, hostClock);
-      final index = await DiscoveryTokens.indexForWindow(
-        keys,
-        DiscoveryTokens.windowAt(hostClock),
-      );
-      expect(index[adv.single], 'g1');
-    });
+    test(
+      'an advertiser that names its window is matched at any skew',
+      () async {
+        final keys = {'g1': _key(1)};
+        final hostClock = t0.add(const Duration(hours: 5));
+        final adv = await DiscoveryTokens.advertised(keys, hostClock);
+        final index = await DiscoveryTokens.indexForWindow(
+          keys,
+          DiscoveryTokens.windowAt(hostClock),
+        );
+        expect(index[adv.single], 'g1');
+      },
+    );
 
     test('blinded ids depend on the key and the nonce', () async {
       final n1 = Uint8List(16), n2 = Uint8List(16)..[0] = 1;
@@ -447,19 +471,24 @@ void main() {
       await expectAuthFailed(onFirstSealed((f) => [f, f]));
     });
 
-    test('the responder-to-initiator direction rejects replay and tamper',
-        () async {
-      for (final transform in [
-        onFirstSealed((f) => [f, f]),
-        onFirstSealed((f) => [Uint8List.fromList(f)..[20] ^= 0x01]),
-        onFirstSealed((f) => const []),
-      ]) {
-        final (ra, rp) = await syncPair(alex, priya,
-            wrapInitiator: (c) => InterceptChannel(c, transform));
-        expect(ra.failure, SyncFailure.authFailed, reason: ra.message);
-        expect(rp.isSuccess, isFalse);
-      }
-    });
+    test(
+      'the responder-to-initiator direction rejects replay and tamper',
+      () async {
+        for (final transform in [
+          onFirstSealed((f) => [f, f]),
+          onFirstSealed((f) => [Uint8List.fromList(f)..[20] ^= 0x01]),
+          onFirstSealed((f) => const []),
+        ]) {
+          final (ra, rp) = await syncPair(
+            alex,
+            priya,
+            wrapInitiator: (c) => InterceptChannel(c, transform),
+          );
+          expect(ra.failure, SyncFailure.authFailed, reason: ra.message);
+          expect(rp.isSuccess, isFalse);
+        }
+      },
+    );
 
     test('reordered frames close the session', () async {
       Uint8List? held;
@@ -561,7 +590,7 @@ void main() {
         );
         expect(rp.failure, SyncFailure.authFailed);
         // Priya's plain ERROR reaches Alex although he already sealed.
-      expect(ra.failure, SyncFailure.authFailed, reason: ra.message);
+        expect(ra.failure, SyncFailure.authFailed, reason: ra.message);
         expect(ra.isSuccess, isFalse);
       },
     );
