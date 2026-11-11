@@ -95,6 +95,17 @@ class SettingsScreen extends ConsumerWidget {
                       isName: true,
                     );
                     if (name == null || !context.mounted) return;
+                    // Saved as it opened: nothing changed, so nothing is
+                    // saved or sent. Renaming me everywhere would undo the
+                    // name a group has for me, my own per-group rename or
+                    // another phone's (UIFLOW-R21-01).
+                    if (isNameAsOpened(
+                      name,
+                      profile.displayName,
+                      kMemberNameMax,
+                    )) {
+                      return;
+                    }
                     // Two members with one name cannot be told apart in
                     // Paid by or the split (the Members rule).
                     final clash = nameClashForMe(ref, profile.personId, name);
@@ -210,6 +221,14 @@ class SettingsScreen extends ConsumerWidget {
                       isName: true,
                     );
                     if (name == null || !context.mounted) return;
+                    // Saved as it opened: nothing to save (UIFLOW-R21-01).
+                    if (isNameAsOpened(
+                      name,
+                      device?.deviceName ?? '',
+                      kDeviceNameMax,
+                    )) {
+                      return;
+                    }
                     await runGuarded(context, () => repo.setDeviceName(name));
                   },
                 ),

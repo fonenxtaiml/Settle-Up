@@ -119,7 +119,9 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   /// phone made while the form was open is not undone (UIFLOW-R17-01).
   bool get _nameKept {
     final loaded = _loadedGroup;
-    return loaded != null && _name.text.trim() == loaded.name.trim();
+    return loaded != null &&
+        (_name.text.trim() == loaded.name.trim() ||
+            isNameAsOpened(_name.text, loaded.name, kGroupNameMax));
   }
 
   Future<void> _save(Map<PersonId, String> people) async {
