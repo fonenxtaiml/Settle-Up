@@ -234,7 +234,6 @@ void main() {
     'UIFLOW-R19-01: Settle up notes, after line breaks typed at the end of '
     'a note near the cap the counter shows room but the next letter is '
     'refused with no message',
-    skip: true, // QA UIFLOW-R19-01: Settle up notes counter shows room while a letter typed after trailing line breaks is refused
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');
@@ -260,8 +259,8 @@ void main() {
     },
   );
 
-  testWidgets('R19 probe (premise of UIFLOW-R19-01): the counter shows '
-      '998/1000 after two line breaks at the end and refuses the letter', (
+  testWidgets('R19 probe (around UIFLOW-R19-01): the counter counts the '
+      'line breaks at the end and shows room exactly when a letter fits', (
     tester,
   ) async {
     qaPhone(tester);
@@ -271,17 +270,20 @@ void main() {
     await tester.enterText(_promptField, 'a' * 998);
     await tester.pump();
     await _typeAtEnd(tester, _promptField, '\n\n');
-    expect(find.text('998/1000'), findsOneWidget);
+    expect(find.text('1000/1000'), findsOneWidget);
     expect(_promptTooLong, findsNothing);
     await _typeAtEnd(tester, _promptField, 'b');
     expect(_held(tester, _promptField), '${'a' * 998}\n\n');
-    expect(find.text('998/1000'), findsOneWidget);
+    expect(find.text('1000/1000'), findsOneWidget);
     expect(_promptTooLong, findsNothing);
-    // With a single trailing break the letter fits (1000 stored).
+    // With a single trailing break the counter shows the one character
+    // left, and the letter fits (1000 stored).
     await tester.enterText(_promptField, '${'a' * 998}\n');
     await tester.pump();
+    expect(find.text('999/1000'), findsOneWidget);
     await _typeAtEnd(tester, _promptField, 'b');
     expect(_held(tester, _promptField), '${'a' * 998}\nb');
+    expect(find.text('1000/1000'), findsOneWidget);
     await w.shutdown(tester);
   });
 }

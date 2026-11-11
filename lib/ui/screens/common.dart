@@ -354,15 +354,15 @@ class _TextPromptState extends State<_TextPrompt> {
       builder: (context, _) {
         final max = widget.maxLength;
         // A name counts as it is stored ([NameLimit.length]) and a free
-        // text as the Ledger measures it ([TextCap.length]), so the
-        // counter never says a text fits that Save would refuse.
+        // text as the Ledger measures it, with the spaces and line breaks
+        // at its end counted as the cap holds them once a letter follows
+        // ([TextCapFormatter.counted]), so the counter never says a text
+        // fits that Save would refuse, nor shows room the field refuses.
         final count = max == null
             ? null
             : widget.isName
             ? NameLimit.length(_controller.text)
-            : TextCap.length(
-                TextClean.clean(_controller.text, multiline: true),
-              );
+            : TextCapFormatter.counted(_controller.text, max);
         return TextField(
           controller: _controller,
           autofocus: true,
