@@ -41,36 +41,32 @@ Future<GroupId> _groupNamedByOlderPhone(RealWorld w, String name) async {
 
 void main() {
   for (final name in ['\u{1F3D6}\u{FE0F}', '★★', '...']) {
-    testWidgets(
-      'UIFLOW-R15-01: Edit group of a group named "$name" by an '
-      'older phone saves a change to simplify, emoji or currency without '
-      'a rename',
-      (tester) async {
-        qaPhone(tester);
-        final w = await RealWorld.create(name: 'Arjun');
-        final gid = await _groupNamedByOlderPhone(w, name);
-        expect(w.group(gid).group!.simplifyDebts, isTrue);
-        await pumpReal(tester, w, location: Routes.home);
-        w.push(Routes.group(gid));
-        await qaSettle(tester);
-        w.push(Routes.editGroup(gid));
-        await qaSettle(tester);
-        expect(find.text(S.editGroupTitle), findsOneWidget);
-        // The name is left as it is; only Simplify is switched off.
-        final simplify = find.byType(Switch);
-        await qaTap(tester, simplify.first);
-        await qaTap(tester, find.text(S.saveChanges));
-        expect(
-          w.group(gid).group!.simplifyDebts,
-          isFalse,
-          reason: 'Save refused because the untouched name has no letter',
-        );
-        expect(w.group(gid).group!.name, name);
-        expect(w.location, Routes.group(gid));
-        await w.shutdown(tester);
-      },
-      skip: true, // QA UIFLOW-R15-01: Edit group refuses every change to a group whose untouched name came from an older phone with no letter or number
-    );
+    testWidgets('UIFLOW-R15-01: Edit group of a group named "$name" by an '
+        'older phone saves a change to simplify, emoji or currency without '
+        'a rename', (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await _groupNamedByOlderPhone(w, name);
+      expect(w.group(gid).group!.simplifyDebts, isTrue);
+      await pumpReal(tester, w, location: Routes.home);
+      w.push(Routes.group(gid));
+      await qaSettle(tester);
+      w.push(Routes.editGroup(gid));
+      await qaSettle(tester);
+      expect(find.text(S.editGroupTitle), findsOneWidget);
+      // The name is left as it is; only Simplify is switched off.
+      final simplify = find.byType(Switch);
+      await qaTap(tester, simplify.first);
+      await qaTap(tester, find.text(S.saveChanges));
+      expect(
+        w.group(gid).group!.simplifyDebts,
+        isFalse,
+        reason: 'Save refused because the untouched name has no letter',
+      );
+      expect(w.group(gid).group!.name, name);
+      expect(w.location, Routes.group(gid));
+      await w.shutdown(tester);
+    });
   }
 
   testWidgets('R15 probe (premise of UIFLOW-R15-01): the Ledger saves the '
