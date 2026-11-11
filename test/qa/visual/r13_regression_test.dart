@@ -320,7 +320,6 @@ void main() {
     'QA VISUAL-R13-01: above 1.0x text the year list opens scrolled away '
     'from the selected year (2026 off screen at 2.0x; 400 to 3,500 years '
     'off for a far date)',
-    skip: true, // QA VISUAL-R13-01: the year list opens scrolled away from the selected year above 1.0x text
     (tester) async {
       final problems = <String>[];
       for (final size in const [Size(360, 640), Size(411, 891)]) {
