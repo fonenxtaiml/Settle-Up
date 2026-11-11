@@ -118,7 +118,7 @@ abstract final class NormalForm {
       if (j - i > 1) _sortRun(d, cc, i, j);
       i = j;
     }
-    if (!compose) return String.fromCharCodes(d, 0, n);
+    if (!compose) return stringOf(d, n);
 
     // Canonical composition, as unorm_dart composes: each character with
     // the first character of its segment when nothing between them blocks
@@ -149,7 +149,29 @@ abstract final class NormalForm {
       lastClass = c;
       out[length++] = u;
     }
-    return String.fromCharCodes(out, 0, length);
+    return stringOf(out, length);
+  }
+
+  /// The text of the first [n] code points of [cps]. Through code units:
+  /// String.fromCharCodes reads a Uint16List several times as fast as an
+  /// Int32List, and names are made of hundreds of code points at most.
+  static String stringOf(Int32List cps, int n) {
+    var units = n;
+    for (var i = 0; i < n; i++) {
+      if (cps[i] > 0xFFFF) units++;
+    }
+    final u = Uint16List(units);
+    var k = 0;
+    for (var i = 0; i < n; i++) {
+      final r = cps[i];
+      if (r > 0xFFFF) {
+        u[k++] = 0xD7C0 + (r >> 10);
+        u[k++] = 0xDC00 + (r & 0x3FF);
+      } else {
+        u[k++] = r;
+      }
+    }
+    return String.fromCharCodes(u);
   }
 
   /// Sorts [d] from [from] to [to] by the classes [cc], stably.
@@ -274,6 +296,7 @@ abstract final class NormalForm {
   /// The properties of [r]: its combining class and the flags above,
   /// cached in [_bmp] (0 for not yet known) or, outside the BMP, read from
   /// [_astral], which holds every code point there with any property.
+  @pragma('vm:prefer-inline')
   static int _info(int r) {
     if (r <= 0xFFFF) {
       final known = _bmp[r];

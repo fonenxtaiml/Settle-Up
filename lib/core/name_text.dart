@@ -129,10 +129,13 @@ abstract final class NameText {
     final source = stable || normalized
         ? raw
         : NormalForm.nfkc(boundMarkRuns(raw));
-    // Most names hold nothing a pass leaves out or changes.
-    if (!full && !_hasSpaceOrInvisible(source)) {
+    // Most names hold nothing a pass leaves out or changes, and most of
+    // the others only spaces to make plain, collapse and trim: nothing is
+    // left out, so nothing joins.
+    final change = full ? _invisibles : _changes(source);
+    if (change != _invisibles) {
       if (!stable && !normalized) unormUnits += raw.length + source.length;
-      return (source, false);
+      return (change == _none ? source : _plainSpaces(source), false);
     }
     final runes = _codePoints(source);
     final n = runes.length;
@@ -220,7 +223,7 @@ abstract final class NameText {
     // reorders only marks and composes only a character that composes
     // with the one before it. So only a pass that leaves out a character
     // before such a one ([NormalForm.joinsPrevious]) needs NFC.
-    final t = String.fromCharCodes(out, 0, length);
+    final t = NormalForm.stringOf(out, length);
     if (full) {
       if (stable || (normalized && t == raw)) return (t, true);
       unormUnits += (normalized ? 0 : raw.length) + t.length;
@@ -236,22 +239,66 @@ abstract final class NameText {
     return (NormalForm.nfc(boundMarkRuns(t)), true);
   }
 
-  /// Whether [s] holds a character a pass of [normalize] leaves out or
-  /// replaces with a plain space: one that draws as a blank or draws
-  /// nothing, or a space that is not plain (two plain spaces in a row, or
-  /// one at an end).
-  static bool _hasSpaceOrInvisible(String s) {
+  /// What a pass of [normalize] changes in [s]: [_invisibles] when it
+  /// holds a character that draws nothing (which may be left out), else
+  /// [_spaces] when it holds a character that draws as a blank and is not
+  /// a plain space or a plain space that is not one (two in a row, or one
+  /// at an end), else [_none].
+  static int _changes(String s) {
+    var change = _none;
     var space = true; // at the start
-    for (final r in s.runes) {
+    for (var i = 0; i < s.length; i++) {
+      var r = s.codeUnitAt(i);
       if (r == 0x20) {
-        if (space) return true;
+        if (space) change = _spaces;
         space = true;
         continue;
       }
-      if (_kind(r) != _drawn) return true;
-      space = false;
+      if (r < 0x80 && r > 0x20 && r != 0x7F) {
+        space = false;
+        continue;
+      }
+      if (r >= 0xD800 && r <= 0xDBFF && i + 1 < s.length) {
+        final low = s.codeUnitAt(i + 1);
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          r = 0x10000 + ((r - 0xD800) << 10) + (low - 0xDC00);
+          i++;
+        }
+      }
+      final k = _kind(r);
+      if (k == _invisible) return _invisibles;
+      if (k == _space) {
+        change = _spaces;
+        space = true;
+      } else {
+        space = false;
+      }
     }
-    return space && s.isNotEmpty;
+    return space && s.isNotEmpty ? _spaces : change;
+  }
+
+  static const int _none = 0, _spaces = 1, _invisibles = 2;
+
+  /// [s], which holds no character that draws nothing, with every
+  /// character that draws as a blank a plain space, runs of them collapsed
+  /// to one and none at the ends: what a pass of [normalize] makes of it.
+  static String _plainSpaces(String s) {
+    final out = Uint16List(s.length);
+    var n = 0;
+    var space = false;
+    for (var i = 0; i < s.length; i++) {
+      final u = s.codeUnitAt(i);
+      // Every character that draws as a blank is in the BMP, and no half
+      // of a surrogate pair is one.
+      if (u == 0x20 || ((u >= 0x80 || u < 0x20) && _kind(u) == _space)) {
+        space = true;
+        continue;
+      }
+      if (space && n > 0) out[n++] = 0x20;
+      space = false;
+      out[n++] = u;
+    }
+    return String.fromCharCodes(out, 0, n);
   }
 
   /// The code points of [s], a lone surrogate as itself (as [String.runes]
@@ -277,6 +324,7 @@ abstract final class NameText {
 
   /// Whether [r] [isSpaceLike] ([_space]), [isInvisible] ([_invisible]) or
   /// neither ([_drawn]), cached for the BMP.
+  @pragma('vm:prefer-inline')
   static int _kind(int r) {
     if (r <= 0xFFFF) {
       final known = _kinds[r];
@@ -337,6 +385,7 @@ abstract final class NameText {
   /// read from its combining class and [isAstralMark], so the memory taken
   /// does not grow with the names shown, whatever code points they hold
   /// (DATA-R18-01).
+  @pragma('vm:prefer-inline')
   static int _props(int r) {
     if (r < 0x80) return 1 << _sizeShift | _safe | _stable;
     if (r <= 0xFFFF) {
@@ -467,7 +516,14 @@ abstract final class NameText {
     var run = 0;
     StringBuffer? out; // null while nothing is left out
     var i = 0;
-    for (final r in s.runes) {
+    while (i < s.length) {
+      var r = s.codeUnitAt(i);
+      if (r >= 0xD800 && r <= 0xDBFF && i + 1 < s.length) {
+        final low = s.codeUnitAt(i + 1);
+        if (low >= 0xDC00 && low <= 0xDFFF) {
+          r = 0x10000 + ((r - 0xD800) << 10) + (low - 0xDC00);
+        }
+      }
       final w = r > 0xFFFF ? 2 : 1;
       final m = _marks(r);
       final lead = m >> 16, trail = m & 0xFFFF;
@@ -490,6 +546,7 @@ abstract final class NameText {
   /// For the character [r]: the marks its NFKD form starts with (high 16
   /// bits) and ends with (low 15 bits), and [_onlyMarks] when it is marks
   /// only (the count of marks is then both).
+  @pragma('vm:prefer-inline')
   static int _marks(int r) {
     // Below U+00A8 nothing decomposes; lone surrogates are left out later.
     if (r < 0xA8 || (r >= 0xD800 && r <= 0xDFFF)) return 0;
@@ -622,7 +679,7 @@ abstract final class NameText {
   /// normal form holds enough.
   static String _normalizedHead(String raw, int limit) {
     if (_isStable(raw)) return normalize(raw); // cannot grow
-    final runes = raw.runes.toList();
+    final runes = _codePoints(raw);
     var size = 0;
     for (final r in runes) {
       size += _props(r) >> _sizeShift;
@@ -632,6 +689,13 @@ abstract final class NameText {
     var budget = limit + _margin;
     var units = 0;
     size = 0;
+    // About how many characters the normal form of the head holds: the
+    // NFKD form of each drawn character that starts one. Marks, jamo that
+    // join the one before, spaces and characters that draw nothing add
+    // none, so no head is tried that could not hold enough: one whose
+    // characters are mostly accents (a mark after each space, or between
+    // soft hyphens) is normalised once, whole (DATA-R18-02).
+    var drawn = 0;
     for (final r in runes) {
       final p = _props(r);
       // A head that holds half the name or more costs about as much as all
@@ -639,16 +703,17 @@ abstract final class NameText {
       // such a head is not tried, and a name is normalised at most about
       // twice over (DATA-R15-01).
       if (2 * size >= total) break;
-      if (size >= budget && p & _safe != 0) {
+      if (drawn >= budget && p & _safe != 0) {
         final head = normalize(raw.substring(0, units));
         final shown = head.characters.length;
         if (shown >= limit + _margin) return head;
-        // Every character takes one unit at least: enough for twice what is
-        // missing, and at least half as much again, so a name of marks or
-        // invisible characters takes a few heads, not one per unit.
-        budget = size + math.max(2 * (limit + _margin - shown), size);
+        // Enough for twice what is missing, and at least half as much
+        // again, so a name of characters that join takes a few heads, not
+        // one per character.
+        budget = drawn + math.max(2 * (limit + _margin - shown), drawn);
       }
       size += p >> _sizeShift;
+      if (p & _safe != 0 && _kind(r) == _drawn) drawn += p >> _sizeShift;
       units += r > 0xFFFF ? 2 : 1;
     }
     return normalize(raw);
