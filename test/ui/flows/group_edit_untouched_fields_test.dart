@@ -196,4 +196,49 @@ void main() {
     expect(g.name, 'Goa 2026');
     await w.shutdown(tester);
   });
+
+  testWidgets('Members: a rename prompt saved as it opened sends no rename, '
+      'so a rename another phone made meanwhile stays', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    final gid = await w.seedGroup(people: const ['Priya']);
+    final priya = w.member(gid, 'Priya');
+    await pumpReal(tester, w, location: Routes.home);
+    w.push(Routes.members(gid));
+    await qaSettle(tester);
+    await qaTap(tester, find.text('Priya'));
+    await qaTap(
+      tester,
+      find.descendant(
+        of: find.byType(BottomSheet),
+        matching: find.text(S.rename),
+      ),
+    );
+    expect(find.byType(AlertDialog), findsOneWidget);
+    // Sync renames Priya while the prompt is open.
+    _counter++;
+    await w.ledger.applyRemote(gid, [
+      Operation(
+        id: '$gid/$_otherPhone/$_counter',
+        groupId: gid,
+        deviceId: _otherPhone,
+        counter: _counter,
+        hlc: Hlc(qaNow.millisecondsSinceEpoch + 60000, _counter, _otherPhone),
+        entityType: EntityType.member,
+        entityId: priya,
+        kind: OpKind.update,
+        payload: {MemberFields.displayName: 'Priya Shah'},
+      ),
+    ]);
+    await qaSettle(tester);
+    await qaTap(
+      tester,
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(S.save),
+      ),
+    );
+    expect(w.group(gid).members[priya]!.displayName, 'Priya Shah');
+    await w.shutdown(tester);
+  });
 }
