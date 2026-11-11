@@ -63,8 +63,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R15-01: the currency picker shows every symbol whole at '
     '1.0x, 1.3x and 2.0x',
-    // QA VISUAL-R15-01: Currency picker cuts symbols in its 40 dp box.
-    skip: true,
     (tester) async {
       final problems = <String>[];
       for (final scale in const [1.0, 1.3, 2.0]) {

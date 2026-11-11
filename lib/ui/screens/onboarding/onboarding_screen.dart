@@ -159,7 +159,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               PickerTile(
                 label: S.homeCurrency,
                 value: '${c.name} (${c.code})',
-                leading: Text(c.symbol, style: theme.textTheme.titleMedium),
+                leading: SymbolText(
+                  c.symbol,
+                  style: theme.textTheme.titleMedium,
+                  maxWidth: SymbolText.maxLeadingWidth(context),
+                ),
                 onTap: () async {
                   final code = await pickCurrency(context, selected: _currency);
                   if (code != null) setState(() => _currency = code);

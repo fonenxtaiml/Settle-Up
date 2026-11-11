@@ -100,10 +100,20 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     return true;
   }
 
+  /// Whether the name field still holds the name the group has. A name
+  /// this phone already holds never blocks a change to anything else
+  /// (UIFLOW-R8-02 for profile names, UIFLOW-R15-01): one an older phone
+  /// or an earlier build gave the group may have no letter or number, or
+  /// be longer than [kGroupNameMax], and is kept as it is unless the user
+  /// edits it. Only a name the user types is checked.
+  bool _nameKept(Group? original) =>
+      original != null && _name.text.trim() == original.name.trim();
+
   Future<void> _save(Group? original, Map<PersonId, String> people) async {
     setState(() => _tried = true);
     final name = _name.text.trim();
-    if (!isSavableName(name, kGroupNameMax) || _saving) {
+    final kept = !_isNew && _nameKept(original);
+    if ((!kept && !isSavableName(name, kGroupNameMax)) || _saving) {
       Haptics.invalid(context);
       return;
     }
@@ -140,7 +150,7 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
         await ledger.updateGroup(
           widget.groupId!,
           GroupPatch(
-            name: name == o.name ? null : name,
+            name: kept ? null : name,
             type: _type == o.type ? null : _type,
             currency: currency == o.currency ? null : currency,
             emoji: _emoji == o.emoji ? null : (_emoji ?? ''),
@@ -257,6 +267,8 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
               inputFormatters: nameFormatters(kGroupNameMax),
               errorText: _name.text.trim().isEmpty
                   ? (_tried ? S.nameNeeded : null)
+                  : _nameKept(original)
+                  ? null
                   : nameInputError(_name.text, limit: kGroupNameMax),
               onChanged: (_) => setState(() {}),
             ),
@@ -273,9 +285,10 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
             PickerTile(
               label: S.currency,
               value: '${currency.name} (${currency.code})',
-              leading: Text(
+              leading: SymbolText(
                 currency.symbol,
                 style: theme.textTheme.titleMedium,
+                maxWidth: SymbolText.maxLeadingWidth(context),
               ),
               onTap: () async {
                 final code = await pickCurrency(

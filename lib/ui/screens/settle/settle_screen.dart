@@ -466,6 +466,9 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                       context,
                       title: S.notes,
                       initial: _note,
+                      maxLength: kNotesMax,
+                      optional: true,
+                      multiline: true,
                     );
                     if (t != null) setState(() => _note = t);
                   },
