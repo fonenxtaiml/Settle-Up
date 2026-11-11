@@ -96,8 +96,5 @@ void main() {
       expect(group, lessThan(5 * ordinary + 50));
     },
     timeout: const Timeout(Duration(minutes: 3)),
-    skip:
-        'QA DATA-R15-01: names of combining marks that NFKC expands are '
-        'still normalised whole on every rebuild',
   );
 }
