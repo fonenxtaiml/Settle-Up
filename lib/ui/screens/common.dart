@@ -238,6 +238,7 @@ Future<String?> promptText(
   String confirmLabel = S.save,
   int? maxLength,
   bool isName = false,
+  bool optional = false,
   bool multiline = false,
 }) => showDialog<String>(
   context: context,
@@ -249,6 +250,7 @@ Future<String?> promptText(
     confirmLabel: confirmLabel,
     maxLength: maxLength,
     isName: isName,
+    optional: optional,
     multiline: multiline,
   ),
 );
@@ -262,8 +264,9 @@ class _TextPrompt extends StatefulWidget {
     this.helper,
     this.maxLength,
     this.isName = false,
+    this.optional = false,
     this.multiline = false,
-  });
+  }) : assert(!(isName && optional), 'a name is never optional');
 
   final String title;
   final String initial;
@@ -277,6 +280,10 @@ class _TextPrompt extends StatefulWidget {
   /// The text is a name: Save needs a letter or number in it
   /// ([NameText.isValid]), as the Ledger and Settings do (DATA-R6-02).
   final bool isName;
+
+  /// The text may be left empty (a note): Save is on while the field is
+  /// empty and returns '', which takes the text out (UIFLOW-R15-03).
+  final bool optional;
 
   /// Line breaks are kept (notes, SPEC 5.16), so a held text with them is
   /// never joined into one line.
@@ -303,6 +310,7 @@ class _TextPromptState extends State<_TextPrompt> {
 
   bool get _accepted {
     final text = _controller.text;
+    if (widget.optional) return true;
     if (!widget.isName) return text.trim().isNotEmpty;
     final max = widget.maxLength;
     return max == null ? NameText.isValid(text) : isSavableName(text, max);
