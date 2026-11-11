@@ -101,9 +101,13 @@ int showCpuMs(List<String> names) {
 /// with ordinary names: the CPU time showing the names takes, and the
 /// open of each log, each open measured twice, alternately, and the
 /// faster run taken.
-Future<MarkCost> markCost(String piece) async {
+Future<MarkCost> markCost(String piece) => nameCost(markName(piece));
+
+/// What 4,000 members created with [name]s cost against as many with
+/// ordinary names, measured as [markCost] measures it.
+Future<MarkCost> nameCost(String Function(int) name) async {
   final ordinaryNames = [for (var i = 1; i <= 4000; i++) 'Person $i'];
-  final names = [for (var i = 1; i <= 4000; i++) markName(piece)(i)];
+  final names = [for (var i = 1; i <= 4000; i++) name(i)];
   var ordinary = 1 << 30, ms = 1 << 30;
   for (var k = 0; k < 2; k++) {
     ordinary = min(
