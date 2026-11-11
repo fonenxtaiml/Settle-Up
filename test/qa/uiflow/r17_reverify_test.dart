@@ -356,11 +356,14 @@ void main() {
       expect(w.group(gid).liveExpenses.where((e) => e.isPayment), isEmpty);
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R17-02: the Settle up notes prompt takes a note the Ledger refuses as too long, and says nothing until Record
   );
 
-  testWidgets('R17 probe (premise of UIFLOW-R17-02): the same note in Edit '
-      'payment says "too long" and Settle up refuses it only at Record', (
+  // Was the premise of UIFLOW-R17-02 (the prompt took the note and only
+  // Record refused it). Since the fix the prompt measures the note as the
+  // Ledger does: it says "too long", keeps Save off and counts 1100/1000;
+  // a note shortened to fit is recorded whole.
+  testWidgets('UIFLOW-R17-02: the Settle up notes prompt says a note the '
+      'Ledger refuses is too long, and one shortened to fit is recorded', (
     tester,
   ) async {
     qaPhone(tester);
@@ -370,7 +373,25 @@ void main() {
     await qaTap(tester, find.text(S.notes));
     await tester.enterText(_promptField, note);
     await tester.pump();
-    expect(_text(tester, _promptField), note, reason: 'prompt took it all');
+    // Nothing of the note is cut inside an emoji.
+    expect(_text(tester, _promptField), note);
+    expect(
+      find.descendant(
+        of: find.byType(AlertDialog),
+        matching: find.text(S.errTooLong),
+      ),
+      findsOneWidget,
+    );
+    expect(find.text('1100/1000'), findsOneWidget);
+    final save = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(FilledButton),
+    );
+    expect(tester.widget<FilledButton>(save).onPressed, isNull);
+    // 363 family emoji are 3993 code units: within the Ledger's 4000.
+    final fits = List.filled(363, _family).join();
+    await tester.enterText(_promptField, fits);
+    await tester.pump();
     expect(
       find.descendant(
         of: find.byType(AlertDialog),
@@ -378,13 +399,14 @@ void main() {
       ),
       findsNothing,
     );
+    expect(find.text('999/1000'), findsOneWidget);
     await qaTap(tester, _promptSave);
     expect(find.byType(AlertDialog), findsNothing);
     await _record(tester);
-    // Record is refused by the Ledger.
-    expect(w.group(gid).liveExpenses.where((e) => e.isPayment), isEmpty);
-    expect(find.text(S.errTooLong), findsOneWidget);
-    expect(find.textContaining('longer than'), findsNothing);
+    final payments = w.group(gid).liveExpenses.where((e) => e.isPayment);
+    expect(payments, hasLength(1));
+    expect(payments.single.notes, fits);
+    expect(find.text(S.errTooLong), findsNothing);
     await w.shutdown(tester);
   });
 
