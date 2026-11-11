@@ -2,6 +2,10 @@
 // used to store, show and compare them, on this phone and for names that
 // come from other phones. Pure Dart (SPEC 5.16).
 import 'package:characters/characters.dart';
+// The normaliser's own table of canonical combining classes, so the runs
+// [NameText.normalize] bounds are exactly the runs it reorders.
+// ignore: implementation_imports
+import 'package:unorm_dart/src/uchar.dart' show UChar;
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
 import 'text_clean.dart';
@@ -22,8 +26,14 @@ abstract final class NameText {
   /// they do: in an emoji sequence ("👩‍💻", "❤️", the flag of England) and,
   /// for ZWJ and ZWNJ, between two letters of a script that joins or forms
   /// conjuncts (Arabic, Devanagari and the other Indic scripts).
+  ///
+  /// Time is linear in the length of [raw], whatever it holds: a run of
+  /// combining marks (Unicode non-starters) longer than [maxMarkRun] is
+  /// cut to that many before NFKC, which reorders such a run in time
+  /// quadratic in its length (SECURITY-R15-02). No name is saved with that
+  /// many marks in a row, so the cut never changes what [fit] keeps.
   static String normalize(String raw) {
-    final runes = unorm.nfkc(raw).runes.toList();
+    final runes = unorm.nfkc(boundMarkRuns(raw)).runes.toList();
     final out = <int>[];
     var space = false;
     for (var i = 0; i < runes.length; i++) {
@@ -43,8 +53,79 @@ abstract final class NameText {
       out.add(r);
     }
     // A mark left out may have stood between a letter and its accent.
-    return unorm.nfc(String.fromCharCodes(out));
+    // Leaving out the invisibles may also join two runs of marks into one
+    // longer than [maxMarkRun]: bound that run too.
+    return unorm.nfc(boundMarkRuns(String.fromCharCodes(out)));
   }
+
+  /// The most combining marks (non-starters, counted in the NFKD form) in
+  /// a row that [normalize] keeps: far more than any script stacks on one
+  /// letter (the Unicode stream-safe limit is 30), and more than the code
+  /// units of the longest name ([maxGroupLength] x [unitsPerChar]), so a
+  /// saved name never loses a mark to it.
+  static const int maxMarkRun = 256;
+
+  /// [s] without the characters that would make a run of combining marks
+  /// in its NFKD form longer than [maxMarkRun]. Linear in the length of
+  /// [s]. Every normalisation form has the same runs (NFKD(NFKC(s)) is
+  /// NFKD(s) reordered within runs), so this is idempotent and keeps what
+  /// it is given when it fits.
+  static String boundMarkRuns(String s) {
+    var run = 0;
+    StringBuffer? out; // null while nothing is left out
+    var i = 0;
+    for (final r in s.runes) {
+      final w = r > 0xFFFF ? 2 : 1;
+      final m = _marks(r);
+      final lead = m >> 16, trail = m & 0xFFFF;
+      if (lead > 0 && run + lead > maxMarkRun) {
+        out ??= StringBuffer(s.substring(0, i));
+      } else {
+        // A character that is marks only adds to the run; any other ends
+        // it, with the marks its NFKD form ends with.
+        run = (m & _onlyMarks) != 0 ? run + lead : trail & ~_onlyMarks;
+        out?.writeCharCode(r);
+      }
+      i += w;
+    }
+    return out?.toString() ?? s;
+  }
+
+  /// Set in [_marks] when the NFKD form of a character is marks only.
+  static const int _onlyMarks = 0x8000;
+
+  /// For the character [r]: the marks its NFKD form starts with (high 16
+  /// bits) and ends with (low 15 bits), and [_onlyMarks] when it is marks
+  /// only (the count of marks is then both).
+  static int _marks(int r) {
+    // Below U+00A8 nothing decomposes; lone surrogates are left out later.
+    if (r < 0xA8 || (r >= 0xD800 && r <= 0xDFFF)) return 0;
+    final known = _marksCache[r];
+    if (known != null) return known;
+    final d = unorm.nfkd(String.fromCharCode(r)).runes.toList();
+    var lead = 0;
+    while (lead < d.length && _isNonStarter(d[lead])) {
+      lead++;
+    }
+    int m;
+    if (lead == d.length) {
+      m = (lead << 16) | _onlyMarks | lead;
+    } else {
+      var trail = 0;
+      while (_isNonStarter(d[d.length - 1 - trail])) {
+        trail++;
+      }
+      m = (lead << 16) | trail;
+    }
+    if (_marksCache.length >= 4096) _marksCache.clear();
+    _marksCache[r] = m;
+    return m;
+  }
+
+  static final Map<int, int> _marksCache = {};
+
+  static bool _isNonStarter(int r) =>
+      r >= 0x300 && UChar.fromCharCode(r, true)!.getCanonicalClass() != 0;
 
   /// The limit of a member name, your name and the phone name (SPEC 5.16,
   /// 8.9), the shortest name limit, and so the one a name is checked and
