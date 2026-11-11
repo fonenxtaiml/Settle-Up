@@ -107,7 +107,6 @@ void main() {
       expect(w.state.expense(pid)!.notes, '$_longNote ok');
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R15-02: Edit payment cuts a Settle up note longer than 500 characters to 500 on the first key typed in it
   );
 
   testWidgets(

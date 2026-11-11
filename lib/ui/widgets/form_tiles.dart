@@ -24,6 +24,7 @@ class LabeledTextField extends StatelessWidget {
     this.errorText,
     this.maxLength,
     this.inputFormatters,
+    this.multiline = false,
   });
 
   final String label;
@@ -40,6 +41,10 @@ class LabeledTextField extends StatelessWidget {
   /// Run before the [maxLength] cap, e.g. a name field's stored-length
   /// cap.
   final List<TextInputFormatter>? inputFormatters;
+
+  /// The field grows with its text and keeps line breaks (notes); a
+  /// one-line field joins the lines of a text it holds on the first key.
+  final bool multiline;
 
   static const double _fieldPad = 8;
 
@@ -75,6 +80,9 @@ class LabeledTextField extends StatelessWidget {
                   textInputAction: textInputAction,
                   maxLength: maxLength,
                   inputFormatters: inputFormatters,
+                  minLines: 1,
+                  maxLines: multiline ? null : 1,
+                  keyboardType: multiline ? TextInputType.multiline : null,
                   textCapitalization: TextCapitalization.sentences,
                   style: valueStyle,
                   decoration: InputDecoration(
