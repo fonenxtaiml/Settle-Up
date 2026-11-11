@@ -37,18 +37,36 @@ abstract final class NameText {
   /// cut to that many before NFKC (SECURITY-R15-02). No name is saved with
   /// that many marks in a row, so the cut never changes what [fit] keeps.
   ///
-  /// Idempotent by construction: normalize(normalize(x)) == normalize(x)
-  /// (PLATFORM-R15-01). Whether a joiner stays depends on what stands
-  /// next to it once the rest is cleaned, and leaving a mark out can
-  /// change that: NFC then puts the accents around it in their canonical
-  /// order ("\u0301" and the nukta "\u093C" swap once a ZWNJ between them
-  /// is gone), so a ZWJ after them may no longer follow a Devanagari mark.
-  /// One clean-up pass is therefore repeated until it changes nothing. A
-  /// pass that changes the text always leaves a character out, so this
-  /// ends; nearly every name takes one pass and a second to confirm it.
+  /// Idempotent: normalize(normalize(x)) == normalize(x) (PLATFORM-R15-01),
+  /// and one clean-up pass gives that form (PLATFORM-R17-01). Leaving an
+  /// invisible out can join two runs of accents, which NFC then puts in
+  /// their canonical order ("\u0301" and the nukta "\u093C" swap once a
+  /// ZWNJ between them is gone), and can let a letter and an accent
+  /// compose. So whether a ZWJ or ZWNJ stays is decided by the base
+  /// characters around it (the starters, of canonical combining class 0),
+  /// not by the accents next to it: NFC never moves an accent past a
+  /// starter, and a starter and what composes with it are of the same
+  /// kind (the same joining script, emoji or neither), so the next pass
+  /// sees the same bases and keeps the same joiners. A pass that needed no
+  /// NFC is the form already; after one that did, a second pass checks
+  /// that the text no longer changes, without NFC. It runs at most
+  /// [_maxPasses] passes all the same, so the work stays linear.
   static String normalize(String raw) => _normalize(raw, _isStable(raw));
 
-  static String _normalizeHead(String head) => _normalize(head, true);
+  /// The most clean-up passes [normalize] runs: one, one to confirm it,
+  /// and a margin that no text needs.
+  static const int _maxPasses = 3;
+
+  /// One clean-up pass of [normalize], without the passes that confirm it.
+  /// For tests: it is [normalize] for every text.
+  @visibleForTesting
+  static String normalizeOnePass(String raw) => _clean(raw, _isStable(raw)).$1;
+
+  /// [normalize] of a head of a normalised text, which is in NFKC and NFC
+  /// already: NFKC is skipped, and NFC is run only when the cut leaves a
+  /// joiner with nothing to join, which may join two runs of accents.
+  static String _normalizeHead(String head) =>
+      _normalize(head, _isStable(head), normalized: true);
 
   /// [normalize] as it is defined, without its shortcuts: NFKC and NFC run
   /// on every text, and the clean-up pass repeated until it changes
@@ -57,29 +75,43 @@ abstract final class NameText {
   static String normalizeReference(String raw) =>
       _normalize(raw, false, full: true);
 
-  static String _normalize(String raw, bool stable, {bool full = false}) {
-    final (first, joined) = _clean(raw, stable, full: full);
+  static String _normalize(
+    String raw,
+    bool stable, {
+    bool normalized = false,
+    bool full = false,
+  }) {
+    final (first, joined) = _clean(
+      raw,
+      stable,
+      normalized: normalized,
+      full: full,
+    );
     // A pass after which NFC changes nothing gives the same again: what it
-    // keeps of an invisible character depends only on what is kept around
-    // it, a space or the end of the text alike.
+    // keeps of an invisible character depends only on the bases and the
+    // characters kept around it, a space or the end of the text alike.
     if (!joined && !full) return first;
     var t = first;
     var length = t.runes.length;
-    while (true) {
+    // The reference repeats the pass until it changes nothing; [normalize]
+    // stops after [_maxPasses] all the same.
+    for (var pass = 1; full || pass < _maxPasses; pass++) {
       // The text is now in NFKC and NFC, so the passes that follow skip
-      // NFKC, and NFC too unless they leave something out.
+      // NFKC, and NFC too unless they leave something out (they do not).
       final (again, _) = _clean(
         t,
         stable || _isStable(t),
         normalized: true,
         full: full,
       );
-      if (again == t) return t;
+      if (again == t) break;
       final n = again.runes.length;
-      if (n >= length) return again; // cannot happen; never loop
       t = again;
+      if (n >= length) break; // cannot happen; never loop
       length = n;
+      t = again;
     }
+    return t;
   }
 
   /// One clean-up pass of [normalize], with NFKC and NFC unless [stable].
@@ -109,18 +141,22 @@ abstract final class NameText {
     // one left out ("\u0628\u200D\u061C" is beh, ZWJ and an Arabic letter
     // mark, and the ZWJ has nothing after it to join once the mark is
     // gone). A space or a line break counts as a space; -1 is the end of
-    // the text. One pass from the end, so a long run of invisibles costs
-    // no more than its length.
+    // the text. [afterBase] is the same but for accents (non-starters),
+    // which it skips: the base a joiner joins. One pass from the end, so a
+    // long run of invisibles costs no more than its length.
     final after = Int32List(n);
-    var kept = -1;
+    final afterBase = Int32List(n);
+    var kept = -1, keptBase = -1;
     for (var i = n - 1; i >= 0; i--) {
       after[i] = kept;
+      afterBase[i] = keptBase;
       final r = runes[i];
       final k = _kind(r);
       if (k == _space) {
-        kept = 0x20;
+        kept = keptBase = 0x20;
       } else if (k != _invisible) {
         kept = r;
+        if (_props(r) & _nonStarter == 0) keptBase = r;
       }
     }
     final out = Int32List(n);
@@ -131,6 +167,8 @@ abstract final class NameText {
     // compose with what now stands before it.
     var dropped = false;
     var joined = false;
+    // The last starter kept, -1 at the start and after a space.
+    var base = -1;
     for (var i = 0; i < n; i++) {
       final r = runes[i];
       final k = _kind(r);
@@ -141,10 +179,19 @@ abstract final class NameText {
       if (k == _invisible) {
         final prev = length == 0 || space ? null : out[length - 1];
         final next = after[i];
-        if (_keeps(r, prev, next < 0 ? null : next)) {
+        final nextBase = afterBase[i];
+        final keep = _keeps(
+          r,
+          prev,
+          space || base < 0 ? null : base,
+          next < 0 ? null : next,
+          nextBase < 0 ? null : nextBase,
+        );
+        if (keep) {
           if (dropped && !space && NormalForm.joinsPrevious(r)) joined = true;
           dropped = false;
           out[length++] = r;
+          base = r; // every kept invisible is a starter
         } else {
           dropped = true;
         }
@@ -155,9 +202,11 @@ abstract final class NameText {
       } else if (dropped && NormalForm.joinsPrevious(r)) {
         joined = true;
       }
+      if (space) base = -1;
       dropped = false;
       space = false;
       out[length++] = r;
+      if (_props(r) & _nonStarter == 0) base = r;
     }
     // A mark left out may have stood between a letter and its accent.
     // Leaving out the invisibles may also join two runs of marks into one
@@ -273,11 +322,18 @@ abstract final class NameText {
   /// of the rest.
   static const int _safe = 2;
 
-  /// [_stable], [_safe] and, from bit 2 up, how many characters the NFKD
-  /// form of [r] holds (at most 18), cached: BMP characters in [_bmp] (0
+  /// The character is a non-starter (an accent of canonical combining
+  /// class other than 0): NFC reorders it among the ones next to it.
+  static const int _nonStarter = 4;
+
+  /// The bits from which [_props] holds the size of the NFKD form.
+  static const int _sizeShift = 3;
+
+  /// [_stable], [_safe], [_nonStarter] and, from bit [_sizeShift] up, how
+  /// many characters the NFKD form of [r] holds (at most 18), cached: BMP characters in [_bmp] (0
   /// for not yet known), the others in [_astral].
   static int _props(int r) {
-    if (r < 0x80) return 1 << 2 | _safe | _stable;
+    if (r < 0x80) return 1 << _sizeShift | _safe | _stable;
     if (r <= 0xFFFF) {
       final known = _bmp[r];
       if (known != 0) return known;
@@ -292,11 +348,13 @@ abstract final class NameText {
   static int _computeProps(int r) {
     final c = String.fromCharCode(r);
     final d = NormalForm.nfkd(c).runes.toList();
-    if (d.isEmpty) return 1 << 2;
+    final nonStarter = _isNonStarter(r) ? _nonStarter : 0;
+    if (d.isEmpty) return 1 << _sizeShift | nonStarter;
     final first = d.first;
     final safe = !_jamo(first) && !_mark.hasMatch(String.fromCharCode(first));
     final stable = safe && d.length == 1 && first == r;
-    return d.length.clamp(1, 63) << 2 |
+    return d.length.clamp(1, 31) << _sizeShift |
+        nonStarter |
         (safe ? _safe : 0) |
         (stable ? _stable : 0);
   }
@@ -418,8 +476,10 @@ abstract final class NameText {
   /// A head of a text in NFKC and NFC is in NFKC and NFC: nothing in it
   /// composes or decomposes that did not in all of it. So all a cut can
   /// change in [normalize] is at its end, a space or a joiner left with
-  /// nothing after it, and the cut is normalised without NFKC and NFC
-  /// ([fitReference] checks that against normalising it all).
+  /// no base after it (it may stand before accents, which then join the
+  /// ones before it), and the cut is normalised without NFKC, and with NFC
+  /// only when that leaves something out ([fitReference] checks that
+  /// against normalising it all).
   static String _cut(
     String t,
     int limit, [
@@ -475,7 +535,7 @@ abstract final class NameText {
     final runes = raw.runes.toList();
     var size = 0;
     for (final r in runes) {
-      size += _props(r) >> 2;
+      size += _props(r) >> _sizeShift;
     }
     if (size <= limit * unitsPerChar) return normalize(raw);
     final total = size;
@@ -498,7 +558,7 @@ abstract final class NameText {
         // invisible characters takes a few heads, not one per unit.
         budget = size + math.max(2 * (limit + _margin - shown), size);
       }
-      size += p >> 2;
+      size += p >> _sizeShift;
       units += r > 0xFFFF ? 2 : 1;
     }
     return normalize(raw);
@@ -600,16 +660,21 @@ abstract final class NameText {
   /// Whether the invisible [r] between [prev] (what is kept before it, null
   /// after a space or at the start) and [next] (the next character that is
   /// always kept, a space, or null at the end) changes how they draw.
-  static bool _keeps(int r, int? prev, int? next) {
+  ///
+  /// A ZWJ or ZWNJ joins the bases around it: [base] is the last starter
+  /// kept before it and [nextBase] the next starter always kept after it
+  /// (accents skipped), so the accents between, which NFC may reorder,
+  /// do not decide (PLATFORM-R17-01).
+  static bool _keeps(int r, int? prev, int? base, int? next, int? nextBase) {
+    if (r == 0x200D || r == 0x200C) {
+      if (base == null || nextBase == null) return false;
+      final emoji =
+          r == 0x200D &&
+          (_isEmoji(base) || base == 0xFE0F) &&
+          _isEmoji(nextBase);
+      return emoji || (_joins(base) && _joins(nextBase));
+    }
     if (prev == null) return false;
-    if (r == 0x200D) {
-      if (next == null) return false;
-      final emoji = (_isEmoji(prev) || prev == 0xFE0F) && _isEmoji(next);
-      return emoji || (_joins(prev) && _joins(next));
-    }
-    if (r == 0x200C) {
-      return next != null && _joins(prev) && _joins(next);
-    }
     if (r == 0xFE0E || r == 0xFE0F) {
       return _isEmoji(prev) || (_isKeycapBase(prev) && next == 0x20E3);
     }
@@ -622,7 +687,9 @@ abstract final class NameText {
   static bool _isKeycapBase(int r) =>
       (r >= 0x30 && r <= 0x39) || r == 0x23 || r == 0x2A;
 
-  /// Pictographs an emoji sequence is made of.
+  /// Pictographs an emoji sequence is made of. All the arrows, so that an
+  /// arrow and the slash that composes with it ("\u2194\u0338" is
+  /// "\u21AE") are of the same kind.
   static bool _isEmoji(int r) =>
       r == 0x00A9 ||
       r == 0x00AE ||
@@ -630,7 +697,7 @@ abstract final class NameText {
       r == 0x2049 ||
       r == 0x2122 ||
       r == 0x2139 ||
-      (r >= 0x2194 && r <= 0x21AA) ||
+      (r >= 0x2190 && r <= 0x21FF) ||
       (r >= 0x2300 && r <= 0x23FF) ||
       r == 0x24C2 ||
       (r >= 0x25A0 && r <= 0x25FF) ||
@@ -642,6 +709,17 @@ abstract final class NameText {
       r == 0x3297 ||
       r == 0x3299 ||
       (r >= 0x1F000 && r <= 0x1FAFF);
+
+  /// Which kind of base [r] is for a joiner: 1 for an emoji, 2 for a
+  /// letter of a joining script, 0 for neither. For tests: a starter and
+  /// the characters NFC composes it into are of the same kind.
+  @visibleForTesting
+  static int joinKind(int r) => (_isEmoji(r) ? 1 : 0) | (_joins(r) ? 2 : 0);
+
+  /// Whether [r] is a non-starter (canonical combining class other than
+  /// 0). For tests.
+  @visibleForTesting
+  static bool isNonStarter(int r) => _props(r) & _nonStarter != 0;
 
   /// Letters and marks of the scripts in which ZWJ and ZWNJ change how
   /// two letters join or form a conjunct.

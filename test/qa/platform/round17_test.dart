@@ -312,9 +312,6 @@ void main() {
             }
           }
         },
-        skip:
-            'QA PLATFORM-R17-01: the repeated clean-up pass makes NameText '
-            'quadratic',
       );
 
       test(
@@ -336,9 +333,6 @@ void main() {
             lessThanOrEqualTo(20 * kMaxPeerNameUnits),
           );
         },
-        skip:
-            'QA PLATFORM-R17-01: the repeated clean-up pass makes NameText '
-            'quadratic',
       );
     },
   );
