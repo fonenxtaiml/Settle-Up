@@ -363,13 +363,22 @@ int yearPickerIndex(YearPicker picker) {
 /// The scroll behavior of the editors' date picker: [parent]'s, except
 /// that a [YearPicker]'s list is placed on its selected year before its
 /// first frame (VISUAL-R13-01), and again if the selected year changes.
+///
+/// Once placed, the list is left where the user scrolls it for as long as
+/// the year list is open: rotating the phone, a theme change or a new text
+/// size makes the list's Scrollable replace its ScrollPosition (the new one
+/// takes over the old pixels), so the placed state is kept on the list's
+/// ScrollController, which the YearPicker owns and which outlives every
+/// position (VISUAL-R14-01).
 class YearListScrollBehavior extends ScrollBehavior {
   const YearListScrollBehavior(this.parent);
 
   /// The behavior every other scrollable in the dialog keeps.
   final ScrollBehavior parent;
 
-  /// The year each year list was last placed on.
+  /// The year each year list was last placed on, keyed on the list's
+  /// [ScrollController] and not on its [ScrollPosition]: positions are
+  /// replaced whenever the list's dependencies change.
   static final Expando<int> _placed = Expando<int>('yearListPlaced');
 
   @override
@@ -415,7 +424,7 @@ class YearListScrollBehavior extends ScrollBehavior {
     if (!controller.hasClients || controller.positions.length != 1) return;
     final position = controller.position;
     final year = (picker.selectedDate ?? picker.firstDate).year;
-    if (_placed[position] == year) return;
+    if (_placed[controller] == year) return;
     final count = grid.childrenDelegate.estimatedChildCount;
     if (count == null ||
         !constraints.hasBoundedHeight ||
@@ -443,7 +452,7 @@ class YearListScrollBehavior extends ScrollBehavior {
         cacheOrigin: 0,
       ),
     );
-    _placed[position] = year;
+    _placed[controller] = year;
     position.correctPixels(
       yearListOffset(
         grid: layout,
