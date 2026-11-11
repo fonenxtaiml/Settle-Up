@@ -107,9 +107,11 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
         }
         // A name left as the prompt opened with it is no rename: sending
         // it would undo a rename another phone made meanwhile
-        // (UIFLOW-R17-01).
-        final opened = NameLimit.fit(m.displayName, kMemberNameMax).trim();
-        if (name != null && name != opened && mounted) {
+        // (UIFLOW-R17-01). The same once saved is the same name too: a
+        // space added is no rename (UIFLOW-R21-01).
+        if (name != null &&
+            !isNameAsOpened(name, m.displayName, kMemberNameMax) &&
+            mounted) {
           await runGuarded(
             context,
             () => ledger.renameMember(g.groupId, m.id, name),
