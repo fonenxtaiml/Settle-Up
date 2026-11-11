@@ -1,6 +1,9 @@
 // The tables NameText and NormalForm keep per code point take a bounded
 // amount of memory whatever names they are asked about, and give what the
 // properties are defined as for every code point (DATA-R18-01).
+import 'dart:math';
+import 'dart:typed_data';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/normal_form.dart';
@@ -55,6 +58,54 @@ void main() {
       check(r);
     }
     expect(bad, isEmpty);
+  }, timeout: const Timeout(Duration(minutes: 2)));
+
+  test('stringOf gives what String.fromCharCodes gives, astral code points '
+      'and lone surrogates included', () {
+    final rnd = Random(18);
+    const pool = [0x41, 0xE9, 0x0F77, 0xD800, 0xDBFF, 0xDC00, 0xDFFF, 0xFFFF];
+    for (var k = 0; k < 2000; k++) {
+      final cps = [
+        for (var i = rnd.nextInt(40); i > 0; i--)
+          rnd.nextBool()
+              ? pool[rnd.nextInt(pool.length)]
+              : 0x10000 + rnd.nextInt(0x100000),
+      ];
+      final n = cps.isEmpty ? 0 : rnd.nextInt(cps.length + 1);
+      expect(
+        NormalForm.stringOf(Int32List.fromList(cps), n),
+        String.fromCharCodes(cps, 0, n),
+      );
+    }
+  });
+
+  test('property: names of drawn characters, marks and every kind of blank '
+      '(no invisible) normalise and fit as the reference does', () {
+    // The pass that only makes spaces plain, and the heads of names whose
+    // characters are mostly marks (DATA-R18-02).
+    const pool = [
+      'a', 'Z', '7', '\u00E9', '\u4E00', '\u{1D400}', '\u{10000}', '\uFDFA',
+      '\u0F77', '\u0344', '\u0301', '\u{1D165}', '\u093C', '\uFF9E', //
+      ' ', '  ', '\t', '\n', '\u00A0', '\u2003', '\u3000', '\u3164',
+      '\u115F', '\u1160', '\uFFA0', '\u2800', '\u202F', '\u2028',
+    ];
+    final rnd = Random(1802);
+    for (var k = 0; k < 3000; k++) {
+      final b = StringBuffer();
+      final n = 1 + rnd.nextInt(90);
+      while (b.length < n) {
+        final piece = pool[rnd.nextInt(pool.length)];
+        b.write(rnd.nextInt(6) == 0 ? piece * (1 + rnd.nextInt(30)) : piece);
+      }
+      final s = b.toString();
+      final why = s.runes.map(_hex).join(' ');
+      expect(
+        NameText.normalize(s),
+        NameText.normalizeReference(s),
+        reason: why,
+      );
+      expect(NameText.fit(s), NameText.fitReference(s), reason: why);
+    }
   }, timeout: const Timeout(Duration(minutes: 2)));
 
   test('showing names that hold every code point outside the BMP grows no '
