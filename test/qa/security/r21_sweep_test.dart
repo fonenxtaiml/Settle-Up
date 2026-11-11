@@ -242,9 +242,6 @@ void main() {
           reason: 'remote check accepts a lone surrogate in $accepted',
         );
       },
-      skip:
-          'QA SECURITY-R21-01: Peer text with a lone UTF-16 surrogate is '
-          'accepted and blanks whole lines on screen',
     );
 
     test(
@@ -330,9 +327,6 @@ void main() {
               '${name?.codeUnits}, description ${description?.codeUnits}',
         );
       },
-      skip:
-          'QA SECURITY-R21-01: Peer text with a lone UTF-16 surrogate is '
-          'accepted and blanks whole lines on screen',
     );
 
     testWidgets('QA SECURITY-R21-01: the group screen draws a peer member with a lone surrogate '
@@ -382,6 +376,6 @@ void main() {
       final error = tester.takeException();
       expect(bad, isEmpty, reason: 'ill-formed spans: $bad');
       expect(error, isNull);
-    }, skip: true); // QA SECURITY-R21-01: Peer text with a lone UTF-16 surrogate is accepted and blanks whole lines on screen
+    });
   });
 }

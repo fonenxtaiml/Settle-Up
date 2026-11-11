@@ -11,6 +11,7 @@ import '../models.dart';
 import '../money.dart';
 import '../name_text.dart';
 import '../ops.dart';
+import '../text_clean.dart';
 
 /// One LWW register: the value written by the op with the highest HLC.
 final class FieldValue {
@@ -62,6 +63,14 @@ String? _str(EntityState s, String f) {
   return v is String ? v : null;
 }
 
+/// The text field [f] of [s] as it is shown: without lone surrogates
+/// ([TextClean.wellFormed]), which an op stored before peers' text was
+/// checked for them may hold and the text engine refuses (SECURITY-R21-01).
+String? _text(EntityState s, String f) {
+  final v = _str(s, f);
+  return v == null ? null : TextClean.wellFormed(v);
+}
+
 String? _nonEmpty(EntityState s, String f) {
   final v = _str(s, f);
   return v == null || v.isEmpty ? null : v;
@@ -100,7 +109,7 @@ Group? buildGroup(GroupId id, EntityState s) {
     currency: currency,
     simplifyDebts: simplify,
     createdAt: createdAt,
-    emoji: _str(s, GroupFields.emoji),
+    emoji: _text(s, GroupFields.emoji),
     archived: _bool(s, GroupFields.archived) ?? false,
     deletedAt: _date(s, GroupFields.deletedAt),
   );
@@ -150,7 +159,7 @@ MoneyBlock? parseMoney(Object? value) {
 Expense? buildExpense(GroupId groupId, ExpenseId id, EntityState s) {
   if (!s.created) return null;
   final kind = _str(s, ExpenseFields.kind);
-  final description = _str(s, ExpenseFields.description);
+  final description = _text(s, ExpenseFields.description);
   final category = _str(s, ExpenseFields.category);
   final date = _date(s, ExpenseFields.date);
   final money = parseMoney(s[ExpenseFields.money]);
@@ -179,7 +188,7 @@ Expense? buildExpense(GroupId groupId, ExpenseId id, EntityState s) {
     description: description,
     category: category,
     date: date,
-    notes: _str(s, ExpenseFields.notes) ?? '',
+    notes: _text(s, ExpenseFields.notes) ?? '',
     money: money,
     createdBy: createdBy,
     createdAt: createdAt,
