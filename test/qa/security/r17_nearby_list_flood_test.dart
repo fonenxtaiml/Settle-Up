@@ -59,9 +59,6 @@ void main() {
         // its cache extent, far fewer than 100.
         expect(built, lessThan(100), reason: '$built rows built');
       },
-      // QA SECURITY-R17-01: a stranger flooding mDNS adverts makes the
-      // Sync screen build every forged row on each change.
-      skip: true,
     );
 
     testWidgets('control: a short nearby list shows every phone', (
