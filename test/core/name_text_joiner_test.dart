@@ -85,12 +85,14 @@ void main() {
       'क्‍឴': 'क्',
       'क‍᠋': 'क',
     };
-    // Found by the fuzz below: once the ZWNJ is gone, NFC puts the nukta
-    // before the acute accent, so the ZWJ no longer follows a Devanagari
-    // mark and a second pass would leave it out.
+    // Found by the fuzz below (PLATFORM-R15-01). A joiner is decided by
+    // the bases around it, not by the accents next to it, which NFC may
+    // reorder (PLATFORM-R17-01): the ZWNJ stands between two Arabic-Indic
+    // digits and stays; the ZWJ after it has the ZWNJ as its base and
+    // goes, with the selectors and the tag that have no emoji before them.
     cases['\u0661\u0301\u200C\u{E02CD}\u093C\u200D\uFE0F\u{E0067}'
             '\u0661\uFE0F'] =
-        '\u0661\u093C\u0301\u0661';
+        '\u0661\u0301\u200C\u093C\u0661';
     cases.forEach((raw, want) {
       expect(NameText.normalize(raw), want, reason: _hex(raw));
       expect(NameText.fit(raw), want, reason: _hex(raw));
