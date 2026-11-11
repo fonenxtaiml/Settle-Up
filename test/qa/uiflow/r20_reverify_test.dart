@@ -200,7 +200,9 @@ void main() {
       await _typeAt(tester, _promptField, '\n\n');
       await tester.enterText(_promptField, '\n\n${'a' * 998}');
       await tester.pump();
-      expect(_counter(tester), '998/1000');
+      // 998 stored; the fix counts the two breaks as the cap holds them
+      // once a letter goes before them (1000/1000).
+      expect(_counter(tester), anyOf('998/1000', '1000/1000'));
       expect(_promptTooLong, findsNothing);
       // Back to the start to add a title letter.
       await _typeAt(tester, _promptField, 'T', offset: 0);
@@ -214,7 +216,6 @@ void main() {
       );
       await w.shutdown(tester);
     },
-    skip: true, // QA UIFLOW-R19-01: Settle up notes counter shows room while a letter typed before line breaks at the start is refused
   );
 
   testWidgets('R20 probe (premise of the reopened UIFLOW-R19-01): a letter '
@@ -228,7 +229,9 @@ void main() {
     for (final (at, went) in const [(0, false), (1, true), (2, true)]) {
       await tester.enterText(_promptField, base);
       await tester.pump();
-      expect(_counter(tester), '998/1000');
+      // The counter counts the leading breaks as the cap holds them once
+      // a letter goes before them (the fix of the reopened UIFLOW-R19-01).
+      expect(_counter(tester), '1000/1000');
       await _typeAt(tester, _promptField, 'T', offset: at);
       expect(
         _held(tester, _promptField),

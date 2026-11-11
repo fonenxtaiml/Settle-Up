@@ -82,20 +82,37 @@ class TextCapFormatter extends TextInputFormatter {
 
   /// The length a counter shows for [text] in a field capped at [limit]:
   /// what the cap leaves no room for, so the counter shows room exactly
-  /// when a character typed at the end goes in (UIFLOW-R19-01).
+  /// when a character typed at either end of the note, and so anywhere in
+  /// it, goes in (UIFLOW-R19-01).
   ///
   /// It is the note as the Ledger stores it ([TextCap.length]), or, when
-  /// that is less, the room taken once text follows (the spaces, tabs and
-  /// line breaks at the end count: trimmed while they end the note, they
-  /// are stored, and held to the cap, as soon as a character follows
-  /// them), up to [limit]: spaces and breaks at the end take no room
-  /// while nothing follows them, so a full note may end with more of them
-  /// and the counter stays at the limit, with no "too long" for them.
+  /// that is less, the room the blanks at its edges take once text goes
+  /// past them, up to [limit]. The spaces, tabs and line breaks at either
+  /// end are trimmed while they edge the note, but they are stored, and
+  /// held to the cap, as soon as a character is typed after the ones at
+  /// the end or before the ones at the start. So the counter takes the
+  /// larger of the note with the blanks at its end ([_Run]) and the note
+  /// with the blanks at its start ([_leadingCount]): each is what the
+  /// cap holds before a character typed at that end, and a character
+  /// typed anywhere else takes no more room than at one of the ends.
+  /// Blanks at an edge take no room while nothing goes past them, so a
+  /// full note may have more of them and the counter stays at the limit,
+  /// with no "too long" for them.
   static int counted(String text, int limit, {bool multiline = true}) {
     final stored = TextCap.length(TextClean.clean(text, multiline: multiline));
-    final pending = _Run.of(text, multiline).count;
+    final pending = math.max(
+      _Run.of(text, multiline).count,
+      _leadingCount(text, multiline),
+    );
     return math.max(stored, math.min(limit, pending));
   }
+
+  /// Characters of [text] as the Ledger stores it once a character is
+  /// typed before it: cleaned, the blanks at its end trimmed and those at
+  /// its start kept. A character typed before a blank never joins it, so
+  /// it then takes one more.
+  static int _leadingCount(String text, bool multiline) =>
+      _Tail.cleanOf(text, multiline).trimRight().characters.length;
 
   @override
   TextEditingValue formatEditUpdate(
@@ -243,12 +260,16 @@ class _Tail {
 
   /// The two cleaned forms: after a `\r` typed just before it, a leading
   /// `\n` is the same line break as that `\r`.
-  late final _TailForm _whole = _TailForm(_clean(text));
-  late final _TailForm _afterCr = _TailForm(_clean(text.substring(1)));
+  late final _TailForm _whole = _TailForm(cleanOf(text, multiline));
+  late final _TailForm _afterCr = _TailForm(
+    cleanOf(text.substring(1), multiline),
+  );
 
   bool get _leadingLf => multiline && text.startsWith('\n');
 
-  String _clean(String s) {
+  /// [s] cleaned as the Ledger cleans it ([TextClean.clean]), its ends not
+  /// trimmed.
+  static String cleanOf(String s, bool multiline) {
     final out = StringBuffer();
     var prev = -1;
     for (final r in s.runes) {
