@@ -8,6 +8,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/normal_form.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
+import '../support/cpu_clock.dart' show cpuMicrosPer;
+
 String _hex(String s) => s.runes
     .map((r) => r.toRadixString(16).toUpperCase().padLeft(4, '0'))
     .join(' ');
@@ -146,13 +148,10 @@ void main() {
   test('time is linear in the text, whatever runs of marks it holds', () {
     // Warm the tables.
     NormalForm.nfkc('x${'ཷ' * 10}${'̈́' * 10}');
-    double micros(String s) {
-      final sw = Stopwatch()..start();
-      for (var i = 0; i < 20; i++) {
-        NormalForm.nfkc(s);
-      }
-      return sw.elapsedMicroseconds / 20;
-    }
+    // The CPU time of a call: the fastest of three windows of at least
+    // 40 ms, so the load of the full suite does not decide (DATA-R21-01).
+    double micros(String s) =>
+        cpuMicrosPer((_) => NormalForm.nfkc(s), warmUp: 3, minCalls: 20);
 
     final small = 'x${'ཷ' * 200}';
     final large = 'x${'ཷ' * 3200}';

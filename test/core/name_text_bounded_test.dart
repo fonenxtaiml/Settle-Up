@@ -8,6 +8,8 @@ import 'dart:math';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/name_text.dart';
 
+import '../support/cpu_clock.dart' show cpuMicrosPer;
+
 String _hex(String s) => s.runes
     .map((r) => r.toRadixString(16).toUpperCase().padLeft(4, '0'))
     .join(' ');
@@ -255,19 +257,12 @@ void main() {
 
     test('and so is the time: a name NFKC makes 4 to 18 times as long is '
         'shown in about the time an ordinary name of its length is', () {
-      double cost(String Function() show) {
-        // Warm up until the code is optimised: the first calls run
-        // unoptimised code, which costs many times as much.
-        for (var i = 0; i < 1000; i++) {
-          show();
-        }
-        final sw = Stopwatch()..start();
-        const n = 200;
-        for (var i = 0; i < n; i++) {
-          show();
-        }
-        return sw.elapsedMicroseconds / n;
-      }
+      // The CPU time of a call after a warm-up until the code is optimised
+      // (the first calls run unoptimised code, which costs many times as
+      // much): the fastest of three windows of at least 40 ms, so neither
+      // the load of the full suite nor a burst of it decides (DATA-R21-01).
+      double cost(String Function() show) =>
+          cpuMicrosPer((_) => show(), minCalls: 200);
 
       final ordinary = cost(
         () => NameText.display('Person ${'x' * 150}1', NameText.maxLength),

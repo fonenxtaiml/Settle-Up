@@ -7,15 +7,14 @@
 //
 // Tests named "QA <id>" with `skip:` are failing repros for open findings;
 // they pass once the finding is fixed.
-import 'dart:math';
-
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/ops.dart';
 
 import '../../data/name_replay_perf_test.dart'
-    show MarkCost, cpuMicros, expectWithinMarkBudget, nameCost;
+    show MarkCost, expectWithinMarkBudget, nameCost;
+import '../../support/cpu_clock.dart' show cpuMicrosPer;
 import 'qa_data_harness.dart';
 import 'r15_regression_test.dart' show logPhone, peerD;
 
@@ -47,23 +46,14 @@ List<Operation> memberCreates(
 /// remote limit of a member name.
 String markName(int i) => 'x${'̈́' * 158}${i % 10}';
 
-/// The CPU time one [NameText.display] of [name]s takes, in us: the
-/// fastest of three runs of 300 after a warm-up, so neither the load the
-/// suite runs under nor a burst of it decides (DATA-R21-01).
-double displayMicros(String Function(int) name, int limit) {
-  for (var i = 0; i < 50; i++) {
-    NameText.display(name(i), limit);
-  }
-  var best = 1 << 62;
-  for (var k = 0; k < 3; k++) {
-    final t = cpuMicros();
-    for (var i = 0; i < 300; i++) {
-      NameText.display(name(i), limit);
-    }
-    best = min(best, cpuMicros() - t);
-  }
-  return best / 300;
-}
+/// The CPU time one [NameText.display] of [name]s takes, in us
+/// ([cpuMicrosPer]: the fastest of three windows of at least 40 ms of CPU
+/// time after a warm-up), so neither the load the suite runs under, nor a
+/// burst of it, nor the resolution of the clock decides (DATA-R21-01).
+/// Windows of 300 displays, about 1 ms, read 0 us on the kernel's stepped
+/// scheduler statistics, which made `5 x ordinary + 50` an absolute 50 us.
+double displayMicros(String Function(int) name, int limit) =>
+    cpuMicrosPer((i) => NameText.display(name(i), limit));
 
 /// What the DATA-R15-01 reverification measures.
 typedef R17Cost = ({
