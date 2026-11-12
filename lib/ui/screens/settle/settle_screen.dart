@@ -19,6 +19,7 @@ import '../../strings.dart';
 import '../../widgets/kit_strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
+import 'settle_preview.dart';
 
 class SettleScreen extends ConsumerStatefulWidget {
   const SettleScreen({
@@ -56,6 +57,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
   // Frozen at record time: the ledger moves on, the screen should not.
   int? _frozenOwed;
   List<BeforeAfterEntry>? _frozenEntries;
+  String? _frozenOverpay;
 
   @override
   void initState() {
@@ -108,6 +110,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     bool settlesFully,
     int owed,
     List<BeforeAfterEntry> entries,
+    String? overpay,
   ) async {
     if (_saving) return;
     setState(() {
@@ -115,6 +118,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
       _amount = amount;
       _frozenOwed = owed;
       _frozenEntries = entries;
+      _frozenOverpay = overpay;
     });
     final ledger = ref.read(ledgerRepositoryProvider);
     ExpenseId? id;
@@ -170,8 +174,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
   Widget build(BuildContext context) {
     final g = ref.watch(groupProvider(widget.groupId)).value;
     final profile = ref.watch(profileProvider).value;
-    final people = ref.watch(peopleBalancesProvider).value ?? const [];
-    final overall = ref.watch(overallBalanceProvider).value;
+    final state = ref.watch(ledgerProvider).value?.state ?? LedgerState.empty;
     final now = ref.watch(clockProvider)();
     if (g == null || g.group == null || profile == null) {
       return Scaffold(
@@ -257,67 +260,97 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     final theme = Theme.of(context);
     final ink2 = theme.colorScheme.onSurfaceVariant;
 
-    // What changes.
+    // What changes: the balances the Group, Person and Friends screens
+    // will show once the payment is recorded, from the same calculation
+    // run on the group with the payment applied (MONEY-R24-01). The
+    // suggested payments are recomputed from the new nets and can route
+    // the debts differently, so "now + amount" is not what they show.
+    final preview = SettlePreview.of(
+      state,
+      me,
+      groupId: g.groupId,
+      from: from,
+      to: to,
+      amount: amount,
+      currency: currency,
+      date: date,
+    );
     final entries = <BeforeAfterEntry>[];
     if (fromIsMe || toIsMe) {
       final other = fromIsMe ? to : from;
       final otherFirst = firstName(fromIsMe ? toName : fromName);
-      final delta = fromIsMe ? amount : -amount;
-      final pairNow = _pairNet(transfers, myId!, other, currency);
       entries.add(
         BeforeAfterEntry(
           title: S.youAnd(otherFirst),
           subtitle: groupName,
-          now: _personCell(pairNow),
-          after: _personCell(pairNow + delta),
+          now: _personCell(preview.pairNow(myId!, other)),
+          after: _personCell(preview.pairAfter(myId, other)),
         ),
       );
       final otherPerson = g.members[other]?.personId;
-      final pb = people.where((p) => p.personId == otherPerson);
-      if (pb.isNotEmpty) {
-        final pNow = pb.first.net[currency] ?? 0;
+      final pNow = otherPerson == null ? null : preview.personNow(otherPerson);
+      final pAfter = otherPerson == null
+          ? null
+          : preview.personAfter(otherPerson);
+      if (pNow != null && pAfter != null) {
         entries.add(
           BeforeAfterEntry(
             title: S.overallOf(otherFirst),
             subtitle: S.allGroups,
             now: _personCell(pNow),
-            after: _personCell(pNow + delta),
+            after: _personCell(pAfter),
           ),
         );
       }
-      final oNow = overall?.net[currency] ?? 0;
-      entries.add(
-        BeforeAfterEntry(
-          title: S.yourOverall,
-          now: _overallCell(oNow),
-          after: _overallCell(oNow + delta),
-        ),
-      );
     } else {
       entries.add(
         BeforeAfterEntry(
           title: '${firstName(fromName)} and ${firstName(toName)}',
           subtitle: groupName,
-          now: BalanceCell(
-            word: owed == 0 ? KitStrings.settled : KitStrings.owes,
-            minor: owed,
-            direction: owed == 0
-                ? MoneyDirection.settled
-                : MoneyDirection.neutral,
+          now: _thirdPartyCell(preview.pairNow(from, to), toName),
+          after: _thirdPartyCell(preview.pairAfter(from, to), toName),
+        ),
+      );
+    }
+    // Everyone else whose balance with me the payment moves.
+    if (myId != null) {
+      for (final m in preview.othersChanged(myId, {from, to})) {
+        entries.add(
+          BeforeAfterEntry(
+            title: S.youAnd(firstName(full[m] ?? S.someone)),
+            subtitle: groupName,
+            now: _personCell(preview.pairNow(myId, m)),
+            after: _personCell(preview.pairAfter(myId, m)),
           ),
-          after: BalanceCell(
-            word: owed - amount == 0 ? KitStrings.settled : KitStrings.owes,
-            minor: (owed - amount).abs(),
-            direction: owed - amount == 0
-                ? MoneyDirection.settled
-                : MoneyDirection.neutral,
-          ),
+        );
+      }
+    }
+    if (fromIsMe || toIsMe) {
+      entries.add(
+        BeforeAfterEntry(
+          title: S.yourOverall,
+          now: _overallCell(preview.overallNow),
+          after: _overallCell(preview.overallAfter),
         ),
       );
     }
 
     final amountText = MoneyFormat.format(amount, currency);
     final over = owed > 0 && amount > owed;
+    // Over the balance: who owes whom the extra once it is recorded, as
+    // the ledger will show it (the extra can close a cycle or reroute
+    // through someone else, and then nobody owes it back).
+    final overText =
+        _frozenOverpay ??
+        (over
+            ? _overpayText(
+                amount - owed,
+                currency,
+                back: preview.pairAfter(from, to),
+                fromName: fromIsMe ? null : firstName(fromName),
+                toName: toIsMe ? null : firstName(toName),
+              )
+            : null);
     return Scaffold(
       appBar: screenAppBar(
         leading: BackArrow(close: true, onPressed: _recorded ? _close : null),
@@ -338,6 +371,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                     amount == owed,
                     owed,
                     entries,
+                    overText,
                   )
                 : null,
             style: KitButtonStyles.block,
@@ -370,15 +404,12 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
               ),
             ),
           ),
-          if (over)
+          if (overText != null)
             textGutter(
               Padding(
                 padding: const EdgeInsets.only(top: Space.sm),
                 child: Text(
-                  S.overpay(
-                    MoneyFormat.format(amount - owed, currency),
-                    firstName(toIsMe ? fromName : toName),
-                  ),
+                  overText,
                   textAlign: TextAlign.center,
                   style: theme.textTheme.bodySmall!.copyWith(color: ink2),
                 ),
@@ -481,19 +512,32 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     );
   }
 
-  static int _pairNet(
-    List<Transfer> transfers,
-    MemberId me,
-    MemberId other,
-    String currency,
-  ) {
-    var net = 0;
-    for (final t in transfers) {
-      if (t.currency != currency) continue;
-      if (t.from == me && t.to == other) net -= t.amount;
-      if (t.to == me && t.from == other) net += t.amount;
-    }
-    return net;
+  /// The pair cell of a payment between two other people, from the
+  /// payer's side: [v] < 0 the payer still owes, > 0 the one paid
+  /// ([toName]) owes the payer now.
+  static BalanceCell _thirdPartyCell(int v, String toName) => BalanceCell(
+    word: v == 0
+        ? KitStrings.settled
+        : v < 0
+        ? KitStrings.owes
+        : S.nameOwes(firstName(toName)),
+    minor: v.abs(),
+    direction: v == 0 ? MoneyDirection.settled : MoneyDirection.neutral,
+  );
+
+  /// "That's ₹10 more than the balance." and, when the one paid then owes
+  /// the payer [back] (> 0), who owes whom: "Sam will owe you ₹10." Null
+  /// names stand for me.
+  static String _overpayText(
+    int extra,
+    String currency, {
+    required int back,
+    required String? fromName,
+    required String? toName,
+  }) {
+    final first = S.overpay(MoneyFormat.format(extra, currency));
+    if (back <= 0) return first;
+    return '$first ${S.willOwe(toName, fromName, MoneyFormat.format(back, currency))}';
   }
 
   static BalanceCell _personCell(int v) => BalanceCell(

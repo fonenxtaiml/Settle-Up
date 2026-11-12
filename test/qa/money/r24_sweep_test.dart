@@ -22,6 +22,7 @@ import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/money.dart';
 import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/ui/router.dart';
+import 'package:settle_up/ui/screens/settle/settle_preview.dart';
 import 'package:settle_up/ui/widgets/settle_controls.dart';
 
 import 'csv_ledger_test.dart' show minorOf, readCsv;
@@ -534,7 +535,6 @@ void main() {
   testWidgets(
     'QA MONEY-R24-01: a part payment previews the balance with that person '
     'the ledger then shows (simplify on)',
-    skip: true, // 'QA MONEY-R24-01: Settle up "What changes" predicts balances the ledger does not show after a part payment'
     (tester) async {
       late ({QaPhone p, GroupId g, MemberId me, MemberId sam, MemberId priya})
       w;
@@ -561,11 +561,32 @@ void main() {
       );
       final previewPair = table.entries[0].after.minor;
       final previewSam = table.entries[1].after.minor;
-      expect(previewPair, -3500, reason: 'the screen predicts I owe Sam 35');
+      // The ledger reroutes: I pay Priya 40, Dev pays Sam 30, I pay Sam 5.
+      expect(previewPair, -500, reason: 'the screen previews I owe Sam 5');
+      // My balance with Priya moves too, and the screen says so.
+      expect(
+        table.entries.map((e) => e.title),
+        containsAllInOrder(['You and Sam', 'Sam overall', 'You and Priya']),
+      );
+      final priyaRow = table.entries.firstWhere(
+        (e) => e.title == 'You and Priya',
+      );
+      expect((priyaRow.now.minor, priyaRow.after.minor), (-1000, -4000));
+      expect(table.entries.last.title, 'Your overall');
+      final frozen = [for (final e in table.entries) e.after.minor];
       await tester.tap(find.text('Record ₹25 payment'));
       await tester.runAsync(
         () => Future<void>.delayed(const Duration(milliseconds: 50)),
       );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+      // The confirmation keeps the previewed after-values (the ledger's,
+      // checked below) while the recorded animation plays.
+      final done = tester.widget<BeforeAfterTable>(
+        find.byType(BeforeAfterTable).last,
+      );
+      expect([for (final e in done.entries) e.after.minor], frozen);
+      expect([for (final e in done.entries) e.now.minor], frozen);
       await settle(tester);
       await tester.runAsync(pumpEventQueue);
       final pay = p.gs(w.g).liveExpenses.firstWhere((e) => e.isPayment);
@@ -586,64 +607,330 @@ void main() {
     },
   );
 
-  test(
-    'QA MONEY-R24-01: simplify on, a part payment moves the balance with '
-    'Sam and with Priya away from what the screen previews',
-    skip:
-        'QA MONEY-R24-01: Settle up "What changes" predicts balances the '
-        'ledger does not show after a part payment',
-    () async {
-      final w = await fourWay(true);
-      final p = w.p;
-      addTearDown(p.dispose);
-      // The screen previews "You and Sam" as now + amount and leaves every
-      // other person as they are.
-      final sam = pairNet(p, w.g, w.me, w.sam); // -6000
-      final priya = pairNet(p, w.g, w.me, w.priya); // -1000
-      await p.pay(w.g, from: w.me, to: w.sam, amount: 2500);
-      expect(pairNet(p, w.g, w.me, w.sam), sam + 2500, reason: 'You and Sam');
-      expect(pairNet(p, w.g, w.me, w.priya), priya, reason: 'You and Priya');
-    },
-  );
+  /// The Settle up preview of [from] paying [to] [amount] (INR) against
+  /// the balances the ledger shows once that payment is recorded: every
+  /// pair with me in the group, every person overall and my overall.
+  Future<void> expectPreviewMatches(
+    QaPhone p,
+    GroupId g, {
+    required MemberId from,
+    required MemberId to,
+    required int amount,
+    String currency = 'INR',
+    String reason = '',
+  }) async {
+    final me = p.gs(g).memberForPerson(p.me)!.id;
+    final preview = SettlePreview.of(
+      p.state,
+      p.me,
+      groupId: g,
+      from: from,
+      to: to,
+      amount: amount,
+      currency: currency,
+      date: DateTime.utc(2026, 11, 12),
+    );
+    final members = p.gs(g).activeMembers.map((m) => m.id).toList();
+    final predicted = {
+      for (final m in members)
+        if (m != me) m: preview.pairAfter(me, m),
+    };
+    final pair = preview.pairAfter(from, to);
+    final people = {
+      for (final x in preview.peopleAfter) x.personId: x.net[currency] ?? 0,
+    };
+    final overall = preview.overallAfter;
+    await p.pay(g, from: from, to: to, amount: amount, currency: currency);
+    int net(MemberId a, MemberId b) {
+      var v = 0;
+      for (final t in p.transfers(g)) {
+        if (t.currency != currency) continue;
+        if (t.from == a && t.to == b) v -= t.amount;
+        if (t.to == a && t.from == b) v += t.amount;
+      }
+      return v;
+    }
 
-  test(
-    'QA MONEY-R24-01: simplify off, an over-payment that closes a cycle does '
-    'not leave Sam owing me the extra the screen announces',
-    skip:
-        'QA MONEY-R24-01: Settle up "What changes" predicts balances the '
-        'ledger does not show after a part payment',
-    () async {
-      final p = await QaPhone.create();
-      addTearDown(p.dispose);
+    for (final m in predicted.keys) {
+      expect(net(me, m), predicted[m], reason: '$reason you and $m');
+    }
+    expect(net(from, to), pair, reason: '$reason $from and $to');
+    expect(
+      {for (final x in p.people()) x.personId: x.net[currency] ?? 0},
+      people,
+      reason: '$reason people overall',
+    );
+    expect(p.overall().net[currency] ?? 0, overall, reason: '$reason overall');
+  }
+
+  test('QA MONEY-R24-01: simplify on, a part payment moves the balance with '
+      'Sam and with Priya as the screen previews', () async {
+    final w = await fourWay(true);
+    final p = w.p;
+    addTearDown(p.dispose);
+    final preview = SettlePreview.of(
+      p.state,
+      p.me,
+      groupId: w.g,
+      from: w.me,
+      to: w.sam,
+      amount: 2500,
+      currency: 'INR',
+      date: DateTime.utc(2026, 11, 12),
+    );
+    // Not now + amount: the suggestions are recomputed and route the
+    // debts differently (I pay Priya 40, Dev pays Sam 30, I pay Sam 5).
+    expect(preview.pairAfter(w.me, w.sam), -500);
+    expect(preview.pairAfter(w.me, w.priya), -4000);
+    expect(preview.othersChanged(w.me, {w.me, w.sam}), [w.priya]);
+    await expectPreviewMatches(p, w.g, from: w.me, to: w.sam, amount: 2500);
+    expect(pairNet(p, w.g, w.me, w.sam), -500, reason: 'You and Sam');
+    expect(pairNet(p, w.g, w.me, w.priya), -4000, reason: 'You and Priya');
+  });
+
+  test('QA MONEY-R24-01: simplify off, an over-payment that closes a cycle '
+      'previews Sam settled and Priya owing me the extra', () async {
+    final p = await QaPhone.create();
+    addTearDown(p.dispose);
+    final t = await p.group(['Sam', 'Priya'], simplify: false);
+    final me = t.m['me']!, sam = t.m['Sam']!, priya = t.m['Priya']!;
+    // Raw debts: I owe Sam 60, Sam owes Priya 30, Priya owes me 20. The
+    // cycle is cancelled: I owe Sam 40, Sam owes Priya 10.
+    await p.add(
+      t.g,
+      total: 6000,
+      paidBy: one(sam, 6000),
+      owedBy: one(me, 6000),
+    );
+    await p.add(
+      t.g,
+      total: 3000,
+      paidBy: one(priya, 3000),
+      owedBy: one(sam, 3000),
+    );
+    await p.add(
+      t.g,
+      total: 2000,
+      paidBy: one(me, 2000),
+      owedBy: one(priya, 2000),
+    );
+    expect(pairNet(p, t.g, me, sam), -4000);
+    expect(pairNet(p, t.g, me, priya), 0);
+    final preview = SettlePreview.of(
+      p.state,
+      p.me,
+      groupId: t.g,
+      from: me,
+      to: sam,
+      amount: 5000,
+      currency: 'INR',
+      date: DateTime.utc(2026, 11, 12),
+    );
+    expect(preview.pairAfter(me, sam), 0);
+    expect(preview.pairAfter(me, priya), 1000);
+    await expectPreviewMatches(p, t.g, from: me, to: sam, amount: 5000);
+    expect(pairNet(p, t.g, me, sam), 0, reason: 'Sam settled with me');
+    expect(pairNet(p, t.g, me, priya), 1000, reason: 'Priya owes me 10');
+  });
+
+  // Property: on seeded random groups (simplify on and off, three
+  // currencies, merges of who paid and who owed), every payment the
+  // screen can record - a suggestion in full, a part of it, more than it,
+  // and a payment between two other people - previews exactly the
+  // balances the ledger then shows.
+  for (final simplify in [true, false]) {
+    for (var seed = 1; seed <= 6; seed++) {
+      test(
+        'MONEY-R24-01 property (simplify ${simplify ? 'on' : 'off'}, seed '
+        '$seed): the Settle up preview is what the ledger shows after',
+        () async {
+          final r = Random(seed * 7919 + (simplify ? 1 : 0));
+          final p = await QaPhone.create(prefix: 'dddddddd');
+          addTearDown(p.dispose);
+          p.ids.queue(_randomIds(r, 400));
+          final t = await p.group([
+            'Sam',
+            'Priya',
+            'Dev',
+            'Kai',
+          ], simplify: simplify);
+          final ms = t.m.values.toList();
+          for (var i = 0; i < 8; i++) {
+            final total = 100 + r.nextInt(20000);
+            final cur = ['INR', 'JPY', 'KWD'][r.nextInt(3)];
+            final payer = ms[r.nextInt(ms.length)];
+            final owers = ([...ms]..shuffle(r)).take(1 + r.nextInt(4));
+            await p.add(
+              t.g,
+              total: total,
+              currency: cur,
+              paidBy: one(payer, total),
+              owedBy: SplitSpec.equal(owers),
+            );
+          }
+          for (var round = 0; round < 12; round++) {
+            final ts = p.transfers(t.g);
+            final MemberId from, to;
+            final String cur;
+            final int amount;
+            if (ts.isEmpty || r.nextInt(5) == 0) {
+              from = ms[r.nextInt(ms.length)];
+              to = ms.where((m) => m != from).toList()[r.nextInt(3)];
+              cur = ['INR', 'JPY', 'KWD'][r.nextInt(3)];
+              amount = 1 + r.nextInt(5000);
+            } else {
+              final tr = ts[r.nextInt(ts.length)];
+              from = tr.from;
+              to = tr.to;
+              cur = tr.currency;
+              amount = switch (r.nextInt(3)) {
+                0 when tr.amount > 1 => 1 + r.nextInt(tr.amount - 1),
+                1 => tr.amount + 1 + r.nextInt(3000),
+                _ => tr.amount,
+              };
+            }
+            await expectPreviewMatches(
+              p,
+              t.g,
+              from: from,
+              to: to,
+              amount: amount,
+              currency: cur,
+              reason: 'round $round',
+            );
+          }
+        },
+      );
+    }
+  }
+
+  /// Opens Settle up for [from] -> [to] (INR) and enters [amount] (major
+  /// units) through "Pay part of it"; returns the screen's texts.
+  Future<List<String>> settleTexts(
+    WidgetTester tester,
+    QaPhone p,
+    GroupId g,
+    MemberId from,
+    MemberId to,
+    String amount,
+  ) async {
+    final c = await pumpReal(tester, p);
+    c
+        .read(routerProvider)
+        .go(Routes.settle(groupId: g, from: from, to: to, currency: 'INR'));
+    await settle(tester);
+    await tester.tap(find.text('Pay part of it'));
+    await settle(tester);
+    await tester.enterText(find.byType(TextField).last, amount);
+    await settle(tester);
+    await tester.tap(find.text('Done'));
+    await settle(tester);
+    return [
+      for (final e in find.byType(Text).evaluate())
+        if ((e.widget as Text).data case final String d) d,
+    ];
+  }
+
+  testWidgets('MONEY-R24-01: simplify off, paying more than the balance '
+      'when the extra closes a cycle does not say the one paid will owe '
+      'it back', (tester) async {
+    late QaPhone p;
+    late GroupId g;
+    late MemberId me, sam, priya;
+    await tester.runAsync(() async {
+      p = await QaPhone.create();
       final t = await p.group(['Sam', 'Priya'], simplify: false);
-      final me = t.m['me']!, sam = t.m['Sam']!, priya = t.m['Priya']!;
-      // Raw debts: I owe Sam 60, Sam owes Priya 30, Priya owes me 20. The
-      // cycle is cancelled: I owe Sam 40, Sam owes Priya 10.
+      g = t.g;
+      me = t.m['me']!;
+      sam = t.m['Sam']!;
+      priya = t.m['Priya']!;
       await p.add(
-        t.g,
+        g,
         total: 6000,
         paidBy: one(sam, 6000),
         owedBy: one(me, 6000),
       );
       await p.add(
-        t.g,
+        g,
         total: 3000,
         paidBy: one(priya, 3000),
         owedBy: one(sam, 3000),
       );
       await p.add(
-        t.g,
+        g,
         total: 2000,
         paidBy: one(me, 2000),
         owedBy: one(priya, 2000),
       );
-      expect(pairNet(p, t.g, me, sam), -4000);
-      expect(pairNet(p, t.g, me, priya), 0);
-      // Pay Sam 50: "That's 10 more than the balance. Sam will owe you 10",
-      // and "You and Sam" after: owes you 10.
-      await p.pay(t.g, from: me, to: sam, amount: 5000);
-      expect(pairNet(p, t.g, me, sam), 1000, reason: 'Sam owes me 10');
-      expect(pairNet(p, t.g, me, priya), 0, reason: 'Priya as she was');
-    },
-  );
+    });
+    final texts = await settleTexts(tester, p, g, me, sam, '50');
+    expect(texts, contains("That's ₹10 more than the balance."));
+    expect(texts.where((s) => s.contains('will owe')), isEmpty);
+    final table = tester.widget<BeforeAfterTable>(
+      find.byType(BeforeAfterTable),
+    );
+    final rows = {for (final e in table.entries) e.title: e.after.minor};
+    expect(rows['You and Sam'], 0);
+    expect(rows['You and Priya'], 1000);
+    await tester.runAsync(p.dispose);
+  });
+
+  testWidgets('MONEY-R24-01: when someone pays me more than they owe, the '
+      'screen says I will owe them the extra, not that they will owe me', (
+    tester,
+  ) async {
+    late QaPhone p;
+    late GroupId g;
+    late MemberId me, sam;
+    await tester.runAsync(() async {
+      p = await QaPhone.create();
+      final t = await p.group(['Sam'], simplify: true);
+      g = t.g;
+      me = t.m['me']!;
+      sam = t.m['Sam']!;
+      await p.add(
+        g,
+        total: 6000,
+        paidBy: one(me, 6000),
+        owedBy: one(sam, 6000),
+      );
+    });
+    final texts = await settleTexts(tester, p, g, sam, me, '70');
+    expect(
+      texts,
+      contains("That's ₹10 more than the balance. You will owe Sam ₹10."),
+    );
+    await tester.runAsync(p.dispose);
+  });
+
+  testWidgets('MONEY-R24-01: a payment between two others that is more '
+      'than the balance says who will owe whom', (tester) async {
+    late QaPhone p;
+    late GroupId g;
+    late MemberId sam, priya;
+    await tester.runAsync(() async {
+      p = await QaPhone.create();
+      final t = await p.group(['Sam', 'Priya'], simplify: true);
+      g = t.g;
+      sam = t.m['Sam']!;
+      priya = t.m['Priya']!;
+      await p.add(
+        g,
+        total: 6000,
+        paidBy: one(priya, 6000),
+        owedBy: one(sam, 6000),
+      );
+    });
+    final texts = await settleTexts(tester, p, g, sam, priya, '70');
+    expect(
+      texts,
+      contains("That's ₹10 more than the balance. Priya will owe Sam ₹10."),
+    );
+    final table = tester.widget<BeforeAfterTable>(
+      find.byType(BeforeAfterTable),
+    );
+    expect(table.entries.single.after.word, 'Priya owes');
+    expect(table.entries.single.after.minor, 1000);
+    await tester.runAsync(p.dispose);
+  });
 }

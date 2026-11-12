@@ -135,6 +135,7 @@ abstract final class S {
   static const groupDeleted = 'Group deleted';
   static const groupArchived = 'Group archived';
   static const nameNeeded = 'Add a name, like Goa trip';
+
   /// A name typed with no letter or number (only spaces, symbols or
   /// characters that show nothing).
   static const nameNeedsLetter = 'Use at least one letter or number';
@@ -328,8 +329,15 @@ abstract final class S {
   static String recordPayment(String amount) => 'Record $amount payment';
   static const paymentRecorded = 'Payment recorded';
   static const whoIsPaying = 'Who is paying?';
-  static String overpay(String extra, String name) =>
-      "That's $extra more than the balance. $name will owe you $extra.";
+  static String overpay(String extra) => "That's $extra more than the balance.";
+
+  /// "Sam will owe you ₹10.", "You will owe Sam ₹10.", "Priya will owe
+  /// Sam ₹10.": a null name is me.
+  static String willOwe(String? debtor, String? creditor, String amount) =>
+      '${debtor ?? 'You'} will owe ${creditor ?? 'you'} $amount.';
+
+  /// "Priya owes": a pair cell where the one paid now owes the payer.
+  static String nameOwes(String name) => '$name owes';
   static const partTitle = 'How much?';
   static const nothingToSettle = 'Nothing to settle';
   static const nothingToSettleBody = 'Everyone in this group is settled up.';
