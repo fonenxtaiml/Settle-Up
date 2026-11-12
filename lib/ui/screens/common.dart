@@ -259,6 +259,9 @@ Future<bool?> askChoice(
   return showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
+      // Title and body scroll, the buttons stay on screen: a long name
+      // at a large text size never pushes them off (VISUAL-R29-01).
+      scrollable: true,
       title: Text(title),
       content: Text(body),
       actions: [
@@ -395,6 +398,9 @@ class _TextPromptState extends State<_TextPrompt> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    // Title and body scroll, the buttons stay on screen: a long name
+    // at a large text size never pushes them off (VISUAL-R29-01).
+    scrollable: true,
     title: Text(widget.title),
     content: ListenableBuilder(
       listenable: _controller,
