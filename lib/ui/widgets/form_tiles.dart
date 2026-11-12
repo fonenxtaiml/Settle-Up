@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
+import '../format/well_formed_formatter.dart';
 import 'button_semantics.dart';
 import 'category_glyph.dart';
 import 'kit_strings.dart';
@@ -80,7 +81,9 @@ class LabeledTextField extends StatelessWidget {
                   onSubmitted: onSubmitted,
                   textInputAction: textInputAction,
                   maxLength: maxLength,
-                  inputFormatters: inputFormatters,
+                  inputFormatters: WellFormedTextFormatter.first(
+                    inputFormatters,
+                  ),
                   minLines: 1,
                   maxLines: multiline ? null : 1,
                   // With an action of its own (Done on the description)
