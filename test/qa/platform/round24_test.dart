@@ -8,6 +8,7 @@
 // the way SettleUpApp does (no flutter_localizations, default
 // supportedLocales) under device locales the engineering tests do not
 // use, and check the date strings need no intl locale initialisation.
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -78,11 +79,13 @@ void main() {
           ),
         ),
       );
-      showDatePicker(
-        context: ctx,
-        initialDate: DateTime(2026, 11, 9),
-        firstDate: DateTime(2000),
-        lastDate: DateTime(2100),
+      unawaited(
+        showDatePicker(
+          context: ctx,
+          initialDate: DateTime(2026, 11, 9),
+          firstDate: DateTime(2000),
+          lastDate: DateTime(2100),
+        ),
       );
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
