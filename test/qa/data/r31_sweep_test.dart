@@ -297,8 +297,5 @@ void main() {
       expect(a.snap.totalUnshared, greaterThan(0));
       expect(a.snap.clockSkewDetected, a.ledger.clockSkewDetected);
     },
-    skip:
-        'QA DATA-R31-01: Settings shows no clock notice while this phone '
-        'holds its own op stamped too far ahead for peers',
   );
 }

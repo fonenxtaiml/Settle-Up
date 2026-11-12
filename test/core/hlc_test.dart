@@ -205,6 +205,18 @@ void main() {
       expect(clock.tick() > t, isTrue, reason: 'later ticks stay monotonic');
     });
 
+    test('this phone\'s own floor ahead is adopted without a skew flag '
+        '(DATA-R31-01: no peer clock was ahead)', () {
+      final clock = HlcClock(deviceId: dev, nowMillis: () => now);
+      const floor = Hlc(now + 2 * h, 5, dev);
+      final t = clock.tickAfter(floor);
+      expect(t > floor, isTrue);
+      expect(clock.skewDetected, isFalse);
+      // Another phone's floor as far ahead still sets it.
+      clock.tickAfter(const Hlc(now + 3 * h, 0, 'dev-z'));
+      expect(clock.skewDetected, isTrue);
+    });
+
     test('a floor equal up to the device id still loses', () {
       final clock = HlcClock(deviceId: 'dev-a', nowMillis: () => now);
       const floor = Hlc(now + 10, 3, 'dev-z');

@@ -161,23 +161,73 @@ final class Ledger implements LedgerRepository, SyncStore {
   /// or while this phone holds own ops stamped more than
   /// [maxRemoteAheadMs] ahead of its clock, which peers hold back until
   /// their clocks catch up (DATA-R29-01). Settings shows "This phone's
-  /// clock looks wrong". Also published on every snapshot as
-  /// [LedgerSnapshot.clockSkewDetected].
-  bool get clockSkewDetected =>
-      _factory.clock.skewDetected || _holdsOwnOpsTooFarAhead();
+  /// clock looks wrong". The same value as the
+  /// [LedgerSnapshot.clockSkewDetected] of [current] (DATA-R31-01): both
+  /// come from [_clockNotice], and [current] follows the wall clock (see
+  /// [recheckClock]).
+  bool get clockSkewDetected => _clockNotice() != ClockNotice.none;
 
-  bool _holdsOwnOpsTooFarAhead() {
+  /// The one source of the clock notice, for the getter and every snapshot.
+  ClockNotice _clockNotice() {
+    if (_newestOwnOpTooFarAhead() != null) return ClockNotice.ownChangesAhead;
+    if (_factory.clock.skewDetected) return ClockNotice.peerAhead;
+    return ClockNotice.none;
+  }
+
+  /// The newest own op stamped more than [maxRemoteAheadMs] ahead of the
+  /// wall clock, if any: peers hold it back until their clocks reach it.
+  Operation? _newestOwnOpTooFarAhead() {
     // Read the wall clock only when there is an op to compare: snapshots
     // are built while the ledger opens, before an injected clock is ready.
-    if (_ops.isEmpty) return false;
+    if (_ops.isEmpty) return null;
     final limit = _now() + maxRemoteAheadMs;
     final me = _me;
     for (var i = _ops.length - 1; i >= 0; i--) {
       final op = _ops[i];
-      if (op.hlc.millis <= limit) return false;
-      if (op.deviceId == me) return true;
+      if (op.hlc.millis <= limit) return null;
+      if (op.deviceId == me) return op;
     }
-    return false;
+    return null;
+  }
+
+  /// Re-checks the clock notice while it depends on the wall clock.
+  Timer? _clockTimer;
+
+  /// Longest wait between re-checks while [ClockNotice.ownChangesAhead] is
+  /// shown: a timer does not follow a date change made in system settings,
+  /// so a changed date is seen within this (or when the app resumes).
+  static const Duration clockRecheckEvery = Duration(hours: 1);
+
+  /// Runs after the commands already queued, so a snapshot is never
+  /// published from the middle of one.
+  @override
+  Future<void> recheckClock() async {
+    if (_closed) return;
+    await _serial(() async {
+      if (_closed) return;
+      if (_clockNotice() != _current.clockNotice) {
+        _emit();
+      } else {
+        _scheduleClockRecheck(_current);
+      }
+    });
+  }
+
+  /// While own ops are held back by peers, the notice clears once the wall
+  /// clock comes within [maxRemoteAheadMs] of them, with no other change
+  /// to publish it: schedule a re-check for then (DATA-R31-01).
+  void _scheduleClockRecheck(LedgerSnapshot snap) {
+    _clockTimer?.cancel();
+    _clockTimer = null;
+    if (_closed || snap.clockNotice != ClockNotice.ownChangesAhead) return;
+    final ahead = _newestOwnOpTooFarAhead();
+    if (ahead == null) return;
+    final clearsInMs = ahead.hlc.millis - maxRemoteAheadMs - _now() + 1;
+    final wait = Duration(milliseconds: math.max(clearsInMs, 0));
+    _clockTimer = Timer(
+      wait < clockRecheckEvery ? wait : clockRecheckEvery,
+      () => unawaited(recheckClock()),
+    );
   }
 
   /// The newest stamp of a stored op whose millis are at most [maxMillis]
@@ -256,6 +306,7 @@ final class Ledger implements LedgerRepository, SyncStore {
     }
     _records = await _store.syncRecords(limit: _recordLimit);
     _current = _buildSnapshot();
+    _scheduleClockRecheck(_current);
   }
 
   /// A key with no op and no invite hint was written by a createGroup (or
@@ -283,6 +334,8 @@ final class Ledger implements LedgerRepository, SyncStore {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _clockTimer?.cancel();
+    _clockTimer = null;
     await _tail;
     await _snapshots.close();
     await _localOps.close();
@@ -396,12 +449,13 @@ final class Ledger implements LedgerRepository, SyncStore {
       unsharedCounts: Map.unmodifiable(counts),
       localDeviceId: _me,
       groupsWithoutKey: Set.unmodifiable(keyless),
-      clockSkewDetected: clockSkewDetected,
+      clockNotice: _clockNotice(),
     );
   }
 
   void _emit() {
     _current = _buildSnapshot();
+    _scheduleClockRecheck(_current);
     if (!_snapshots.isClosed) _snapshots.add(_current);
   }
 
