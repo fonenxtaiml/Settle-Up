@@ -129,7 +129,7 @@ Future<List<String>> _checkDialog(
     );
   }
   // [fieldText] false leaves out a text field's helper, error and counter
-  // (open as VISUAL-R31-01).
+  // (VISUAL-R31-01, fixed: every sweep now checks them too).
   final inField = find
       .descendant(of: dialog, matching: find.byType(InputDecorator))
       .evaluate()
@@ -352,7 +352,7 @@ void main() {
                 t,
                 size,
                 keyboard: keyboard,
-                fieldText: false,
+                fieldText: true,
               )) {
                 problems.add('$at: $p');
               }
@@ -378,7 +378,8 @@ void main() {
   // typed is taken, carries the 60-character group in its title and the
   // 40-character name in its helper. Opened here directly with the strings
   // the claim screen passes, over the charter matrix, keyboard down and up:
-  // buttons on screen, title and body scroll (field text: VISUAL-R31-01).
+  // buttons on screen, title and body scroll, no field text cut
+  // (VISUAL-R31-01).
   testWidgets('R31 sweep: the name-taken prompt of the claim screen, with a '
       '60-character group and a 40-character name, fits or scrolls over the '
       'charter matrix with the keyboard down and up', (t) async {
@@ -393,7 +394,7 @@ void main() {
             title: S.yourNameIn(kGroup60),
             initial: kName40,
             helper: S.nameTakenHelper(kName40),
-            fieldText: false,
+            fieldText: true,
           ),
         );
       }
@@ -485,7 +486,6 @@ void main() {
       }
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true, // QA VISUAL-R31-01: text prompt helper and error text cut
   );
 }
 

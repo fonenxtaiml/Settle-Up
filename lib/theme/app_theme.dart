@@ -306,6 +306,11 @@ abstract final class AppTheme {
     labelSmall: _font(t.labelSmall),
   );
 
+  /// Lines a field's helper or error text may take: in practice no cap.
+  /// [InputDecoration] needs a number for its helper and error to wrap at
+  /// all (null keeps them to one line), and they must never be cut.
+  static const fieldNoteMaxLines = 1 << 16;
+
   static ThemeData _build(ColorScheme scheme, MoneyColors money) {
     final text = _withFont(typeScale())
         .apply(bodyColor: scheme.onSurface, displayColor: scheme.onSurface);
@@ -341,6 +346,13 @@ abstract final class AppTheme {
       hintStyle: text.bodyLarge?.copyWith(color: ink2),
       helperStyle: text.bodySmall?.copyWith(color: ink2),
       errorStyle: text.bodySmall?.copyWith(color: scheme.error),
+      // A field's helper and error say why a value is refused and what to
+      // do, so they wrap in full under every field. Flutter's default
+      // (null) cuts them to one line with an ellipsis, and any small cap
+      // cuts them at a large text size or beside the counter
+      // (VISUAL-R31-01).
+      helperMaxLines: fieldNoteMaxLines,
+      errorMaxLines: fieldNoteMaxLines,
     );
 
     return ThemeData(

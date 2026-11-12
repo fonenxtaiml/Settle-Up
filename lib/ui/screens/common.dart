@@ -402,60 +402,65 @@ class _TextPromptState extends State<_TextPrompt> {
     // at a large text size never pushes them off (VISUAL-R29-01).
     scrollable: true,
     title: Text(widget.title),
-    content: ListenableBuilder(
-      listenable: _controller,
-      builder: (context, _) {
-        final max = widget.maxLength;
-        // A name counts as it is stored ([NameLimit.length]) and a free
-        // text as the Ledger measures it, with the spaces and line breaks
-        // at either end counted as the cap holds them once a letter goes
-        // past them ([TextCapFormatter.counted]), so the counter never
-        // says a text fits that Save would refuse, nor shows room the
-        // field refuses.
-        final count = max == null
-            ? null
-            : widget.isName
-            ? NameLimit.length(_controller.text)
-            : TextCapFormatter.counted(_controller.text, max);
-        return TextField(
-          controller: _controller,
-          autofocus: true,
-          maxLength: max,
-          minLines: 1,
-          maxLines: widget.multiline ? null : 1,
-          keyboardType: widget.multiline ? TextInputType.multiline : null,
-          // A free text keeps its own cap ([TextCapFormatter]): the
-          // TextField's would cut the end of the text when a paste in the
-          // middle runs over.
-          maxLengthEnforcement: max != null && !widget.isName
-              ? MaxLengthEnforcement.none
-              : null,
-          inputFormatters: WellFormedTextFormatter.first(switch (max) {
-            null => null,
-            final max when widget.isName => nameFormatters(max),
-            final max => [TextCapFormatter(max)],
-          }),
-          textCapitalization: widget.multiline
-              ? TextCapitalization.sentences
-              : TextCapitalization.words,
-          decoration: InputDecoration(
-            hintText: widget.hint,
-            helperText: widget.helper,
-            helperMaxLines: 3,
-            errorText: widget.isName
-                ? nameInputError(_controller.text, limit: max)
-                : _freeTextError,
-            errorMaxLines: 3,
-            counterText: count == null ? null : '$count/$max',
-            semanticCounterText: count == null
-                ? null
-                : MaterialLocalizations.of(
-                    context,
-                  ).remainingTextFieldCharacterCount(math.max(0, max! - count)),
-          ),
-          onSubmitted: (_) => _submit(),
-        );
-      },
+    // The field takes the dialog's full width, not the 280 dp of its own
+    // size, so its helper and error (beside the counter) get the room
+    // the screen has and wrap in fewer lines (VISUAL-R31-01).
+    content: SizedBox(
+      width: double.maxFinite,
+      child: ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) {
+          final max = widget.maxLength;
+          // A name counts as it is stored ([NameLimit.length]) and a free
+          // text as the Ledger measures it, with the spaces and line breaks
+          // at either end counted as the cap holds them once a letter goes
+          // past them ([TextCapFormatter.counted]), so the counter never
+          // says a text fits that Save would refuse, nor shows room the
+          // field refuses.
+          final count = max == null
+              ? null
+              : widget.isName
+              ? NameLimit.length(_controller.text)
+              : TextCapFormatter.counted(_controller.text, max);
+          return TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLength: max,
+            minLines: 1,
+            maxLines: widget.multiline ? null : 1,
+            keyboardType: widget.multiline ? TextInputType.multiline : null,
+            // A free text keeps its own cap ([TextCapFormatter]): the
+            // TextField's would cut the end of the text when a paste in the
+            // middle runs over.
+            maxLengthEnforcement: max != null && !widget.isName
+                ? MaxLengthEnforcement.none
+                : null,
+            inputFormatters: WellFormedTextFormatter.first(switch (max) {
+              null => null,
+              final max when widget.isName => nameFormatters(max),
+              final max => [TextCapFormatter(max)],
+            }),
+            textCapitalization: widget.multiline
+                ? TextCapitalization.sentences
+                : TextCapitalization.words,
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              helperText: widget.helper,
+              errorText: widget.isName
+                  ? nameInputError(_controller.text, limit: max)
+                  : _freeTextError,
+              counterText: count == null ? null : '$count/$max',
+              semanticCounterText: count == null
+                  ? null
+                  : MaterialLocalizations.of(context)
+                        .remainingTextFieldCharacterCount(
+                          math.max(0, max! - count),
+                        ),
+            ),
+            onSubmitted: (_) => _submit(),
+          );
+        },
+      ),
     ),
     actions: [
       TextButton(
