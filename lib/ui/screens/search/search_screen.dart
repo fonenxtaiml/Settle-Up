@@ -12,6 +12,7 @@ import '../../format/well_formed_formatter.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
+import '../../widgets/kit_strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
 
@@ -28,7 +29,10 @@ List<(GroupState, Expense)> searchExpenses(LedgerState state, String query) {
     final names = memberFullNames(g);
     for (final e in g.liveExpenses) {
       final haystack = [
-        e.description,
+        if (e.isPayment)
+          e.description
+        else
+          KitStrings.expenseTitle(e.description),
         e.notes,
         categoryLabel(e.category),
         g.group!.name,
