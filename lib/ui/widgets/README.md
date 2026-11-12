@@ -80,7 +80,7 @@ reference screens. Copy its layouts when you build the real screens.
 - **SplitSummaryBar**: "₹600 each, 4 people" next to "₹0 left to split" or "₹200 too much". `SplitSummaryBar({required String summary, required int leftMinor, required String currency})`
 
 ### Settle up
-- **PaymentMethodSelector**: UPI, Cash, Bank and Other as pill segments. `PaymentMethodSelector({required PaymentMethod value, required ValueChanged<PaymentMethod> onChanged})`
+- **PaymentMethodSelector**: UPI, Cash, Bank and Other as pill segments. `PaymentMethodSelector({required PaymentMethod value, required ValueChanged<PaymentMethod>? onChanged})`; a null `onChanged` disables it (a payment being saved) and it keeps showing `value`
 - **BeforeAfterTable**: the "What changes" table, with Now → After for each balance. `BeforeAfterTable({required List<BeforeAfterEntry> entries, required String currency, String nowLabel = 'Now', String afterLabel = 'After'})`, where `BeforeAfterEntry({required String title, String? subtitle, required BalanceCell now, required BalanceCell after})` and `BalanceCell({required String word, required int minor, MoneyDirection? direction})`.
 - **KeyValueRow**: a row such as "Date Today, 9 Nov ›" or "Note Optional ›". `KeyValueRow({required String label, required String? value, String? placeholder, VoidCallback? onTap})`
 
