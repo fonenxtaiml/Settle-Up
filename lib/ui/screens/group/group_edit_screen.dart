@@ -196,17 +196,26 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     }
   }
 
+  /// Archive (or unarchive) is saved like the form: the screen is locked
+  /// while it is written, so nothing (Members, Delete group's prompt) can
+  /// open over it and be closed in its place, and it then closes only
+  /// itself (MONEY-R28-01 class).
   Future<void> _archive(Group g) async {
+    if (_saving) return;
+    setState(() => _saving = true);
     final ok = await runGuarded(
       context,
       () => ref
           .read(ledgerRepositoryProvider)
           .updateGroup(g.id, GroupPatch(archived: !g.archived)),
     );
-    if (ok && mounted) {
-      showSnack(context, g.archived ? S.groupSaved : S.groupArchived);
-      context.pop();
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
     }
+    showSnack(context, g.archived ? S.groupSaved : S.groupArchived);
+    closeScreen(context, fallback: Routes.group(g.id));
   }
 
   Future<void> _delete(Group g, int expenses) async {
@@ -216,15 +225,19 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       body: S.deleteGroupBody(expenses),
       confirmLabel: S.delete,
     );
-    if (!yes || !mounted) return;
+    if (!yes || !mounted || _saving) return;
+    setState(() => _saving = true);
     final ok = await runGuarded(
       context,
       () => ref.read(ledgerRepositoryProvider).deleteGroup(g.id),
     );
-    if (ok && mounted) {
-      showSnack(context, S.groupDeleted);
-      context.go(Routes.home);
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
     }
+    showSnack(context, S.groupDeleted);
+    context.go(Routes.home);
   }
 
   @override
