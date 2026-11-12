@@ -92,17 +92,20 @@ final class VisualPhone {
   /// meantime are loaded as stored). Call inside `tester.runAsync`.
   Future<VisualPhone> reopen() async {
     await ledger.close();
-    late VisualPhone phone;
-    final clock = _clock;
+    VisualPhone? phone;
+    // The ledger reads its clock while it opens, before [phone] exists.
+    var clock = _clock;
     final next = await Ledger.open(
       store: store,
       keys: keys,
       settings: settings,
       ids: QaIds('bbbb0000'),
-      nowMillis: () => phone._clock += 1000,
+      nowMillis: () {
+        final p = phone;
+        return p == null ? clock += 1000 : p._clock += 1000;
+      },
     );
-    phone = VisualPhone._(store, settings, next, keys).._clock = clock;
-    return phone;
+    return phone = VisualPhone._(store, settings, next, keys).._clock = clock;
   }
 
   PersonId get me => settings.profile!.personId;
