@@ -6,12 +6,12 @@ import 'package:app_settings/app_settings.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../theme/tokens.dart';
 import '../../format/dates.dart';
 import '../../providers.dart';
+import '../../router.dart';
 import '../../strings.dart';
 import '../../widgets/kit_strings.dart';
 import '../../widgets/widgets.dart';
@@ -95,7 +95,11 @@ class _HostScreenState extends ConsumerState<HostScreen>
                       context,
                       () => ref.read(syncEngineProvider).stopHosting(),
                     );
-                    if (context.mounted && context.canPop()) context.pop();
+                    // Only this screen closes, never what is over it or
+                    // under it (MONEY-R28-01 class).
+                    if (context.mounted) {
+                      closeScreen(context, fallback: Routes.sync);
+                    }
                   },
                   style: KitButtonStyles.block,
                   child: const Text(S.stop),
