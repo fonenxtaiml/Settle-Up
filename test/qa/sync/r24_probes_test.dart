@@ -5,8 +5,9 @@
 // string, the reducer and activity drop lone surrogates an op stored
 // before the check may hold, and noncharacters (U+FDD0..U+FDEF, U+xFFFE,
 // U+xFFFF) count as showing nothing. These probes run those paths through
-// the real DefaultSyncEngine and Ledger: a refused op inside a batch, an
-// op stored before the check on one or both phones, names and HELLO names
+// the real DefaultSyncEngine and Ledger: an op stored before the check
+// on one or both phones (offered well formed since DATA-R24-01), a peer
+// op that is not well formed, names and HELLO names
 // of noncharacters, and local text with half an emoji synced three ways.
 import 'dart:convert';
 
@@ -109,75 +110,83 @@ void main() {
       (p.state.groups[g]!.expenses.keys.toList()..sort()).first;
 
   group('a peer op with a lone surrogate inside a sync batch', () {
-    test(
-      'the receiver refuses the batch whole, records a failed sync, '
-      'keeps the sender\'s changes unshared and serves the next session',
-      () async {
-        final a = await phone('a', 'A');
-        final b = await phone('b', 'B', sqlite: true);
-        final s = await a.seedGroup(expenses: 2);
-        await b.join(a, s.g);
-        await syncByLink(b, a);
-        expect(b.canonical, a.canonical);
+    // DATA-R24-01 changed what this probe expects: an op stored before the
+    // check is offered in the form updated peers accept
+    // (TextRules.canonical), so it no longer fails every sync of its phone.
+    // A peer op that is not well formed is still refused whole.
+    test('an op stored before the check reaches the peer well formed with the '
+        'good ops of its batch, both phones agree, and a peer op that is not '
+        'well formed is still refused whole (DATA-R24-01)', () async {
+      final a = await phone('a', 'A');
+      final b = await phone('b', 'B', sqlite: true);
+      final s = await a.seedGroup(expenses: 2);
+      await b.join(a, s.g);
+      await syncByLink(b, a);
+      expect(b.canonical, a.canonical);
 
-        // A stored this op before peers' text was checked (an older build):
-        // it bypasses the Ledger's check, straight into the store.
-        final e = firstExpense(a, s.g);
-        final now = DateTime.now().millisecondsSinceEpoch;
-        await a.opStore.insertAll([
-          _raw(
-            groupId: s.g,
-            counter: 1,
-            entityType: 'expense',
-            entityId: e,
-            payload: {'description': 'Taxi \uD83D'},
-            millis: now,
-          ),
+      // A stored this op before peers' text was checked (an older build):
+      // it bypasses the Ledger's check, straight into the store.
+      final e = firstExpense(a, s.g);
+      final now = DateTime.now().millisecondsSinceEpoch;
+      final legacy = _raw(
+        groupId: s.g,
+        counter: 1,
+        entityType: 'expense',
+        entityId: e,
+        payload: {'description': 'Taxi \uD83D'},
+        millis: now,
+      );
+      await a.opStore.insertAll([legacy]);
+      await a.addExpenses(s, 3, base: 500);
+      expect(a.snapshot.unsharedCounts[s.g] ?? 0, greaterThan(0));
+
+      final sum = await syncByLink(b, a);
+      expect(sum.receivedOps, 4);
+      expect(b.opsOf(s.g).where((o) => o.deviceId == _rawDevice), hasLength(1));
+      expect(b.state.expense(e)!.description, 'Taxi ');
+      expect(_deepWellFormed(b.canonical), isTrue);
+      expect(a.snapshot.unsharedCounts[s.g] ?? 0, 0);
+      expect((await b.records()).first.outcome, SyncOutcome.completed);
+      for (var i = 0; i < 2; i++) {
+        final again = await syncByLink(b, a);
+        expect((again.sentOps, again.receivedOps), (0, 0));
+      }
+      // A shows the stored op as it reads it at its next start.
+      final ra = LedgerReducer()
+        ..applyAll([
+          for (final op in await a.opStore.loadAll())
+            if (op.groupId == s.g) TextRules.canonical(op),
         ]);
-        await a.addExpenses(s, 3, base: 500);
-        final bOps = b.opCount(s.g);
-        final bBefore = b.canonical.toString();
-        final aUnshared = a.snapshot.unsharedCounts[s.g] ?? 0;
-        expect(aUnshared, greaterThan(0));
+      expect(ra.state.toCanonicalJson().toString(), b.canonical.toString());
 
-        await expectLater(
-          syncByLink(b, a),
-          throwsA(
-            isA<SyncException>().having(
-              (x) => x.failure,
-              'failure',
-              SyncFailure.protocolMismatch,
-            ),
-          ),
-        );
-        // Nothing of the batch is stored: the bad op and the good ones that
-        // came with it alike.
-        expect(b.opCount(s.g), bOps);
-        expect(b.canonical.toString(), bBefore);
-        expect(b.opsOf(s.g).where((o) => o.deviceId == _rawDevice), isEmpty);
-        expect(_deepWellFormed(b.canonical), isTrue);
-        // A's badge still counts its unsent changes.
-        expect(a.snapshot.unsharedCounts[s.g] ?? 0, aUnshared);
-        final bRec = (await b.records()).first;
-        expect(bRec.outcome, SyncOutcome.failed);
-        await waitFor(
-          () async =>
-              (await a.records()).length >= 2 &&
-              (await a.records()).first.outcome == SyncOutcome.failed,
-        );
-        expect((await a.records()).first.outcome, SyncOutcome.failed);
+      // The receiver still refuses a peer op that is not well formed,
+      // and nothing of its batch is stored.
+      final bOps = b.opCount(s.g);
+      final bBefore = b.canonical.toString();
+      final forged = _raw(
+        groupId: s.g,
+        counter: 2,
+        entityType: 'expense',
+        entityId: e,
+        payload: {'notes': 'x\uDC00'},
+        millis: now + 1,
+      );
+      await expectLater(
+        b.ledger.applyRemote(s.g, [forged]),
+        throwsA(isA<FormatException>()),
+      );
+      expect(b.opCount(s.g), bOps);
+      expect(b.canonical.toString(), bBefore);
 
-        // Both engines are free: a fresh phone C with no such op syncs with
-        // B at once.
-        final c = await phone('c', 'C');
-        await c.join(a, s.g);
-        final ok = await syncByLink(c, b);
-        expect(ok.receivedOps, bOps);
-        expect(c.canonical, b.canonical);
-        expect(a.engine.status.session, isNot(isA<SessionActive>()));
-        expect(b.engine.status.session, isNot(isA<SessionActive>()));
-      },
-    );
+      // Both engines are free: a fresh phone C syncs with B at once.
+      final c = await phone('c', 'C');
+      await c.join(a, s.g);
+      final ok = await syncByLink(c, b);
+      expect(ok.receivedOps, bOps);
+      expect(c.canonical, b.canonical);
+      expect(a.engine.status.session, isNot(isA<SessionActive>()));
+      expect(b.engine.status.session, isNot(isA<SessionActive>()));
+    });
 
     test('an op stored before the check on two phones: both show the text '
         'without the lone half, the same snapshot, and repeat syncs move '
