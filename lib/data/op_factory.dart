@@ -22,19 +22,22 @@ final class OpFactory {
   static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
 
   /// A plain local op is never stamped more than this ahead of the wall
-  /// clock (the drift [HlcClock.receive] still adopts from a peer).
+  /// clock: 5 days, so it is within the 7 days peers accept
+  /// (`Ledger.maxRemoteAheadMs`) even on a peer whose clock is 2 days
+  /// behind this one's, the most nearby discovery still tolerates.
   ///
   /// The clock only moves forward, so one edit made while this phone's
-  /// wall clock ran days ahead would otherwise stamp every later op just as
-  /// far ahead, and peers hold back ops stamped more than
-  /// `Ledger.maxRemoteAheadMs` ahead of theirs (DATA-R29-01). When the
-  /// clock is further ahead than this, it is first set back to the newest
-  /// stamp this phone holds within the lead ([newestStamp]): later ops are
-  /// still stamped after everything the user saw within it, and a local
+  /// wall clock ran more days ahead than that would otherwise stamp every
+  /// later op just as far ahead, and peers would hold all of them back
+  /// until real time caught up (DATA-R29-01). Within the lead the clock
+  /// stays monotonic, as SPEC 5.3 has it (a wall clock set back hours or
+  /// a few days changes nothing). Past it, the clock is first set back to
+  /// the newest stamp this phone holds within the lead ([newestStamp]):
+  /// later ops are still stamped after everything within it, and a local
   /// edit still beats the entity's newest op ([lastHlcOf], see
   /// [HlcClock.tickAfter]; one of this phone's own stamps beyond the
   /// adopt window is followed, so the edit waits with the entity).
-  static const int maxLeadMs = HlcClock.maxForwardDriftMs;
+  static const int maxLeadMs = 5 * 24 * 60 * 60 * 1000;
 
   final DeviceId deviceId;
   final IdGenerator ids;

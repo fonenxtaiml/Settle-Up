@@ -135,6 +135,37 @@ void main() {
     expect(b.snap.state.expense(y), isNotNull);
   });
 
+  test('a wall clock set back up to the lead keeps the clock monotonic; '
+      'past it, later ops are stamped from the wall clock and reach a peer '
+      'whose clock is 2 days behind', () async {
+    await join();
+    a.clock.now = kQaBaseMs + 4 * _day;
+    final x = await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+    a.clock.now = kQaBaseMs + 60000;
+    final y = await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+    expect(
+      newestOpOf(a, y).hlc > newestOpOf(a, x).hlc,
+      isTrue,
+      reason: 'within the lead the clock never goes backwards',
+    );
+
+    a.clock.now = kQaBaseMs + 12 * _day;
+    final z = await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+    a.clock.now = kQaBaseMs + 120000;
+    await a.restart();
+    final w = await a.ledger.addExpense(qaDraft(t.g, [t.me, t.sam]));
+    expect(
+      newestOpOf(a, w).hlc.millis,
+      lessThanOrEqualTo(a.clock.now + OpFactory.maxLeadMs),
+    );
+    expect(newestOpOf(a, w).hlc > newestOpOf(a, y).hlc, isTrue);
+    b.clock.now = kQaBaseMs - 2 * _day;
+    expect(await sync(), SyncOutcome.completed);
+    expect(b.snap.state.expense(w), isNotNull);
+    expect(b.snap.state.expense(z), isNull);
+    expect(a.ledger.clockSkewDetected, isTrue);
+  });
+
   test('after a peer stamp days ahead is adopted for an edit, the next new '
       'op is stamped from the wall clock again', () async {
     await join();
