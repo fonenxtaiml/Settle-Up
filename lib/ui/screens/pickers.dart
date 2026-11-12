@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/categories.dart';
 import '../../core/money.dart';
 import '../../theme/tokens.dart';
+import '../format/well_formed_formatter.dart';
 import '../strings.dart';
 import '../widgets/widgets.dart';
 import 'common.dart';
@@ -108,6 +109,7 @@ class _CurrencySheetState extends State<_CurrencySheet> {
           ),
           child: TextField(
             autofocus: false,
+            inputFormatters: const [WellFormedTextFormatter()],
             decoration: const InputDecoration(
               hintText: S.searchCurrencies,
               prefixIcon: Icon(Icons.search_rounded),

@@ -20,6 +20,7 @@ import 'package:settle_up/core/text_clean.dart';
 import 'package:settle_up/data/text_rules.dart';
 import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/widgets/expense_row.dart';
+import 'package:settle_up/ui/widgets/kit_strings.dart';
 
 import 'visual_harness.dart';
 
@@ -233,88 +234,166 @@ void main() {
   // titles the expense "Payment" (lib/ui/widgets/expense_row.dart:133),
   // or shows a blank title, next to the expense's category glyph and
   // "you lent".
-  testWidgets(
-    'QA VISUAL-R24-01: An expense whose description shows nothing is '
-    'titled "Payment" or left untitled in the expense list',
-    skip: true, // QA VISUAL-R24-01: open, failing repro
-    (t) async {
-      late VisualWorld w;
-      late String fromPeer, blankFromPeer;
-      await t.runAsync(() async {
-        final base = await VisualWorld.realistic();
-        final ops = await _ownUpdates(base, [
-          (
-            EntityType.expense,
-            base.expense,
-            {ExpenseFields.description: _lone},
-          ),
-        ]);
-        w = await _withStored(base, ops);
-        // A peer's two expenses, as its op carries them: one with an empty
-        // description, one with a Hangul filler (blank on screen).
-        final create = (await w.phone.store.loadAll()).firstWhere(
-          (o) => o.entityId == w.expense && o.kind == OpKind.create,
-        );
-        const peer = 'eeee0000-0000-7000-8000-000000000001';
-        fromPeer = 'eeee0000-0000-7000-8000-0000000000e1';
-        blankFromPeer = 'eeee0000-0000-7000-8000-0000000000e2';
-        final ms = create.hlc.millis + 60000;
-        final added = await w.phone.ledger.applyRemote(w.group, [
-          for (final (n, id, d) in [(1, fromPeer, ''), (2, blankFromPeer, 'ㅤ')])
-            Operation(
-              id: 'eeee0000-0000-7000-8000-00000000010$n',
-              groupId: w.group,
-              deviceId: peer,
-              counter: n,
-              hlc: Hlc(ms + n, 0, peer),
-              entityType: EntityType.expense,
-              entityId: id,
-              kind: OpKind.create,
-              payload: {...create.payload, ExpenseFields.description: d},
-            ),
-        ]);
-        expect(added, hasLength(2));
-      });
-      final expenses = w.phone.gs(w.group).expenses;
-      for (final id in [w.expense, fromPeer, blankFromPeer]) {
-        expect(expenses[id]!.isPayment, isFalse, reason: id);
-      }
-      await pumpVisual(
-        t,
-        w.phone,
-        v: kVariants.first,
-        location: Routes.group(w.group),
+  testWidgets('QA VISUAL-R24-01: An expense whose description shows nothing is '
+      'titled "Payment" or left untitled in the expense list', (t) async {
+    late VisualWorld w;
+    late String fromPeer, blankFromPeer;
+    await t.runAsync(() async {
+      final base = await VisualWorld.realistic();
+      final ops = await _ownUpdates(base, [
+        (EntityType.expense, base.expense, {ExpenseFields.description: _lone}),
+      ]);
+      w = await _withStored(base, ops);
+      // A peer's two expenses, as its op carries them: one with an empty
+      // description, one with a Hangul filler (blank on screen).
+      final create = (await w.phone.store.loadAll()).firstWhere(
+        (o) => o.entityId == w.expense && o.kind == OpKind.create,
       );
-      final titles = <String, String>{};
-      for (final id in [w.expense, fromPeer, blankFromPeer]) {
-        final row = find.byWidgetPredicate(
-          (x) => x is ExpenseRow && x.expense.id == id,
-        );
-        await t.scrollUntilVisible(row, 120);
-        // The row's first paragraph that is not its category glyph.
-        final texts = [
-          for (final e
-              in find
-                  .descendant(of: row, matching: find.byType(RichText))
-                  .evaluate())
-            if (e.renderObject case final RenderParagraph p)
-              p.text.toPlainText(),
-        ];
-        titles[id] = texts.firstWhere(
-          (s) =>
-              s.runes.every((r) => r < 0xE000 || r > 0xF8FF) &&
-              !s.runes.any((r) => r >= 0xF0000),
-          orElse: () => '',
-        );
-      }
-      qaLog(titles);
-      final problems = [
-        for (final MapEntry(:key, :value) in titles.entries)
-          if (value == 'Payment' || TextRules.isBlank(value)) '$key: "$value"',
+      const peer = 'eeee0000-0000-7000-8000-000000000001';
+      fromPeer = 'eeee0000-0000-7000-8000-0000000000e1';
+      blankFromPeer = 'eeee0000-0000-7000-8000-0000000000e2';
+      final ms = create.hlc.millis + 60000;
+      final added = await w.phone.ledger.applyRemote(w.group, [
+        for (final (n, id, d) in [(1, fromPeer, ''), (2, blankFromPeer, 'ㅤ')])
+          Operation(
+            id: 'eeee0000-0000-7000-8000-00000000010$n',
+            groupId: w.group,
+            deviceId: peer,
+            counter: n,
+            hlc: Hlc(ms + n, 0, peer),
+            entityType: EntityType.expense,
+            entityId: id,
+            kind: OpKind.create,
+            payload: {...create.payload, ExpenseFields.description: d},
+          ),
+      ]);
+      expect(added, hasLength(2));
+    });
+    final expenses = w.phone.gs(w.group).expenses;
+    for (final id in [w.expense, fromPeer, blankFromPeer]) {
+      expect(expenses[id]!.isPayment, isFalse, reason: id);
+    }
+    await pumpVisual(
+      t,
+      w.phone,
+      v: kVariants.first,
+      location: Routes.group(w.group),
+    );
+    final titles = <String, String>{};
+    for (final id in [w.expense, fromPeer, blankFromPeer]) {
+      final row = find.byWidgetPredicate(
+        (x) => x is ExpenseRow && x.expense.id == id,
+      );
+      await t.scrollUntilVisible(row, 120);
+      // The row's first paragraph that is not its category glyph.
+      final texts = [
+        for (final e
+            in find
+                .descendant(of: row, matching: find.byType(RichText))
+                .evaluate())
+          if (e.renderObject case final RenderParagraph p) p.text.toPlainText(),
       ];
+      titles[id] = texts.firstWhere(
+        (s) =>
+            s.runes.every((r) => r < 0xE000 || r > 0xF8FF) &&
+            !s.runes.any((r) => r >= 0xF0000),
+        orElse: () => '',
+      );
+    }
+    qaLog(titles);
+    final problems = [
+      for (final MapEntry(:key, :value) in titles.entries)
+        if (value == 'Payment' || TextRules.isBlank(value)) '$key: "$value"',
+    ];
+    await t.pumpWidget(const SizedBox.shrink());
+    await t.runAsync(w.phone.dispose);
+    expect(problems, isEmpty);
+  });
+
+  // VISUAL-R24-01 neighbours: the detail title, the activity sentence,
+  // search and the delete confirmation of an expense whose description
+  // shows nothing agree with the row: "Untitled expense".
+  testWidgets('VISUAL-R24-01: a peer expense with a blank description is '
+      '"Untitled expense" on its detail screen, in activity and in search', (
+    t,
+  ) async {
+    late VisualWorld w;
+    const id = 'eeee0000-0000-7000-8000-0000000000e3';
+    await t.runAsync(() async {
+      w = await VisualWorld.realistic();
+      final create = (await w.phone.store.loadAll()).firstWhere(
+        (o) => o.entityId == w.expense && o.kind == OpKind.create,
+      );
+      const peer = 'eeee0000-0000-7000-8000-000000000002';
+      final added = await w.phone.ledger.applyRemote(w.group, [
+        Operation(
+          id: 'eeee0000-0000-7000-8000-000000000201',
+          groupId: w.group,
+          deviceId: peer,
+          counter: 1,
+          hlc: Hlc(create.hlc.millis + 60000, 0, peer),
+          entityType: EntityType.expense,
+          entityId: id,
+          kind: OpKind.create,
+          payload: {
+            ...create.payload,
+            ExpenseFields.description: '\u3164\u2800 \u00AD',
+          },
+        ),
+      ]);
+      expect(added, hasLength(1));
+    });
+    final problems = <String>[];
+    Future<void> check(
+      String where,
+      String loc,
+      bool Function(String) ok,
+    ) async {
+      await pumpVisual(t, w.phone, v: kVariants.first, location: loc);
+      final texts = visibleTexts(t);
+      if (!texts.any(ok)) problems.add('$where: $texts');
       await t.pumpWidget(const SizedBox.shrink());
-      await t.runAsync(w.phone.dispose);
-      expect(problems, isEmpty);
-    },
-  );
+    }
+
+    await check('detail', Routes.expense(id), (s) => s == 'Untitled expense');
+    await check(
+      'activity',
+      Routes.groupActivity(w.group),
+      (s) => s.contains('Untitled expense'),
+    );
+    await pumpVisual(t, w.phone, v: kVariants.first, location: Routes.search);
+    await t.enterText(find.byType(EditableText).first, 'untitled');
+    await settleFrames(t);
+    final found = find.byWidgetPredicate(
+      (x) => x is ExpenseRow && x.expense.id == id,
+    );
+    if (found.evaluate().isEmpty) problems.add('search: not found');
+    await t.pumpWidget(const SizedBox.shrink());
+    await t.runAsync(w.phone.dispose);
+    expect(problems, isEmpty);
+  });
+
+  test('VISUAL-R24-01: an expense title is its description unless that '
+      'shows nothing, over every blank character class', () {
+    for (final blank in [
+      '',
+      ' ',
+      '\u3164',
+      '\u1160',
+      '\u115F',
+      '\uFFA0',
+      '\u2800',
+      '\u200B\u200F',
+      '\u2060\u00AD',
+      '\uFE0F',
+      '\u{E0020}',
+      '\u3000\u00A0',
+      '\u180E',
+    ]) {
+      expect(KitStrings.expenseTitle(blank), 'Untitled expense');
+    }
+    for (final shown in ['Dinner', 'ㅤa', '1', '😀', 'नमस्ते', '-']) {
+      expect(KitStrings.expenseTitle(shown), shown);
+    }
+  });
 }
