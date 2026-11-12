@@ -4,6 +4,8 @@
 // unarchive and delete from Edit group, delete and undo from a detail
 // reached from Search and from the Activity tab, a new group replacing its
 // form, a payment edit, the discard prompt, and a deep link over a form.
+// Tests named "QA UIFLOW-R29-NN" with `skip: true` are failing repros of
+// an open finding.
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/balances.dart';
@@ -477,4 +479,81 @@ void main() {
     expect(tester.takeException(), isNull);
     await w.shutdown(tester);
   });
+
+  // UIFLOW-R29-01: a payment's detail speaks of it as an expense. The menu
+  // offers "Delete expense", the prompt (titled "Delete payment?") says it
+  // can be restored "from the expense", and the snack bars after delete and
+  // restore say "Expense deleted" and "Expense restored". Everywhere else
+  // (detail title, edit screen, Activity) it is a payment.
+  testWidgets(
+    'QA UIFLOW-R29-01: deleting and restoring a payment from its detail says '
+    'payment, not expense, in the menu, the prompt and the snack bars',
+    // QA UIFLOW-R29-01: payment delete and restore copy says "expense"
+    skip: true,
+    (tester) async {
+      qaPhone(tester);
+      final w = await RealWorld.create(name: 'Arjun');
+      final gid = await w.seedGroup();
+      final pid = await w.ledger.recordPayment(
+        PaymentDraft(
+          groupId: gid,
+          from: w.member(gid, 'Priya'),
+          to: w.member(gid, 'Arjun'),
+          amount: 40000,
+          currency: 'INR',
+          method: PaymentMethod.upi,
+          date: qaNow.toUtc(),
+        ),
+      );
+      await pumpReal(tester, w, location: Routes.home);
+      w.push(Routes.group(gid));
+      await qaSettle(tester);
+      w.push(Routes.expense(pid, groupId: gid));
+      await qaSettle(tester);
+
+      await qaTap(tester, find.byTooltip(S.moreOptions));
+      // The one menu item: what it deletes is a payment.
+      final item = tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byWidgetPredicate((w) => w is PopupMenuItem),
+              matching: find.byType(Text),
+            ),
+          )
+          .single
+          .data!;
+      expect(item.toLowerCase(), isNot(contains('expense')));
+      await qaTap(tester, find.text(item));
+      final dialog = find.byType(AlertDialog);
+      final prompt = [
+        for (final t in tester.widgetList<Text>(
+          find.descendant(of: dialog, matching: find.byType(Text)),
+        ))
+          t.data ?? '',
+      ].join(' ');
+      expect(prompt, contains('payment'));
+      expect(prompt.toLowerCase(), isNot(contains('expense')));
+      await qaTap(
+        tester,
+        find.descendant(of: dialog, matching: find.text(S.delete)),
+      );
+      expect(w.state.expenseIn(gid, pid)!.isDeleted, isTrue);
+      expect(snackText(tester)!.toLowerCase(), isNot(contains('expense')));
+      expect(snackText(tester)!.toLowerCase(), contains('payment'));
+
+      w.push(Routes.expense(pid, groupId: gid));
+      await qaSettle(tester);
+      await qaTap(
+        tester,
+        find.descendant(
+          of: find.byType(FilledButton),
+          matching: find.text(S.restore),
+        ),
+      );
+      expect(w.state.expenseIn(gid, pid)!.isDeleted, isFalse);
+      expect(snackText(tester)!.toLowerCase(), isNot(contains('expense')));
+      expect(snackText(tester)!.toLowerCase(), contains('payment'));
+      await w.shutdown(tester);
+    },
+  );
 }
