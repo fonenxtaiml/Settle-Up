@@ -262,7 +262,7 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: clockNotice == ClockNotice.ownChangesAhead
                         ? S.clockOwnChangesAheadHelp
                         : S.clockLooksWrongHelp,
-                    subtitleLines: 3,
+                    fullText: true,
                     minHeight: Sizes.rowMinDense,
                     trailing: Icon(
                       Icons.schedule_rounded,
