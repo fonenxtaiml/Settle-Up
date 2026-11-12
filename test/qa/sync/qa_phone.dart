@@ -79,15 +79,25 @@ final class QaPhone {
     Duration linkConnectTimeout = const Duration(seconds: 1),
     SyncTransport Function(MemoryTransport t)? wrap,
     String? deviceId,
+    OpStore? store,
+    GroupKeyStore? keys,
+    IdGenerator? idGenerator,
   }) async {
     final skew = clock ?? SkewedClock();
-    final OpStore opStore = sqlite
-        ? SqliteOpStore(':memory:', nowMillis: skew.nowMillis)
-        : MemoryOpStore();
-    await opStore.open();
-    final IdGenerator ids = deviceId == null
-        ? PhoneIds(letter)
-        : _FirstId(deviceId, PhoneIds(letter));
+    // [store] (already open) and [keys] reopen a phone over what an
+    // earlier QaPhone stored, as a restart of the app does.
+    final OpStore opStore =
+        store ??
+        (sqlite
+            ? SqliteOpStore(':memory:', nowMillis: skew.nowMillis)
+            : MemoryOpStore());
+    if (store == null) await opStore.open();
+    final groupKeys = keys ?? MemoryGroupKeyStore();
+    final IdGenerator ids =
+        idGenerator ??
+        (deviceId == null
+            ? PhoneIds(letter)
+            : _FirstId(deviceId, PhoneIds(letter)));
     final settings = await KvSettingsRepository.open(
       opStore,
       defaultDeviceName: deviceName,
@@ -100,7 +110,7 @@ final class QaPhone {
     );
     final ledger = await Ledger.open(
       store: opStore,
-      keys: MemoryGroupKeyStore(),
+      keys: groupKeys,
       settings: settings,
       ids: ids,
       nowMillis: skew.nowMillis,
@@ -126,7 +136,8 @@ final class QaPhone {
       linkConnectTimeout: linkConnectTimeout,
     );
     return QaPhone._(letter, opStore, ledger, spy, skew, transports, engine)
-      ..settings = settings;
+      ..settings = settings
+      ..keys = groupKeys;
   }
 
   final String letter;
@@ -139,6 +150,9 @@ final class QaPhone {
 
   /// The phone's settings (device name, onboarding).
   late final KvSettingsRepository settings;
+
+  /// The phone's group keys (kept across a reopen).
+  late final GroupKeyStore keys;
 
   MemoryTransport get lan => transports[TransportKind.lan]!;
   MemoryTransport get ble => transports[TransportKind.ble]!;
