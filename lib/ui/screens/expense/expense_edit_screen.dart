@@ -1467,6 +1467,9 @@ class _WeightPromptState extends State<_WeightPrompt> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    // Title and body scroll, the buttons stay on screen: a long name
+    // at a large text size never pushes them off (VISUAL-R29-01).
+    scrollable: true,
     title: const Text(S.sharesTitle),
     content: TextField(
       controller: _c,

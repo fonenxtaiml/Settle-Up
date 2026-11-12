@@ -189,7 +189,8 @@ Future<void> _done(WidgetTester tester, _World w) async {
 Future<void> _heldDelete(WidgetTester tester, _World w) async {
   await tester.tap(find.byTooltip('More options'));
   await settle(tester);
-  await tester.tap(find.text('Delete expense'));
+  // "Delete payment" on a payment's detail (UIFLOW-R29-01).
+  await tester.tap(find.textContaining(RegExp(r'^Delete (expense|payment)$')));
   await settle(tester);
   w.store.gate = Completer<void>();
   await tester.tap(find.text('Delete'));
