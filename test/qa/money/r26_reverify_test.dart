@@ -410,7 +410,6 @@ void main() {
   testWidgets(
     'QA MONEY-R26-02: after a save fails, the over-payment sentence stays '
     'on screen and in the confirmation for a smaller amount',
-    skip: true, // QA MONEY-R26-02: after a failed save the over-payment sentence no longer follows the amount
     (tester) async {
       final store = _FlakyStore();
       late KvSettingsRepository settings;
@@ -506,10 +505,11 @@ void main() {
         reason: 'the confirmation of a ₹40 payment',
       );
       await settle(tester);
-      await tester.runAsync(() async {
-        await pumpEventQueue();
-        await ledger.close();
-      });
+      // The last write was started by a tap (in the test's fake-async
+      // zone), so the ledger's queue completes there: close it in that
+      // zone, not inside runAsync, where its await never resumes.
+      await tester.runAsync(pumpEventQueue);
+      await ledger.close();
     },
   );
 }
