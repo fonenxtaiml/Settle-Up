@@ -235,7 +235,7 @@ class ActivityRow extends ConsumerWidget {
                 ? S.you.toLowerCase()
                 : names[expense.receiver] ?? S.someone,
           )
-        : expense.description;
+        : KitStrings.expenseTitle(expense.description);
     final memberName = member?.displayName ?? S.someone;
 
     final sentence = switch (entry.kind) {

@@ -130,9 +130,7 @@ class ExpenseRow extends StatelessWidget {
     final currency = expense.money.currency;
     final title = expense.isPayment
         ? paymentTitle()
-        : (expense.description.isEmpty
-              ? KitStrings.payment
-              : expense.description);
+        : KitStrings.expenseTitle(expense.description);
     final metaText = meta();
 
     final semantics = <String>[title, metaText];
