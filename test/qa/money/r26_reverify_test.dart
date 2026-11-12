@@ -362,7 +362,6 @@ void main() {
   testWidgets(
     'QA MONEY-R26-01: a payment between two others that moves my balances '
     'lists none of them under What changes',
-    skip: true, // QA MONEY-R26-01: a payment between two others that moves my balances lists none of them under What changes
     (tester) async {
       late QaPhone p;
       late GroupId g;
