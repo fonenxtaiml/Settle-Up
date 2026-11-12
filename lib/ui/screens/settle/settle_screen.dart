@@ -3,7 +3,6 @@
 // travelling from payer to receiver before the screen closes.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/balances.dart';
 import '../../../core/ids.dart';
@@ -52,12 +51,20 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
   String _note = '';
   bool _recorded = false;
   bool _saving = false;
+  bool _closed = false;
   ExpenseId? _recordedId;
 
   // Frozen while the payment is saved and once it is recorded: the ledger
   // moves on, the screen should not. All of it or none of it: a save that
   // fails thaws it, so the screen follows the amount again (MONEY-R26-02).
+  // It holds everything the payment is built from (amount, method, date,
+  // note), the screen shows those, and every control that sets them is
+  // locked meanwhile, so what is shown is what is stored (MONEY-R27-01).
   _Frozen? _frozen;
+
+  /// Nothing the payment is built from can change: it is being saved or
+  /// has been recorded.
+  bool get _locked => _saving || _recorded;
 
   @override
   void initState() {
@@ -112,27 +119,34 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     List<BeforeAfterEntry> entries,
     String? overpay,
   ) async {
-    if (_saving) return;
+    if (_locked) return;
+    final frozen = (
+      owed: owed,
+      entries: entries,
+      overpay: overpay,
+      method: method,
+      date: date,
+      note: _note,
+    );
+    final draft = PaymentDraft(
+      groupId: g.groupId,
+      from: _from!,
+      to: _to!,
+      amount: amount,
+      currency: currency,
+      method: frozen.method,
+      date: frozen.date.toUtc(),
+      notes: frozen.note,
+    );
     setState(() {
       _saving = true;
       _amount = amount;
-      _frozen = (owed: owed, entries: entries, overpay: overpay);
+      _frozen = frozen;
     });
     final ledger = ref.read(ledgerRepositoryProvider);
     ExpenseId? id;
     final ok = await runGuarded(context, () async {
-      id = await ledger.recordPayment(
-        PaymentDraft(
-          groupId: g.groupId,
-          from: _from!,
-          to: _to!,
-          amount: amount,
-          currency: currency,
-          method: method,
-          date: date.toUtc(),
-          notes: _note,
-        ),
-      );
+      id = await ledger.recordPayment(draft);
     });
     if (!mounted) return;
     if (!ok) {
@@ -153,7 +167,12 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     });
   }
 
+  /// Once, by the end of the recorded animation or the close button,
+  /// whichever comes first: closes Settle up itself, never a pop-up over
+  /// it or the screen under it (MONEY-R27-01).
   void _close() {
+    if (_closed) return;
+    _closed = true;
     final id = _recordedId;
     final ledger = ref.read(ledgerRepositoryProvider);
     showSnack(
@@ -164,11 +183,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
           ? null
           : () => ledger.deleteExpense(id, groupId: widget.groupId),
     );
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go(Routes.group(widget.groupId));
-    }
+    closeScreen(context, fallback: Routes.group(widget.groupId));
   }
 
   @override
@@ -248,8 +263,12 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     final owed = frozen?.owed ?? suggested?.amount ?? 0;
     final amount = _amount ?? (owed > 0 ? owed : 0);
     final method =
-        _method ?? (currency == 'INR' ? PaymentMethod.upi : PaymentMethod.cash);
-    final date = _date ?? now;
+        frozen?.method ??
+        _method ??
+        (currency == 'INR' ? PaymentMethod.upi : PaymentMethod.cash);
+    final date = frozen?.date ?? _date ?? now;
+    final note = frozen?.note ?? _note;
+    final locked = _locked;
     final fromIsMe = from == myId;
     final toIsMe = to == myId;
     final fromName = full[from] ?? S.someone;
@@ -385,137 +404,149 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.lg),
-        children: [
-          const SizedBox(height: Space.sm),
-          textGutter(
-            SettleTether(
-              fromId: from,
-              fromName: fromName,
-              toId: to,
-              toName: toName,
-              fromLabel: fromIsMe ? S.you : fromName,
-              toLabel: toIsMe ? S.you : toName,
-              amountMinor: amount,
-              currency: currency,
-              fromIsMe: fromIsMe,
-              toIsMe: toIsMe,
-              question: question,
-              recorded: _recorded,
-              onRecordedAnimationEnd: _close,
-              action: TextLink(
-                owed > 0 && amount == owed ? S.payPartOfIt : S.changeAmount,
-                onPressed: _recorded || _saving
-                    ? null
-                    : () => _payPart(currency, owed),
+      body: InputLock(
+        locked: locked,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: Space.lg),
+          children: [
+            const SizedBox(height: Space.sm),
+            textGutter(
+              SettleTether(
+                fromId: from,
+                fromName: fromName,
+                toId: to,
+                toName: toName,
+                fromLabel: fromIsMe ? S.you : fromName,
+                toLabel: toIsMe ? S.you : toName,
+                amountMinor: amount,
+                currency: currency,
+                fromIsMe: fromIsMe,
+                toIsMe: toIsMe,
+                question: question,
+                recorded: _recorded,
+                onRecordedAnimationEnd: _close,
+                action: TextLink(
+                  owed > 0 && amount == owed ? S.payPartOfIt : S.changeAmount,
+                  onPressed: locked ? null : () => _payPart(currency, owed),
+                ),
               ),
             ),
-          ),
-          if (overText != null)
+            if (overText != null)
+              textGutter(
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.sm),
+                  child: Text(
+                    overText,
+                    textAlign: TextAlign.center,
+                    style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+                  ),
+                ),
+              ),
+            gutter(
+              SectionHeading(
+                fromIsMe || !toIsMe ? S.howYouPaid : S.howTheyPaid,
+                padding: const EdgeInsets.fromLTRB(
+                  4,
+                  16,
+                  4,
+                  Space.sectionBottom,
+                ),
+              ),
+            ),
+            gutter(
+              PaymentMethodSelector(
+                value: method,
+                onChanged: locked ? null : (m) => setState(() => _method = m),
+              ),
+            ),
             textGutter(
               Padding(
                 padding: const EdgeInsets.only(top: Space.sm),
                 child: Text(
-                  overText,
-                  textAlign: TextAlign.center,
+                  S.methodNote(method.name),
                   style: theme.textTheme.bodySmall!.copyWith(color: ink2),
                 ),
               ),
             ),
-          gutter(
-            SectionHeading(
-              fromIsMe || !toIsMe ? S.howYouPaid : S.howTheyPaid,
-              padding: const EdgeInsets.fromLTRB(4, 16, 4, Space.sectionBottom),
-            ),
-          ),
-          gutter(
-            PaymentMethodSelector(
-              value: method,
-              onChanged: (m) => setState(() => _method = m),
-            ),
-          ),
-          textGutter(
-            Padding(
-              padding: const EdgeInsets.only(top: Space.sm),
-              child: Text(
-                S.methodNote(method.name),
-                style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+            gutter(
+              const SectionHeading(
+                S.whatChanges,
+                padding: EdgeInsets.fromLTRB(4, 20, 4, Space.sectionBottom),
               ),
             ),
-          ),
-          gutter(
-            const SectionHeading(
-              S.whatChanges,
-              padding: EdgeInsets.fromLTRB(4, 20, 4, Space.sectionBottom),
-            ),
-          ),
-          gutter(
-            AnimatedSwitcher(
-              duration: Motion.crossfade,
-              child: BeforeAfterTable(
-                key: ValueKey(_recorded),
-                currency: currency,
-                entries: _recorded
-                    ? [
-                        for (final e in frozen?.entries ?? entries)
-                          BeforeAfterEntry(
-                            title: e.title,
-                            subtitle: e.subtitle,
-                            now: e.after,
-                            after: e.after,
-                          ),
-                      ]
-                    : frozen?.entries ?? entries,
+            gutter(
+              AnimatedSwitcher(
+                duration: Motion.crossfade,
+                child: BeforeAfterTable(
+                  key: ValueKey(_recorded),
+                  currency: currency,
+                  entries: _recorded
+                      ? [
+                          for (final e in frozen?.entries ?? entries)
+                            BeforeAfterEntry(
+                              title: e.title,
+                              subtitle: e.subtitle,
+                              now: e.after,
+                              after: e.after,
+                            ),
+                        ]
+                      : frozen?.entries ?? entries,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            ListSection(
-              children: [
-                KeyValueRow(
-                  label: S.date,
-                  value: DateLabels.pickerDate(date, now: now),
-                  onTap: () async {
-                    final d = await pickEntryDate(
-                      context,
-                      initial: date,
-                      now: now,
-                    );
-                    if (d != null) {
-                      setState(
-                        () => _date = DateTime(
-                          d.year,
-                          d.month,
-                          d.day,
-                          now.hour,
-                          now.minute,
-                        ),
-                      );
-                    }
-                  },
-                ),
-                KeyValueRow(
-                  label: S.notes,
-                  value: _note.isEmpty ? null : _note,
-                  placeholder: S.optional,
-                  onTap: () async {
-                    final t = await promptText(
-                      context,
-                      title: S.notes,
-                      initial: _note,
-                      maxLength: kNotesMax,
-                      optional: true,
-                      multiline: true,
-                    );
-                    if (t != null) setState(() => _note = t);
-                  },
-                ),
-              ],
+            const SizedBox(height: Space.md),
+            gutter(
+              ListSection(
+                children: [
+                  KeyValueRow(
+                    label: S.date,
+                    value: DateLabels.pickerDate(date, now: now),
+                    onTap: locked
+                        ? null
+                        : () async {
+                            final d = await pickEntryDate(
+                              context,
+                              initial: date,
+                              now: now,
+                            );
+                            if (d != null && mounted && !_locked) {
+                              setState(
+                                () => _date = DateTime(
+                                  d.year,
+                                  d.month,
+                                  d.day,
+                                  now.hour,
+                                  now.minute,
+                                ),
+                              );
+                            }
+                          },
+                  ),
+                  KeyValueRow(
+                    label: S.notes,
+                    value: note.isEmpty ? null : note,
+                    placeholder: S.optional,
+                    onTap: locked
+                        ? null
+                        : () async {
+                            final t = await promptText(
+                              context,
+                              title: S.notes,
+                              initial: _note,
+                              maxLength: kNotesMax,
+                              optional: true,
+                              multiline: true,
+                            );
+                            if (t != null && mounted && !_locked) {
+                              setState(() => _note = t);
+                            }
+                          },
+                  ),
+                ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -568,7 +599,14 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
 }
 
 /// What Settle up shows for the payment being saved or just recorded.
-typedef _Frozen = ({int owed, List<BeforeAfterEntry> entries, String? overpay});
+typedef _Frozen = ({
+  int owed,
+  List<BeforeAfterEntry> entries,
+  String? overpay,
+  PaymentMethod method,
+  DateTime date,
+  String note,
+});
 
 /// "Who is paying?": every suggested payment, yours first.
 class _PickPayment extends StatelessWidget {

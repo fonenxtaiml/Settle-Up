@@ -412,7 +412,6 @@ void main() {
   testWidgets(
     'QA MONEY-R27-01: the method picked while the payment is saved is shown '
     'on the confirmation but not stored',
-    skip: true, // QA MONEY-R27-01
     (tester) async {
       final w = await _slowWorld(tester);
       PaymentMethod shown() => tester
@@ -449,7 +448,6 @@ void main() {
   testWidgets(
     'QA MONEY-R27-01: after Record, tapping Date before the screen closes '
     'leaves Settle up open (the close pops the picker)',
-    skip: true, // QA MONEY-R27-01
     (tester) async {
       final w = await _slowWorld(tester);
       await tester.tap(find.text('Record ₹60 payment'));
