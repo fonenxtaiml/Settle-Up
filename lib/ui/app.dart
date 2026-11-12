@@ -32,17 +32,32 @@ class SettleUpApp extends ConsumerStatefulWidget {
 }
 
 class _SettleUpAppState extends ConsumerState<SettleUpApp> {
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initState() {
     super.initState();
     // Nothing to follow when startup failed: there are no settings.
     if (ref.read(startupFailureProvider) != null) return;
+    // Back in the foreground: time passed or the date may have been
+    // changed meanwhile, which can set or clear the Settings clock notice
+    // (DATA-R31-01).
+    _lifecycle = AppLifecycleListener(
+      onResume: () =>
+          unawaited(ref.read(ledgerRepositoryProvider).recheckClock()),
+    );
     ref.listenManual(appSettingsProvider, (_, next) {
       final settings = next.value;
       if (settings != null) {
         unawaited(AppWindow.setNightMode(settings.themeMode));
       }
     }, fireImmediately: true);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.dispose();
+    super.dispose();
   }
 
   @override

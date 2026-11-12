@@ -7,6 +7,7 @@ import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
 import '../../../core/name_text.dart';
+import '../../../data/repositories.dart' show ClockNotice;
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
 import '../../strings.dart';
@@ -37,8 +38,8 @@ class SettingsScreen extends ConsumerWidget {
     final device = ref.watch(deviceIdentityProvider).value;
     // Kept live while Settings is open (CSV export, rename): Riverpod pauses
     // what only the covered Home screen watches.
-    final clockSkewed =
-        ref.watch(ledgerProvider).value?.clockSkewDetected ?? false;
+    final clockNotice =
+        ref.watch(ledgerProvider).value?.clockNotice ?? ClockNotice.none;
     final theme = Theme.of(context);
     if (profile == null) {
       return Scaffold(
@@ -253,11 +254,14 @@ class SettingsScreen extends ConsumerWidget {
             ListSection(
               title: S.sectionAbout,
               children: [
-                // SPEC 7.3: the skew guard saw a peer stamp far ahead.
-                if (clockSkewed)
+                // SPEC 7.3: the skew guard saw a peer stamp far ahead, or
+                // this phone holds changes peers hold back (DATA-R31-01).
+                if (clockNotice != ClockNotice.none)
                   KitListRow(
                     title: S.clockLooksWrong,
-                    subtitle: S.clockLooksWrongHelp,
+                    subtitle: clockNotice == ClockNotice.ownChangesAhead
+                        ? S.clockOwnChangesAheadHelp
+                        : S.clockLooksWrongHelp,
                     fullText: true,
                     minHeight: Sizes.rowMinDense,
                     trailing: Icon(

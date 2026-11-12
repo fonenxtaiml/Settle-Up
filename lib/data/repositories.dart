@@ -89,6 +89,22 @@ abstract interface class SettingsRepository {
 
 // ----------------------------------------------------------------- ledger --
 
+/// Why this phone's clock looks wrong (SPEC 7.3), as Settings explains it.
+enum ClockNotice {
+  /// Nothing to say.
+  none,
+
+  /// A peer's clock was seen more than an hour ahead of this phone's, or a
+  /// peer offered ops stamped too far ahead, which were held back.
+  peerAhead,
+
+  /// This phone holds its own ops stamped more than 7 days ahead of its
+  /// clock (written while its clock ran ahead): peers hold them back until
+  /// their clocks reach that date, so they stay "not shared" until then.
+  /// Takes precedence over [peerAhead]: it explains the unshared changes.
+  ownChangesAhead,
+}
+
 @immutable
 final class LedgerSnapshot {
   const LedgerSnapshot({
@@ -99,7 +115,7 @@ final class LedgerSnapshot {
     required this.unsharedCounts,
     required this.localDeviceId,
     this.groupsWithoutKey = const {},
-    this.clockSkewDetected = false,
+    this.clockNotice = ClockNotice.none,
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
@@ -129,11 +145,13 @@ final class LedgerSnapshot {
   /// they still work here but cannot sync until an invite is scanned again.
   final Set<GroupId> groupsWithoutKey;
 
-  /// True once a peer's clock was seen more than an hour ahead of this
-  /// phone's (the HLC skew guard, SPEC 7.3), or ops were held back as
-  /// stamped too far ahead. Settings then says "This phone's clock looks
-  /// wrong".
-  final bool clockSkewDetected;
+  /// Why Settings says "This phone's clock looks wrong" (SPEC 7.3), or
+  /// [ClockNotice.none]. The same value as `Ledger.clockSkewDetected`
+  /// (DATA-R31-01).
+  final ClockNotice clockNotice;
+
+  /// True when [clockNotice] is not [ClockNotice.none].
+  bool get clockSkewDetected => clockNotice != ClockNotice.none;
 
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
@@ -280,6 +298,13 @@ abstract interface class LedgerRepository {
 
   /// Emits [current] immediately, then after every local or remote change.
   Stream<LedgerSnapshot> watch();
+
+  /// Re-reads the wall clock and publishes a new snapshot when
+  /// [LedgerSnapshot.clockNotice] changed with it (time passed, or the
+  /// phone's date was changed). The app calls it when it comes back to the
+  /// foreground; the ledger also re-checks on its own while a notice that
+  /// clears with time is shown.
+  Future<void> recheckClock();
 
   /// Creates group + key (GroupKeyStore) + my member (claimed by this
   /// device) + other members.
