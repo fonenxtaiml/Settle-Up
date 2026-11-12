@@ -161,7 +161,8 @@ final class Ledger implements LedgerRepository, SyncStore {
   /// or while this phone holds own ops stamped more than
   /// [maxRemoteAheadMs] ahead of its clock, which peers hold back until
   /// their clocks catch up (DATA-R29-01). Settings shows "This phone's
-  /// clock looks wrong".
+  /// clock looks wrong". The flag on every snapshot is
+  /// [LedgerSnapshot.clockSkewDetected].
   bool get clockSkewDetected =>
       _factory.clock.skewDetected || _holdsOwnOpsTooFarAhead();
 
@@ -392,6 +393,7 @@ final class Ledger implements LedgerRepository, SyncStore {
       unsharedCounts: Map.unmodifiable(counts),
       localDeviceId: _me,
       groupsWithoutKey: Set.unmodifiable(keyless),
+      clockSkewDetected: _factory.clock.skewDetected,
     );
   }
 
@@ -1213,7 +1215,11 @@ final class Ledger implements LedgerRepository, SyncStore {
             if (op.hlc.millis <= limit) op,
         ];
         if (accepted.length != ops.length) {
+          final wasSkewed = _factory.clock.skewDetected;
           _factory.clock.skewDetected = true;
+          // Nothing else may change below: publish the flag now so the
+          // Settings notice appears even when every op was held back.
+          if (!wasSkewed) _emit();
           developer.log(
             'Held back ${ops.length - accepted.length} ops stamped more than '
             '${maxRemoteAheadMs ~/ 86400000} days ahead of this phone',

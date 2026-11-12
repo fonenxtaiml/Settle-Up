@@ -99,6 +99,7 @@ final class LedgerSnapshot {
     required this.unsharedCounts,
     required this.localDeviceId,
     this.groupsWithoutKey = const {},
+    this.clockSkewDetected = false,
   });
 
   static LedgerSnapshot empty(DeviceId localDeviceId) => LedgerSnapshot(
@@ -127,6 +128,12 @@ final class LedgerSnapshot {
   /// Visible groups this phone holds no key for (the keystore lost it):
   /// they still work here but cannot sync until an invite is scanned again.
   final Set<GroupId> groupsWithoutKey;
+
+  /// True once a peer's clock was seen more than an hour ahead of this
+  /// phone's (the HLC skew guard, SPEC 7.3), or ops were held back as
+  /// stamped too far ahead. Settings then says "This phone's clock looks
+  /// wrong".
+  final bool clockSkewDetected;
 
   int get totalUnshared => unsharedCounts.values.fold(0, (a, b) => a + b);
 
