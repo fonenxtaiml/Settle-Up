@@ -144,7 +144,9 @@ final class SettlePreview {
       pairNet(transfersAfter, a, b, currency);
 
   /// Members of the group, other than [me] and [except], whose balance
-  /// with [me] the payment changes, in id order.
+  /// with [me] the payment changes, in id order. [except] holds only the
+  /// members whose balance with [me] is already shown elsewhere: the payer
+  /// and the one paid are listed like anyone else when neither is [me].
   List<MemberId> othersChanged(MemberId me, Set<MemberId> except) {
     final ids = <MemberId>{
       for (final t in [...transfersNow, ...transfersAfter])

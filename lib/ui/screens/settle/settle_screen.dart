@@ -312,9 +312,13 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
         ),
       );
     }
-    // Everyone else whose balance with me the payment moves.
+    // Everyone else whose balance with me the payment moves: all but the
+    // person already in the "You and X" row above. A payment between two
+    // others can move my balances too, with either of them or with someone
+    // else, when the debts are routed again (MONEY-R26-01).
     if (myId != null) {
-      for (final m in preview.othersChanged(myId, {from, to})) {
+      final shown = {if (fromIsMe) to, if (toIsMe) from};
+      for (final m in preview.othersChanged(myId, shown)) {
         entries.add(
           BeforeAfterEntry(
             title: S.youAnd(firstName(full[m] ?? S.someone)),
