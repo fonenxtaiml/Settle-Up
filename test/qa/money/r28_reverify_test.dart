@@ -393,7 +393,6 @@ void main() {
       );
       await _done(tester, w);
     },
-    skip: true, // QA MONEY-R28-01: Expense detail delete pops whatever was opened over it
   );
 
   testWidgets(
@@ -428,6 +427,5 @@ void main() {
       );
       await _done(tester, w);
     },
-    skip: true, // QA MONEY-R28-01: Expense detail delete pops whatever was opened over it
   );
 }
