@@ -24,6 +24,7 @@ class KitListRow extends StatelessWidget {
     this.subtitleTrailing,
     this.keepTrailingBeside = false,
     this.subtitleLines = 1,
+    this.fullText = false,
     this.stackTrailing = false,
     this.trailingWidth,
     this.leadingWidth = 0,
@@ -50,6 +51,13 @@ class KitListRow extends StatelessWidget {
   /// may wrap to three at large text). Rows whose subline carries an amount
   /// ("Sam paid ¥5,000") take two, so the amount is never cut off.
   final int subtitleLines;
+
+  /// A notice rather than a list entry: the title and the subline carry
+  /// what happened and what to do, so both wrap in full at every text
+  /// scale and are never cut with an ellipsis ([subtitleLines] is then
+  /// ignored). List entries (names, amounts in a list) keep their caps and
+  /// the full text one tap away (VISUAL-R31-02).
+  final bool fullText;
 
   /// Put [trailing] under the text, end-aligned, below the large-text
   /// threshold too: rows that measured that their text has no room beside
@@ -100,7 +108,8 @@ class KitListRow extends StatelessWidget {
     final theme = Theme.of(context);
     final large = isLargeText(context);
     final stacked = (large || stack) && trailing != null && !keepTrailingBeside;
-    final maxLines = large ? 3 : 1;
+    final maxLines = fullText ? null : (large ? 3 : 1);
+    final overflow = fullText ? null : TextOverflow.ellipsis;
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
@@ -108,7 +117,7 @@ class KitListRow extends StatelessWidget {
         Text(
           title,
           maxLines: maxLines,
-          overflow: TextOverflow.ellipsis,
+          overflow: overflow,
           style: titleStyle ?? theme.textTheme.titleMedium,
         ),
         if (subtitle != null)
@@ -117,8 +126,8 @@ class KitListRow extends StatelessWidget {
               Flexible(
                 child: Text(
                   subtitle!,
-                  maxLines: large ? maxLines : subtitleLines,
-                  overflow: TextOverflow.ellipsis,
+                  maxLines: fullText || large ? maxLines : subtitleLines,
+                  overflow: overflow,
                   style:
                       subtitleStyle ??
                       theme.textTheme.bodySmall!.copyWith(
