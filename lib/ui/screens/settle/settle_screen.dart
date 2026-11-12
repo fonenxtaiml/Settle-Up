@@ -54,10 +54,10 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
   bool _saving = false;
   ExpenseId? _recordedId;
 
-  // Frozen at record time: the ledger moves on, the screen should not.
-  int? _frozenOwed;
-  List<BeforeAfterEntry>? _frozenEntries;
-  String? _frozenOverpay;
+  // Frozen while the payment is saved and once it is recorded: the ledger
+  // moves on, the screen should not. All of it or none of it: a save that
+  // fails thaws it, so the screen follows the amount again (MONEY-R26-02).
+  _Frozen? _frozen;
 
   @override
   void initState() {
@@ -116,9 +116,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     setState(() {
       _saving = true;
       _amount = amount;
-      _frozenOwed = owed;
-      _frozenEntries = entries;
-      _frozenOverpay = overpay;
+      _frozen = (owed: owed, entries: entries, overpay: overpay);
     });
     final ledger = ref.read(ledgerRepositoryProvider);
     ExpenseId? id;
@@ -138,7 +136,10 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     });
     if (!mounted) return;
     if (!ok) {
-      setState(() => _saving = false);
+      setState(() {
+        _saving = false;
+        _frozen = null;
+      });
       return;
     }
     if (settlesFully) {
@@ -243,7 +244,8 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     final to = _to!;
     final currency = _currency ?? g.group!.currency;
     final suggested = _transfer(transfers, from, to, currency);
-    final owed = _frozenOwed ?? suggested?.amount ?? 0;
+    final frozen = _frozen;
+    final owed = frozen?.owed ?? suggested?.amount ?? 0;
     final amount = _amount ?? (owed > 0 ? owed : 0);
     final method =
         _method ?? (currency == 'INR' ? PaymentMethod.upi : PaymentMethod.cash);
@@ -344,17 +346,17 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     // Over the balance: who owes whom the extra once it is recorded, as
     // the ledger will show it (the extra can close a cycle or reroute
     // through someone else, and then nobody owes it back).
-    final overText =
-        _frozenOverpay ??
-        (over
-            ? _overpayText(
-                amount - owed,
-                currency,
-                back: preview.pairAfter(from, to),
-                fromName: fromIsMe ? null : firstName(fromName),
-                toName: toIsMe ? null : firstName(toName),
-              )
-            : null);
+    final overText = frozen != null
+        ? frozen.overpay
+        : (over
+              ? _overpayText(
+                  amount - owed,
+                  currency,
+                  back: preview.pairAfter(from, to),
+                  fromName: fromIsMe ? null : firstName(fromName),
+                  toName: toIsMe ? null : firstName(toName),
+                )
+              : null);
     return Scaffold(
       appBar: screenAppBar(
         leading: BackArrow(close: true, onPressed: _recorded ? _close : null),
@@ -404,7 +406,9 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
               onRecordedAnimationEnd: _close,
               action: TextLink(
                 owed > 0 && amount == owed ? S.payPartOfIt : S.changeAmount,
-                onPressed: _recorded ? null : () => _payPart(currency, owed),
+                onPressed: _recorded || _saving
+                    ? null
+                    : () => _payPart(currency, owed),
               ),
             ),
           ),
@@ -454,7 +458,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                 currency: currency,
                 entries: _recorded
                     ? [
-                        for (final e in _frozenEntries ?? entries)
+                        for (final e in frozen?.entries ?? entries)
                           BeforeAfterEntry(
                             title: e.title,
                             subtitle: e.subtitle,
@@ -462,7 +466,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                             after: e.after,
                           ),
                       ]
-                    : entries,
+                    : frozen?.entries ?? entries,
               ),
             ),
           ),
@@ -562,6 +566,9 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     minor: v,
   );
 }
+
+/// What Settle up shows for the payment being saved or just recorded.
+typedef _Frozen = ({int owed, List<BeforeAfterEntry> entries, String? overpay});
 
 /// "Who is paying?": every suggested payment, yours first.
 class _PickPayment extends StatelessWidget {
