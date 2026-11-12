@@ -4,9 +4,11 @@
 // newest own op) never goes backwards, which is the charter. This sweep
 // looks at what that means once this phone's own wall clock was wrong
 // for a while: a phone set more than Ledger.maxRemoteAheadMs (7 days)
-// ahead writes an edit, the clock is corrected, and the HLC stays ahead
-// of it, so every later op is stamped further ahead than peers accept.
+// ahead writes an edit, the clock is corrected, and the HLC stayed ahead
+// of it, so every later op was stamped further ahead than peers accept
+// (DATA-R29-01, fixed: later ops are stamped from the corrected clock).
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/data/repositories.dart';
@@ -97,41 +99,63 @@ void main() {
 
   test('a phone whose clock ran 30 days ahead for one edit: after the clock '
       'is corrected and the app restarted, the restored HLC is never behind '
-      'its own ops and sync sessions still complete (what reaches the peer '
-      'is printed; DATA-R29-01 holds the expectation)', () async {
+      'its own ops, later ops are stamped from the corrected clock, and '
+      'sync sessions complete (DATA-R29-01)', () async {
     await join();
-    await wrongClockEdit(30);
+    final taxi = await wrongClockEdit(30);
     final dinner = await a.ledger.addExpense(
       qaDraft(t.g, [t.me, t.sam], description: 'Dinner'),
     );
     await a.restart();
-    // The charter: the restored clock never goes backwards.
-    final last = a.mineIn(t.g).last.hlc;
-    expect(last.millis, greaterThanOrEqualTo(kQaBaseMs + 30 * _day));
+    // The charter: the restored clock never goes behind this phone's ops.
+    final restored = Hlc.parse((await a.sqlite.getKv(KvKeys.hlcLast))!);
+    final newestOwn = a.mineIn(t.g).map((o) => o.hlc).reduce(
+          (x, y) => x > y ? x : y,
+        );
+    expect(newestOwn.millis, greaterThanOrEqualTo(kQaBaseMs + 30 * _day));
+    expect(restored.millis, lessThanOrEqualTo(a.clock.now + 3600 * 1000),
+        reason: 'the corrected clock was saved after Dinner');
+    final dinnerHlc = a.mineIn(t.g).last.hlc;
+    expect(dinnerHlc.millis, lessThanOrEqualTo(a.clock.now),
+        reason: 'Dinner is stamped from the corrected clock');
+    // A sees it cannot share the Taxi yet.
+    expect(a.ledger.clockSkewDetected, isTrue);
     final lunch = await a.ledger.addExpense(
       qaDraft(t.g, [t.me, t.priya], description: 'Lunch'),
     );
-    expect(a.mineIn(t.g).last.hlc > last, isTrue);
+    expect(a.mineIn(t.g).last.hlc > dinnerHlc, isTrue);
     final counters = [for (final o in a.mineIn(t.g)) o.counter];
     expect(counters, List.generate(counters.length, (i) => i + 1));
+    expect(
+      a.snap.state.expense(dinner)!.createdAt.millisecondsSinceEpoch,
+      lessThanOrEqualTo(a.clock.now),
+    );
 
     final r = await sync(a.ledger, b.ledger);
     expect(r.$1.outcome, SyncOutcome.completed, reason: r.$1.message);
     expect(r.$2.outcome, SyncOutcome.completed, reason: r.$2.message);
-    // ignore: avoid_print
-    print(
-      '[r29] 30 days ahead once: A stamps now +'
-      '${(a.mineIn(t.g).last.hlc.millis - a.clock.now) ~/ _day} days; '
-      'after sync B holds dinner: ${b.snap.state.expense(dinner) != null}, '
-      'lunch: ${b.snap.state.expense(lunch) != null}; A unshared '
-      '${a.snap.totalUnshared}; skew flag A ${a.ledger.clockSkewDetected}, '
-      'B ${b.ledger.clockSkewDetected}',
-    );
+    expect(b.snap.state.expense(dinner), isNotNull);
+    expect(b.snap.state.expense(lunch), isNotNull);
+    expect(b.snap.state.expense(taxi), isNull,
+        reason: 'the op stamped 30 days ahead is still held back');
+    expect(b.ledger.clockSkewDetected, isTrue);
     // The data both phones hold is still intact across restarts.
     await b.restart();
     await a.restart();
     expect(a.snap.state.expense(lunch), isNotNull);
     expect(a.snap.state.expense(dinner), isNotNull);
+    expect(a.snap.state.expense(taxi), isNotNull);
+    expect(b.snap.state.expense(lunch), isNotNull);
+    expect(b.snap.state.expense(dinner), isNotNull);
+
+    // Once real time reaches the Taxi's stamp it is shared like any op,
+    // and A no longer flags its clock.
+    a.clock.now = kQaBaseMs + 30 * _day;
+    b.clock.now = kQaBaseMs + 30 * _day;
+    expect(a.ledger.clockSkewDetected, isFalse);
+    await sync(a.ledger, b.ledger);
+    expect(b.snap.state.expense(taxi), isNotNull);
+    expect(a.snap.totalUnshared, 0);
   });
 
   test(
@@ -159,10 +183,6 @@ void main() {
         reason: 'a change made with the right clock after a restart is shared',
       );
     },
-    skip:
-        'QA DATA-R29-01: after this phone\'s clock ran more than 7 days '
-        'ahead for one edit, every later change it makes is held back '
-        'by peers until real time catches up, with no sign on this phone',
   );
 
   test(
@@ -192,9 +212,6 @@ void main() {
       await sync(a.ledger, b.ledger);
       expect(b.snap.state.expense(lunch), isNotNull);
     },
-    skip:
-        'QA DATA-R29-01: a stored clock far ahead of the wall clock is '
-        'restored as is, so every later change is held back by peers',
   );
 
   test('within the 7-day window the same story syncs (control)', () async {

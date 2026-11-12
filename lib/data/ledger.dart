@@ -77,14 +77,19 @@ final class Ledger implements LedgerRepository, SyncStore {
     }
     final now = nowMillis ?? _wallClock;
     final clock = HlcClock(deviceId: me, last: last, nowMillis: now);
+    late final Ledger ledger;
+    // A restored clock far ahead of the wall clock (an edit made while it
+    // ran ahead, or a damaged kv value) is set back by the factory before
+    // the next own op is stamped (DATA-R29-01).
     final factory = OpFactory(
       deviceId: me,
       clock: clock,
       ids: ids,
       lastHlcOf: reducer.lastHlcOf,
+      newestStamp: (maxMillis) => ledger._newestStamp(maxMillis),
+      nowMillis: now,
     );
-    final ledger =
-        Ledger._(store, keys, settings, ids, factory, reducer, now);
+    ledger = Ledger._(store, keys, settings, ids, factory, reducer, now);
     await ledger._load(ops);
     return ledger;
   }
@@ -152,9 +157,43 @@ final class Ledger implements LedgerRepository, SyncStore {
 
   DeviceId get _me => _settings.device.deviceId;
 
-  /// True once a peer's clock was seen more than an hour ahead of ours
-  /// (Settings shows "This phone's clock looks wrong").
-  bool get clockSkewDetected => _factory.clock.skewDetected;
+  /// True once a peer's clock was seen more than an hour ahead of ours,
+  /// or while this phone holds own ops stamped more than
+  /// [maxRemoteAheadMs] ahead of its clock, which peers hold back until
+  /// their clocks catch up (DATA-R29-01). Settings shows "This phone's
+  /// clock looks wrong".
+  bool get clockSkewDetected =>
+      _factory.clock.skewDetected || _holdsOwnOpsTooFarAhead();
+
+  bool _holdsOwnOpsTooFarAhead() {
+    final limit = _now() + maxRemoteAheadMs;
+    final me = _me;
+    for (var i = _ops.length - 1; i >= 0; i--) {
+      final op = _ops[i];
+      if (op.hlc.millis <= limit) return false;
+      if (op.deviceId == me) return true;
+    }
+    return false;
+  }
+
+  /// The newest stamp of a stored op whose millis are at most [maxMillis]
+  /// (of any stored op when null).
+  Hlc? _newestStamp(int? maxMillis) {
+    if (_ops.isEmpty) return null;
+    if (maxMillis == null) return _ops.last.hlc;
+    // _ops ascends by HLC, so by millis: find the first op past maxMillis.
+    var lo = 0;
+    var hi = _ops.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (_ops[mid].hlc.millis <= maxMillis) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo == 0 ? null : _ops[lo - 1].hlc;
+  }
 
   Future<void> _load(List<Operation> ops) async {
     final me = _me;
