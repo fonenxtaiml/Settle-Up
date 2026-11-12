@@ -70,28 +70,7 @@ abstract final class TextRules {
   /// stay inside a name (emoji, Hangul and flags need some of them), but a
   /// name made only of them is refused. Code points only, no Unicode
   /// tables, so every phone decides the same.
-  static bool isBlank(String value) =>
-      value.runes.every((r) => _isSpace(r) || isHidden(r) || _isBlankMark(r));
-
-  /// The characters String.trim removes (a fixed list, so the remote check
-  /// does not depend on the Dart version).
-  static bool _isSpace(int r) =>
-      (r >= 0x09 && r <= 0x0D) ||
-      r == 0x20 ||
-      r == 0x85 ||
-      r == 0xA0 ||
-      r == 0x1680 ||
-      (r >= 0x2000 && r <= 0x200A) ||
-      r == 0x2028 ||
-      r == 0x2029 ||
-      r == 0x202F ||
-      r == 0x205F ||
-      r == 0x3000 ||
-      r == 0xFEFF;
-
-  /// Characters that render as nothing (or as blank space) by themselves;
-  /// see [TextClean.isBlankMark].
-  static bool _isBlankMark(int r) => TextClean.isBlankMark(r);
+  static bool isBlank(String value) => TextClean.isBlank(value);
 
   /// Number of user-perceived characters in [value].
   static int length(String value) => value.characters.length;

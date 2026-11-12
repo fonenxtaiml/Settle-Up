@@ -8,6 +8,7 @@ import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
 import '../../../theme/tokens.dart';
+import '../../format/well_formed_formatter.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
@@ -79,6 +80,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         leading: const BackArrow(),
         title: TextField(
           controller: _query,
+          inputFormatters: const [WellFormedTextFormatter()],
           autofocus: true,
           textInputAction: TextInputAction.search,
           style: theme.textTheme.titleMedium,
