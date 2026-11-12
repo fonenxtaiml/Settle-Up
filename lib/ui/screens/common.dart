@@ -183,6 +183,52 @@ Future<bool> runGuarded(
   }
 }
 
+/// Holds a form still while what it shows is being saved (or once it has
+/// been recorded): no tap, no focus and no keyboard reaches [child], so
+/// nothing can change the values the save is built from and no picker,
+/// sheet or prompt can open over a screen that is about to close
+/// (MONEY-R27-01). The controls stay in place and show what is saved.
+class InputLock extends StatelessWidget {
+  const InputLock({super.key, required this.locked, required this.child});
+
+  final bool locked;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ExcludeFocus(
+    excluding: locked,
+    child: IgnorePointer(ignoring: locked, child: child),
+  );
+}
+
+/// Makes the screen [context] belongs to the top one again before it
+/// navigates away after a save: a pop-up still open over it (a picker,
+/// sheet or prompt) is closed first, so a pop takes the screen and not the
+/// pop-up in its place. False when the screen is already closing (the user
+/// went back while it was saving, or it is closed twice): then it must not
+/// navigate, or the screen under it goes too (MONEY-R27-01).
+bool bringScreenToFront(BuildContext context) {
+  if (!context.mounted) return false;
+  final route = ModalRoute.of(context);
+  if (route == null) return true;
+  if (!route.isActive) return false;
+  if (!route.isCurrent) route.navigator?.popUntil((r) => r == route);
+  return true;
+}
+
+/// Closes the screen [context] belongs to, and only that screen (see
+/// [bringScreenToFront]); without a screen below it goes to [fallback].
+/// Returns whether it closed the screen.
+bool closeScreen(BuildContext context, {required String fallback}) {
+  if (!bringScreenToFront(context)) return false;
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go(fallback);
+  }
+  return true;
+}
+
 /// A two-button confirmation. The confirm label is the action verb.
 Future<bool> confirmAction(
   BuildContext context, {

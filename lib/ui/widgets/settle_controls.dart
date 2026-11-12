@@ -19,7 +19,10 @@ class PaymentMethodSelector extends StatelessWidget {
   });
 
   final PaymentMethod value;
-  final ValueChanged<PaymentMethod> onChanged;
+
+  /// Null disables the selector (the payment is being saved): it keeps
+  /// showing [value].
+  final ValueChanged<PaymentMethod>? onChanged;
 
   static const order = [
     PaymentMethod.upi,
@@ -73,10 +76,12 @@ class PaymentMethodSelector extends StatelessWidget {
                       EdgeInsets.symmetric(horizontal: 2),
                     ),
                   ),
-            onSelectionChanged: (s) {
-              Haptics.selection(context);
-              onChanged(s.first);
-            },
+            onSelectionChanged: onChanged == null
+                ? null
+                : (s) {
+                    Haptics.selection(context);
+                    onChanged!(s.first);
+                  },
           );
         },
       ),
