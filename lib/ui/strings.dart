@@ -284,6 +284,21 @@ abstract final class S {
       'it from the expense.';
   static const expenseDeleted = 'Expense deleted';
   static const expenseRestored = 'Expense restored';
+  // The same actions on a payment call it a payment (UIFLOW-R29-01).
+  static const deletePayment = 'Delete payment';
+  static const deletePaymentBody =
+      'It will be removed for everyone after the next sync. You can restore '
+      'it from the payment.';
+  static const paymentDeleted = 'Payment deleted';
+  static const paymentRestored = 'Payment restored';
+  static String deleteEntry(bool payment) =>
+      payment ? deletePayment : deleteExpense;
+  static String deleteEntryBody(bool payment) =>
+      payment ? deletePaymentBody : deleteExpenseBody;
+  static String entryDeleted(bool payment) =>
+      payment ? paymentDeleted : expenseDeleted;
+  static String entryRestored(bool payment) =>
+      payment ? paymentRestored : expenseRestored;
   static const pickCategory = 'Category';
   static const suggested = 'Suggested';
   static const pickCurrency = 'Currency';
