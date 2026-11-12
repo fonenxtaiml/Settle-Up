@@ -103,7 +103,7 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
       builder: (context) =>
           _PartSheet(currency: currency, initial: _amount ?? max),
     );
-    if (picked != null && picked > 0 && mounted) {
+    if (picked != null && picked > 0 && mounted && !_locked) {
       setState(() => _amount = picked);
     }
   }
