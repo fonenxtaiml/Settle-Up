@@ -258,7 +258,7 @@ class SettingsScreen extends ConsumerWidget {
                   KitListRow(
                     title: S.clockLooksWrong,
                     subtitle: S.clockLooksWrongHelp,
-                    subtitleLines: 3,
+                    fullText: true,
                     minHeight: Sizes.rowMinDense,
                     trailing: Icon(
                       Icons.schedule_rounded,
