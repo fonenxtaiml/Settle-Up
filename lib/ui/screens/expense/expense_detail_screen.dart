@@ -62,7 +62,9 @@ class ExpenseDetailScreen extends ConsumerWidget {
     final currency = e.money.currency;
 
     Future<void> delete() async {
-      final title = e.isPayment ? S.paymentTitle.toLowerCase() : e.description;
+      final title = e.isPayment
+          ? S.paymentTitle.toLowerCase()
+          : KitStrings.expenseTitle(e.description);
       final ok = await confirmAction(
         context,
         title: S.deleteExpenseTitle(title),
@@ -107,7 +109,7 @@ class ExpenseDetailScreen extends ConsumerWidget {
                 ? S.you.toLowerCase()
                 : names[e.receiver] ?? S.someone,
           )
-        : e.description;
+        : KitStrings.expenseTitle(e.description);
     final word = e.isPayment
         ? (impact > 0
               ? KitStrings.paid
@@ -487,7 +489,9 @@ class _History extends ConsumerWidget {
     a.changes.forEach((field, c) {
       switch (field) {
         case ExpenseFields.description:
-          out.add('${S.description}: ${c.after}');
+          out.add(
+            '${S.description}: ${KitStrings.expenseTitle('${c.after ?? ''}')}',
+          );
         case ExpenseFields.money:
           final before = c.before is Map
               ? MoneyBlock.fromJson(Map<String, Object?>.from(c.before! as Map))

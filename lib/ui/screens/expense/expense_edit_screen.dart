@@ -473,7 +473,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final description = _description.text.trim();
     final check = _split.check(amount, _cur);
     if (amount <= 0 ||
-        description.isEmpty ||
+        isBlankDescription(description) ||
         !check.isValid ||
         _split.badInput(_cur).isNotEmpty ||
         !_paidValid ||
@@ -622,7 +622,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         ? _category
         : (suggestCategory(_description.text) ?? Categories.general);
     _category = suggested;
-    final descriptionError = _triedSave && _description.text.trim().isEmpty
+    final descriptionError = _triedSave && isBlankDescription(_description.text)
         ? S.descriptionNeeded
         : null;
     final amountError = _triedSave && amount <= 0

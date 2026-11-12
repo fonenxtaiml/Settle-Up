@@ -5,6 +5,7 @@
 // widgets render themselves live here, written to the same rules: sentence
 // case, amounts from the user's view with a direction word, "this phone"
 // rather than "device", never "offline".
+import '../../core/text_clean.dart';
 import '../format/money_format.dart';
 
 abstract final class KitStrings {
@@ -44,6 +45,19 @@ abstract final class KitStrings {
   static String peoplePaid(int n, String amount) => '$n people paid $amount';
   static String paymentTitle(String from, String to) => '$from paid $to';
   static const payment = 'Payment';
+
+  /// The title of an expense whose description shows nothing (one a peer
+  /// or an earlier build saved): it names an expense, never a payment
+  /// (VISUAL-R24-01).
+  static const untitledExpense = 'Untitled expense';
+
+  /// How an expense's [description] is shown: as it is, or
+  /// [untitledExpense] when it shows nothing ([TextClean.isBlank]: empty,
+  /// spaces, or characters that draw nothing such as a Hangul filler).
+  /// Every place that shows an expense's description uses it, so the row,
+  /// the detail title, the activity sentence and search agree.
+  static String expenseTitle(String description) =>
+      TextClean.isBlank(description) ? untitledExpense : description;
   static const possibleDuplicate = 'possible duplicate';
   static String amountUpTo(String max) => 'Enter an amount up to $max';
   static String amountDecimals(int digits) => switch (digits) {

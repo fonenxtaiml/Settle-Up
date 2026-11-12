@@ -18,6 +18,7 @@ import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
 import '../format/text_cap_formatter.dart';
+import '../format/well_formed_formatter.dart';
 import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
@@ -336,7 +337,7 @@ class _TextPromptState extends State<_TextPrompt> {
     final text = _controller.text;
     if (_freeTextError != null) return false;
     if (widget.optional) return true;
-    if (!widget.isName) return text.trim().isNotEmpty;
+    if (!widget.isName) return !isBlankDescription(text);
     final max = widget.maxLength;
     return max == null ? NameText.isValid(text) : isSavableName(text, max);
   }
@@ -377,11 +378,11 @@ class _TextPromptState extends State<_TextPrompt> {
           maxLengthEnforcement: max != null && !widget.isName
               ? MaxLengthEnforcement.none
               : null,
-          inputFormatters: switch (max) {
+          inputFormatters: WellFormedTextFormatter.first(switch (max) {
             null => null,
             final max when widget.isName => nameFormatters(max),
             final max => [TextCapFormatter(max)],
-          },
+          }),
           textCapitalization: widget.multiline
               ? TextCapitalization.sentences
               : TextCapitalization.words,
@@ -627,6 +628,15 @@ List<TextInputFormatter> descriptionFormatters() => [
 /// [NameText.unitsPerChar] code units for each.
 bool _overLimit(String text, int limit) =>
     !TextCap.fits(TextClean.clean(text, multiline: true), limit);
+
+/// Whether a description field holds no description: nothing, or only
+/// spaces and characters that show nothing ([TextClean.isBlank]: a
+/// zero-width space, a bidi mark, a word joiner, a lone surrogate, a
+/// Hangul filler). The Ledger refuses such a text as empty, so the field
+/// says what is missing instead of Save failing with "Check the
+/// highlighted fields." (UIFLOW-R24-01).
+bool isBlankDescription(String text) =>
+    TextClean.isBlank(TextClean.clean(text, multiline: true));
 
 /// The message under a description holding more than [kDescriptionMax]
 /// characters (one a peer or an earlier build saved); null otherwise.

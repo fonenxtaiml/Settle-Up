@@ -38,12 +38,17 @@ void main() {
     ('U+2060 word joiner', '\u2060'),
     ('U+200E and U+200F bidi marks', '\u200E \u200F'),
     ('a lone surrogate', '\uD83D'),
+    // The same class: anything that shows nothing once cleaned.
+    ('U+3164 Hangul filler', '\u3164'),
+    ('U+2800 braille blank', '\u2800'),
+    ('U+00AD soft hyphen and U+FE0F', '\u00AD\uFE0F'),
+    ('a tag space and an ideographic space', '\u{E0020}\u3000'),
+    ('a line break between bidi isolates', '\u2066\n\u2069'),
   ]) {
     testWidgets(
       'UIFLOW-R24-01 ($label): Add expense with a description that saves '
       'as nothing says to add a description, not "Check the highlighted '
       'fields." with nothing highlighted',
-      skip: true, // QA UIFLOW-R24-01: a description of only hidden characters is refused with "Check the highlighted fields." and nothing is highlighted
       (tester) async {
         qaPhone(tester);
         final w = await RealWorld.create(name: 'Arjun');

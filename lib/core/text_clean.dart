@@ -97,6 +97,33 @@ abstract final class TextClean {
       (r >= 0x202A && r <= 0x202E) ||
       (r >= 0x2066 && r <= 0x2069);
 
+  /// True when [value] shows nothing once [clean]ed: every character is
+  /// a space, one [clean] drops, or one that renders as blank on its own
+  /// ([isBlankMark]). The one test of "this text is empty" for user text
+  /// (an expense description): the Ledger refuses such a text, so a field
+  /// holding only a zero-width space, a bidi mark or a Hangul filler is
+  /// as empty as one holding nothing (UIFLOW-R24-01), and a title made of
+  /// them is no title (VISUAL-R24-01). Code points only, no Unicode
+  /// tables, so every phone decides the same.
+  static bool isBlank(String value) =>
+      value.runes.every((r) => isSpace(r) || isHidden(r) || isBlankMark(r));
+
+  /// The characters String.trim removes (a fixed list, so the remote check
+  /// does not depend on the Dart version).
+  static bool isSpace(int r) =>
+      (r >= 0x09 && r <= 0x0D) ||
+      r == 0x20 ||
+      r == 0x85 ||
+      r == 0xA0 ||
+      r == 0x1680 ||
+      (r >= 0x2000 && r <= 0x200A) ||
+      r == 0x2028 ||
+      r == 0x2029 ||
+      r == 0x202F ||
+      r == 0x205F ||
+      r == 0x3000 ||
+      r == 0xFEFF;
+
   /// Characters that render as nothing (or as blank space) by themselves,
   /// which [clean] keeps (emoji, Hangul and flags need some of them):
   /// every range of Unicode's Default_Ignorable_Code_Point (including the
