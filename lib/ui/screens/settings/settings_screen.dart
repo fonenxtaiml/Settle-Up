@@ -37,7 +37,8 @@ class SettingsScreen extends ConsumerWidget {
     final device = ref.watch(deviceIdentityProvider).value;
     // Kept live while Settings is open (CSV export, rename): Riverpod pauses
     // what only the covered Home screen watches.
-    ref.watch(ledgerProvider);
+    final clockSkewed =
+        ref.watch(ledgerProvider).value?.clockSkewDetected ?? false;
     final theme = Theme.of(context);
     if (profile == null) {
       return Scaffold(
@@ -252,6 +253,18 @@ class SettingsScreen extends ConsumerWidget {
             ListSection(
               title: S.sectionAbout,
               children: [
+                // SPEC 7.3: the skew guard saw a peer stamp far ahead.
+                if (clockSkewed)
+                  KitListRow(
+                    title: S.clockLooksWrong,
+                    subtitle: S.clockLooksWrongHelp,
+                    subtitleLines: 3,
+                    minHeight: Sizes.rowMinDense,
+                    trailing: Icon(
+                      Icons.schedule_rounded,
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
                 KitListRow(
                   title: S.licenses,
                   minHeight: Sizes.rowMinDense,
