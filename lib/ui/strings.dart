@@ -590,6 +590,10 @@ abstract final class S {
   static const clockLooksWrongHelp =
       'A phone you synced with is more than an hour ahead. Check this '
       "phone's date and time.";
+  // DATA-R31-01: own changes stamped while this phone's date ran ahead.
+  static const clockOwnChangesAheadHelp =
+      "Changes made while this phone's date was ahead are shared once "
+      'that date is near.';
   static const editName = 'Your name';
   static const noGroupsToExport = 'Create a group first.';
 

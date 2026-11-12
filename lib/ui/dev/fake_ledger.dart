@@ -81,6 +81,10 @@ final class FakeLedgerRepository implements LedgerRepository {
     yield* _changes.stream;
   }
 
+  /// The fake has no clock notice to re-check.
+  @override
+  Future<void> recheckClock() async {}
+
   // ------------------------------------------------------- dev utilities --
 
   /// Runs [body] as if another phone (owned by [person]) wrote it at [at].

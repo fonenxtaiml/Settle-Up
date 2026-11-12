@@ -115,7 +115,14 @@ final class HlcClock {
         (floor.millis > _last.millis ||
             (floor.millis == _last.millis && floor.counter >= _last.counter));
     if (adopt) {
-      if (floor.millis > now + maxForwardDriftMs) skewDetected = true;
+      // Only another phone's stamp says a peer clock is ahead. This phone's
+      // own stamp ahead was written while its clock ran ahead; within
+      // [maxAdoptDriftMs] peers accept it, so there is nothing to explain
+      // (and "a phone you synced with is ahead" would be wrong).
+      if (floor.millis > now + maxForwardDriftMs &&
+          floor.deviceId != deviceId) {
+        skewDetected = true;
+      }
       // Re-home the floor on this device; tick() then moves past it.
       _last = Hlc(floor.millis, floor.counter, deviceId);
     }
