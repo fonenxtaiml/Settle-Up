@@ -215,7 +215,7 @@ void main() {
       await tester.pump();
       await tester.pump();
       expect(find.text('Version'), findsOneWidget);
-      expect(find.textContaining("clock looks wrong"), findsNothing);
+      expect(find.textContaining('clock looks wrong'), findsNothing);
       await tester.pumpWidget(const SizedBox());
     } finally {
       await tester.runAsync(() async {

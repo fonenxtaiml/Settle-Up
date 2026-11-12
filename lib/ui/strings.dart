@@ -588,7 +588,7 @@ abstract final class S {
   static const version = 'Version';
   static const clockLooksWrong = "This phone's clock looks wrong";
   static const clockLooksWrongHelp =
-      "A phone you synced with is more than an hour ahead. Check this "
+      'A phone you synced with is more than an hour ahead. Check this '
       "phone's date and time.";
   static const editName = 'Your name';
   static const noGroupsToExport = 'Create a group first.';
