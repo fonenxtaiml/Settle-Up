@@ -153,7 +153,8 @@ final class Ledger implements LedgerRepository, SyncStore {
   DeviceId get _me => _settings.device.deviceId;
 
   /// True once a peer's clock was seen more than an hour ahead of ours
-  /// (Settings shows "This phone's clock looks wrong").
+  /// (Settings shows "This phone's clock looks wrong"). Also published on
+  /// every snapshot as [LedgerSnapshot.clockSkewDetected].
   bool get clockSkewDetected => _factory.clock.skewDetected;
 
   Future<void> _load(List<Operation> ops) async {
@@ -353,6 +354,7 @@ final class Ledger implements LedgerRepository, SyncStore {
       unsharedCounts: Map.unmodifiable(counts),
       localDeviceId: _me,
       groupsWithoutKey: Set.unmodifiable(keyless),
+      clockSkewDetected: _factory.clock.skewDetected,
     );
   }
 
@@ -1174,7 +1176,11 @@ final class Ledger implements LedgerRepository, SyncStore {
             if (op.hlc.millis <= limit) op,
         ];
         if (accepted.length != ops.length) {
+          final wasSkewed = _factory.clock.skewDetected;
           _factory.clock.skewDetected = true;
+          // Nothing else may change below: publish the flag now so the
+          // Settings notice appears even when every op was held back.
+          if (!wasSkewed) _emit();
           developer.log(
             'Held back ${ops.length - accepted.length} ops stamped more than '
             '${maxRemoteAheadMs ~/ 86400000} days ahead of this phone',

@@ -571,6 +571,10 @@ abstract final class S {
   static String csvSubject(String group) => '$group expenses';
   static const licenses = 'Licenses';
   static const version = 'Version';
+  static const clockLooksWrong = "This phone's clock looks wrong";
+  static const clockLooksWrongHelp =
+      "A phone you synced with is more than an hour ahead. Check this "
+      "phone's date and time.";
   static const editName = 'Your name';
   static const noGroupsToExport = 'Create a group first.';
 
