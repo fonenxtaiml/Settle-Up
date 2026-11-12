@@ -12,14 +12,45 @@ import '../core/ops.dart';
 final class OpFactory {
   OpFactory({
     required this.deviceId,
-    required this.clock,
+    required this._clock,
     this.ids = const UuidV7Generator(),
     this.lastHlcOf,
-  });
+    this.newestStamp,
+    int Function()? nowMillis,
+  }) : _now = nowMillis ?? _wallClock;
+
+  static int _wallClock() => DateTime.now().millisecondsSinceEpoch;
+
+  /// A plain local op is never stamped more than this ahead of the wall
+  /// clock: 5 days, so it is within the 7 days peers accept
+  /// (`Ledger.maxRemoteAheadMs`) even on a peer whose clock is 2 days
+  /// behind this one's, the most nearby discovery still tolerates.
+  ///
+  /// The clock only moves forward, so one edit made while this phone's
+  /// wall clock ran more days ahead than that would otherwise stamp every
+  /// later op just as far ahead, and peers would hold all of them back
+  /// until real time caught up (DATA-R29-01). Within the lead the clock
+  /// stays monotonic, as SPEC 5.3 has it (a wall clock set back hours or
+  /// a few days changes nothing). Past it, the clock is first set back to
+  /// the newest stamp this phone holds within the lead ([newestStamp]):
+  /// later ops are still stamped after everything within it, and a local
+  /// edit still beats the entity's newest op ([lastHlcOf], see
+  /// [HlcClock.tickAfter]; one of this phone's own stamps beyond the
+  /// adopt window is followed, so the edit waits with the entity).
+  static const int maxLeadMs = 5 * 24 * 60 * 60 * 1000;
 
   final DeviceId deviceId;
-  final HlcClock clock;
   final IdGenerator ids;
+  final int Function() _now;
+  HlcClock _clock;
+
+  /// This device's clock. Replaced (keeping [HlcClock.skewDetected]) when
+  /// it has to be set back, see [maxLeadMs].
+  HlcClock get clock => _clock;
+
+  /// The newest stamp of a stored op (any device) whose millis are at most
+  /// the given value, or of any stored op when it is null.
+  final Hlc? Function(int? maxMillis)? newestStamp;
 
   /// The newest HLC already applied to an entity (the reducer's view). Each
   /// op is stamped after it, so a local edit always beats the value the
@@ -39,6 +70,47 @@ final class OpFactory {
 
   /// Forgets [groupId]'s counter (after its ops were purged locally).
   void forget(GroupId groupId) => _maxCounter.remove(groupId);
+
+  /// The stamp of a new op on an entity whose newest op is [floor] (null
+  /// for a create), [pending] being the ops of the batch built so far.
+  Hlc _stamp(Hlc? floor, List<Operation> pending) {
+    final now = _now();
+    if (floor != null &&
+        floor.deviceId == deviceId &&
+        floor.millis > now + HlcClock.maxAdoptDriftMs) {
+      // This phone wrote the entity's newest op while its clock was far
+      // ahead: stamp after it (and after every stamp held, so no two own
+      // ops share one) rather than let the edit lose to it.
+      final top = _newest([
+        _clock.last,
+        newestStamp?.call(null),
+        for (final op in pending) op.hlc,
+      ]);
+      if (top > _clock.last) _setClock(top);
+      return _clock.tickAfter(floor);
+    }
+    final limit = now + maxLeadMs;
+    if (_clock.last.millis > limit) {
+      _setClock(_newest([
+        Hlc.zero(deviceId),
+        newestStamp?.call(limit),
+        for (final op in pending)
+          if (op.hlc.millis <= limit) op.hlc,
+      ]));
+    }
+    return floor == null ? _clock.tick() : _clock.tickAfter(floor);
+  }
+
+  static Hlc _newest(List<Hlc?> stamps) =>
+      stamps.nonNulls.reduce((a, b) => a > b ? a : b);
+
+  void _setClock(Hlc last) {
+    _clock = HlcClock(
+      deviceId: deviceId,
+      last: Hlc(last.millis, last.counter, deviceId),
+      nowMillis: _now,
+    )..skewDetected = _clock.skewDetected;
+  }
 
   OpBatch batch() => OpBatch._(this);
 }
@@ -107,8 +179,7 @@ final class OpBatch {
     final counter =
         (_used[groupId] ?? _factory.maxCounter(groupId)) + 1;
     final floor = _factory.lastHlcOf?.call(groupId, type, entityId);
-    final hlc =
-        floor == null ? _factory.clock.tick() : _factory.clock.tickAfter(floor);
+    final hlc = _factory._stamp(floor, _ops);
     final op = Operation(
       id: _factory.ids.newId(),
       groupId: groupId,
