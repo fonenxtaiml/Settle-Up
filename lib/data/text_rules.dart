@@ -207,6 +207,106 @@ abstract final class TextRules {
     return null;
   }
 
+  /// What a group or member name that shows nothing is held as in
+  /// [canonical]: the character the text engine draws for text it cannot
+  /// read, so the name is not blank and every phone shows the same.
+  static const String unreadableName = '\uFFFD';
+
+  /// [op] in the one form this phone shows and offers it: text a peer
+  /// would refuse ([remoteProblem]) put the way an updated phone holds it.
+  ///
+  /// The remote checks grew stricter over the builds (SPEC 5.16), and an
+  /// op stored before a check (written here or relayed from another
+  /// phone) may hold text a peer on this build refuses: a lone surrogate
+  /// (SECURITY-R21-01), a control or bidi character, a text field over its
+  /// code-unit cap, a group or member name that shows nothing. Offered as
+  /// stored, it fails the whole batch on every sync, and no later op of
+  /// its group reaches that peer (DATA-R24-01). Ledger reads every stored
+  /// op through this, for the reducer, the edit history and the ops it
+  /// sends, so both phones hold and show the same text:
+  ///  * lone surrogates are dropped from every string, field names and
+  ///    nested values included ([TextClean.wellFormed], as the reducer
+  ///    showed them already);
+  ///  * control and bidi characters are dropped from every field;
+  ///  * a text field over its cap is cut, at a code point, to the cap;
+  ///  * a group or member name that is left blank becomes
+  ///    [unreadableName].
+  /// Ids and the op's own fields are not changed (the app writes UUIDs).
+  /// An op that needs none of this, every op this build writes or
+  /// accepts, is returned as it is.
+  static Operation canonical(Operation op) {
+    final payload = _canonicalPayload(op);
+    if (identical(payload, op.payload)) return op;
+    final raw = op.raw;
+    return Operation(
+      id: op.id,
+      groupId: op.groupId,
+      deviceId: op.deviceId,
+      counter: op.counter,
+      hlc: op.hlc,
+      entityType: op.entityType,
+      entityId: op.entityId,
+      kind: op.kind,
+      payload: payload,
+      schemaVersion: op.schemaVersion,
+      raw: raw == null ? null : {...raw, 'payload': payload},
+    );
+  }
+
+  static Map<String, Object?> _canonicalPayload(Operation op) {
+    Map<String, Object?>? out;
+    var source = op.payload;
+    if (_illFormedField(source) != null) {
+      source = out = _wellFormedMap(source);
+    }
+    final v1 = !op.isFromNewerSchema;
+    final limits = _fields[op.entityType] ?? const <String, int>{};
+    for (final MapEntry(:key, :value) in source.entries) {
+      if (value is! String) continue;
+      var s = value;
+      if (_hasControl(s)) s = _withoutControls(s);
+      final limit = v1 ? limits[key] : null;
+      if (limit != null) {
+        final max = limit * unitsPerChar;
+        if (s.length > max) s = _cut(s, max);
+        if (_named[op.entityType] == key && isBlank(s)) s = unreadableName;
+      }
+      if (s != value) (out ??= Map<String, Object?>.of(source))[key] = s;
+    }
+    return out ?? op.payload;
+  }
+
+  /// [m] with every string in it, keys and nested values included, well
+  /// formed ([TextClean.wellFormed]).
+  static Map<String, Object?> _wellFormedMap(Map<Object?, Object?> m) {
+    final out = <String, Object?>{};
+    for (final MapEntry(:key, :value) in m.entries) {
+      final k = key is String ? TextClean.wellFormed(key) : '$key';
+      out[k] = _wellFormedJson(value);
+    }
+    return out;
+  }
+
+  static Object? _wellFormedJson(Object? v) => switch (v) {
+    final String s => TextClean.wellFormed(s),
+    final Map<Object?, Object?> m => _wellFormedMap(m),
+    final List<Object?> l => [for (final e in l) _wellFormedJson(e)],
+    _ => v,
+  };
+
+  /// [s] without the characters [_hasControl] finds.
+  static String _withoutControls(String s) =>
+      String.fromCharCodes(s.runes.where((r) => !_isControl(r)));
+
+  /// The longest prefix of [s] within [max] code units that does not
+  /// split a surrogate pair.
+  static String _cut(String s, int max) {
+    var end = max;
+    final c = s.codeUnitAt(end - 1);
+    if (c >= 0xD800 && c <= 0xDBFF) end--;
+    return s.substring(0, end);
+  }
+
   /// The JSON type of every known field at schema version 1 (docs/SPEC.md
   /// 5.6). The reducer treats a field of the wrong type as absent, so a
   /// required one would hide the whole entity (SECURITY-R3-01).
@@ -341,16 +441,12 @@ abstract final class TextRules {
     return null;
   }
 
-  static bool _hasControl(String value) {
-    for (final r in value.runes) {
-      if (isReordering(r) ||
-          (r < 0x20 && !TextClean.isBreak(r)) ||
-          (r >= 0x7F && r <= 0x9F && r != 0x85)) {
-        return true;
-      }
-    }
-    return false;
-  }
+  static bool _hasControl(String value) => value.runes.any(_isControl);
+
+  static bool _isControl(int r) =>
+      isReordering(r) ||
+      (r < 0x20 && !TextClean.isBreak(r)) ||
+      (r >= 0x7F && r <= 0x9F && r != 0x85);
 
   /// True when a known non-text field holds a long string or map key, a
   /// control or bidi character, or nests deeper than the money block.
