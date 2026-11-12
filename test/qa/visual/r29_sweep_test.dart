@@ -556,6 +556,5 @@ void main() {
       await t.runAsync(w.phone.dispose);
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true, // QA VISUAL-R29-01: confirmation dialogs do not scroll
   );
 }

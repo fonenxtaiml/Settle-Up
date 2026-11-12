@@ -164,7 +164,8 @@ void main() {
     w.push(Routes.expense(pid, groupId: gid));
     await qaSettle(tester);
     await qaTap(tester, find.byTooltip(S.moreOptions));
-    await qaTap(tester, find.text(S.deleteExpense));
+    // A payment's menu says "Delete payment" (UIFLOW-R29-01).
+    await qaTap(tester, find.text(S.deletePayment));
     await qaTap(
       tester,
       find.descendant(
