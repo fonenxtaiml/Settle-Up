@@ -441,4 +441,40 @@ void main() {
     expect(tester.takeException(), isNull);
     await w.shutdown(tester);
   });
+  testWidgets('R29 probe: New group refused as too big unlocks the form; '
+      'taking one person out creates it with 50', (tester) async {
+    qaPhone(tester);
+    final w = await RealWorld.create(name: 'Arjun');
+    await pumpReal(tester, w, location: Routes.home);
+    w.push(Routes.newGroup);
+    await qaSettle(tester);
+    await tester.enterText(fieldLabeled(S.groupName), 'Wedding');
+    for (var i = 1; i <= 50; i++) {
+      await tester.enterText(fieldLabeled(S.personName), 'Guest $i');
+      await tester.testTextInput.receiveAction(TextInputAction.done);
+      await tester.pump();
+    }
+    await qaTap(tester, find.text(S.createGroupAction));
+    expect(snackText(tester), S.errGroupFull);
+    expect(w.state.visibleGroups, isEmpty);
+    expect(w.location, Routes.newGroup);
+    expect(filledButton(tester, S.createGroupAction).onPressed, isNotNull);
+
+    // Let the snack bar go so it covers nothing.
+    await tester.pump(const Duration(seconds: 6));
+    await qaSettle(tester);
+    final chip = find.widgetWithText(InputChip, 'Guest 50');
+    await qaReveal(tester, chip);
+    await tester.tap(
+      find.descendant(of: chip, matching: find.byIcon(Icons.clear)).first,
+    );
+    await tester.pump();
+    expect(find.text('Guest 50'), findsNothing);
+    await qaTap(tester, find.text(S.createGroupAction));
+    final g = w.groupNamed('Wedding');
+    expect(g.activeMembers, hasLength(50));
+    expect(w.location, Routes.group(g.groupId));
+    expect(tester.takeException(), isNull);
+    await w.shutdown(tester);
+  });
 }
