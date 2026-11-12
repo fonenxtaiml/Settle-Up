@@ -122,6 +122,106 @@ void main() {
         findsOneWidget,
       );
     },
-    skip: true, // QA DATA-R29-02: Settings never shows the clock notice
   );
+
+  testWidgets('regression: the snapshot carries the flag Settings reads', (
+    tester,
+  ) async {
+    expect(alex.ledger.current.clockSkewDetected, isTrue);
+    expect(ahead.current.clockSkewDetected, isFalse);
+  });
+
+  test('regression: ops all held back as too far ahead still publish the '
+      'flag on a new snapshot', () async {
+    final store = MemoryOpStore();
+    await store.open();
+    final ids = PhoneIds('d');
+    final settings = await KvSettingsRepository.open(
+      store,
+      defaultDeviceName: 'Far',
+      ids: ids,
+      localeName: 'en_IN',
+    );
+    await settings.completeOnboarding(displayName: 'Far', homeCurrency: 'INR');
+    final far = await Ledger.open(
+      store: store,
+      keys: MemoryGroupKeyStore(),
+      settings: settings,
+      ids: ids,
+      nowMillis: () =>
+          DateTime.now().millisecondsSinceEpoch + 8 * 24 * 60 * 60 * 1000,
+    );
+    final cara = await TestPhone.create('e', deviceName: 'Cara');
+    try {
+      final g = await far.createGroup(
+        const NewGroup(
+          name: 'Far trip',
+          type: GroupType.trip,
+          currency: 'INR',
+          newMemberNames: ['Sam'],
+        ),
+      );
+      await cara.ledger.registerJoinedGroup(
+        g,
+        (await far.groupKeys())[g]!,
+        'Far trip',
+      );
+      expect(cara.ledger.current.clockSkewDetected, isFalse);
+      final seen = <bool>[];
+      final sub = cara.ledger.watch().listen(
+        (s) => seen.add(s.clockSkewDetected),
+      );
+      final added = await cara.ledger.applyRemote(g, far.current.ops.toList());
+      await pumpEventQueue();
+      await sub.cancel();
+      expect(added, isEmpty, reason: 'every op is more than 7 days ahead');
+      expect(cara.ledger.current.clockSkewDetected, isTrue);
+      expect(seen.last, isTrue, reason: 'Settings hears about it');
+    } finally {
+      await far.close();
+      await cara.close();
+    }
+  });
+
+  testWidgets('regression: no clock notice on a phone that saw no skew', (
+    tester,
+  ) async {
+    late TestPhone bob;
+    await tester.runAsync(
+      () async => bob = await TestPhone.create('c', deviceName: 'Bob'),
+    );
+    final bobEngine = DefaultSyncEngine(store: bob.ledger, transports: []);
+    try {
+      expect(bob.ledger.clockSkewDetected, isFalse);
+      tester.view.physicalSize = const Size(1080, 6000);
+      tester.view.devicePixelRatio = 2.5;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            settingsRepositoryProvider.overrideWithValue(bob.settings),
+            ledgerRepositoryProvider.overrideWithValue(bob.ledger),
+            syncEngineProvider.overrideWithValue(bobEngine),
+          ],
+          child: MaterialApp(
+            theme: AppTheme.light(),
+            home: const SettingsScreen(),
+          ),
+        ),
+      );
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+      await tester.pump();
+      expect(find.text('Version'), findsOneWidget);
+      expect(find.textContaining('clock looks wrong'), findsNothing);
+      await tester.pumpWidget(const SizedBox());
+    } finally {
+      await tester.runAsync(() async {
+        await bobEngine.dispose();
+        await bob.close();
+      });
+    }
+  });
 }

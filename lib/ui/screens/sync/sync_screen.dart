@@ -199,6 +199,9 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
   void _help() => showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
+      // Title and body scroll, the buttons stay on screen: a long name
+      // at a large text size never pushes them off (VISUAL-R29-01).
+      scrollable: true,
       title: const Text(S.howSyncWorks),
       content: const Text(S.howSyncWorksBody),
       actions: [

@@ -80,7 +80,7 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
       final ok = await confirmAction(
         context,
         title: S.deleteExpenseTitle(title),
-        body: S.deleteExpenseBody,
+        body: S.deleteEntryBody(e.isPayment),
         confirmLabel: S.delete,
       );
       if (!ok || !context.mounted || _deleting) return;
@@ -98,7 +98,7 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
       Haptics.medium(context);
       showSnack(
         context,
-        S.expenseDeleted,
+        S.entryDeleted(e.isPayment),
         actionLabel: S.undo,
         onAction: () => ledger.restoreExpense(e.id, groupId: e.groupId),
       );
@@ -110,7 +110,9 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
         context,
         () => ledger.restoreExpense(e.id, groupId: e.groupId),
       );
-      if (done && context.mounted) showSnack(context, S.expenseRestored);
+      if (done && context.mounted) {
+        showSnack(context, S.entryRestored(e.isPayment));
+      }
     }
 
     final impact = myId == null ? 0 : _impact(g, e, myId);
@@ -172,9 +174,9 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
                   child: Text(S.restore),
                 )
               else
-                const PopupMenuItem(
+                PopupMenuItem(
                   value: _Menu.delete,
-                  child: Text(S.deleteExpense),
+                  child: Text(S.deleteEntry(e.isPayment)),
                 ),
             ],
           ),

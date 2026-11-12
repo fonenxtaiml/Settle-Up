@@ -488,8 +488,6 @@ void main() {
   testWidgets(
     'QA UIFLOW-R29-01: deleting and restoring a payment from its detail says '
     'payment, not expense, in the menu, the prompt and the snack bars',
-    // QA UIFLOW-R29-01: payment delete and restore copy says "expense"
-    skip: true,
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');
