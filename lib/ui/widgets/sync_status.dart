@@ -195,10 +195,15 @@ class SyncBanner extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(title, style: theme.textTheme.titleSmall),
+        // A stopped sync's line says what to do next, so it wraps in full;
+        // the "last synced with <phone>" status keeps its cap
+        // (VISUAL-R31-02).
         Text(
           subtitle,
-          maxLines: large ? 3 : 1,
-          overflow: TextOverflow.ellipsis,
+          maxLines: state == SyncChipState.failed ? null : (large ? 3 : 1),
+          overflow: state == SyncChipState.failed
+              ? null
+              : TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall!.copyWith(
             color: scheme.onSurfaceVariant,
           ),

@@ -405,7 +405,7 @@ void main() {
   // The Settings clock notice (new with DATA-R29-02): shown in About once
   // a peer's stamp was more than an hour ahead. Walked over the whole
   // charter matrix: no overflow and its contrast in both themes (its cut
-  // text is open as VISUAL-R31-02).
+  // text: VISUAL-R31-02, fixed).
   testWidgets(
     'R31 sweep: the Settings clock notice holds its layout and '
     'its contrast over the charter matrix',
@@ -424,7 +424,6 @@ void main() {
     'QA VISUAL-R31-02: the Settings clock notice cuts its title at 1.3x and '
     'its help text at 1.3x and 2.0x with an ellipsis',
     (t) => _clockNotice(t, cut: true),
-    skip: true, // QA VISUAL-R31-02: Settings clock notice text cut
   );
 
   // ------------------------------------------------------------------
