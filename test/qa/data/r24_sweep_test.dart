@@ -123,5 +123,5 @@ void main() {
     expect(b.state.expense(taxi), isNotNull);
     expect(b.state.expense(e)?.description, shown);
     expect(a.snap.unsharedCounts[t.g] ?? 0, 0);
-  }, skip: kLegacyTitle);
+  });
 }

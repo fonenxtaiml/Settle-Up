@@ -63,7 +63,10 @@ final class Ledger implements LedgerRepository, SyncStore {
     int Function()? nowMillis,
   }) async {
     final me = settings.device.deviceId;
-    final ops = await store.loadAll();
+    // Every stored op in the form it is offered to peers (DATA-R24-01).
+    final ops = [
+      for (final op in await store.loadAll()) TextRules.canonical(op),
+    ];
     final reducer = LedgerReducer()..applyAll(ops);
 
     var last = _restoredHlc(await store.getKv(KvKeys.hlcLast), me);
@@ -1138,8 +1141,16 @@ final class Ledger implements LedgerRepository, SyncStore {
       _store.versionVector(groupId);
 
   @override
-  Future<List<Operation>> opsMissingFor(GroupId groupId, VersionVector peer) =>
-      _store.missingFor(groupId, peer);
+  Future<List<Operation>> opsMissingFor(
+    GroupId groupId,
+    VersionVector peer,
+  ) async =>
+      // An op stored by an earlier build may hold text a peer on this build
+      // refuses: it is offered as this phone shows it (DATA-R24-01).
+      [
+        for (final op in await _store.missingFor(groupId, peer))
+          TextRules.canonical(op),
+      ];
 
   @override
   Future<List<Operation>> applyRemote(GroupId groupId, List<Operation> ops) =>
