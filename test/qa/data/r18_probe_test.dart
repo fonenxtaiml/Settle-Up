@@ -9,6 +9,8 @@ import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/normal_form.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
+import '../../support/cpu_clock.dart' show cpuMicrosPer;
+
 import 'r15_regression_test.dart' show logPhone;
 import 'r17_regression_test.dart' show memberCreates;
 
@@ -71,17 +73,15 @@ String _name(Random rnd, List<int> pool, int n) {
   return b.toString();
 }
 
-double _micros(String Function(int) name, int limit) {
-  for (var i = 0; i < 1500; i++) {
-    NameText.display(name(i), limit);
-  }
-  final sw = Stopwatch()..start();
-  const n = 400;
-  for (var i = 0; i < n; i++) {
-    NameText.display(name(i), limit);
-  }
-  return sw.elapsedMicroseconds / n;
-}
+/// The CPU time one display of [name]s takes, in us: the fastest of two
+/// windows of at least 40 ms after a warm-up, so the load of the full
+/// suite does not decide (DATA-R21-01).
+double _micros(String Function(int) name, int limit) => cpuMicrosPer(
+  (i) => NameText.display(name(i), limit),
+  warmUp: 1500,
+  runs: 2,
+  minCalls: 400,
+);
 
 /// A name of [units] code units: a number, then [piece] repeated.
 String Function(int) _of(String piece, [int units = 160, String lead = '']) =>

@@ -3,7 +3,6 @@
 // on a relaunch and in applyRemote, for renames of a few members and for
 // many members created with names NFKC makes 18 times as long, or of
 // combining marks NFKC expands, which no head of a name can be cut before.
-import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +12,7 @@ import 'package:settle_up/core/ops.dart';
 
 import '../qa/data/qa_data_harness.dart';
 import '../qa/data/r15_regression_test.dart' show logPhone, peerD, renames;
+import '../support/cpu_clock.dart';
 
 /// 159 x U+FDFA after a number: a distinct name per [i] that NFKC makes
 /// 2,862 characters long.
@@ -71,17 +71,9 @@ const Map<String, String> markClasses = {
   'letters with marks between': 'e\u0F77\u0301',
 };
 
-/// The CPU time this thread has run, in microseconds, from the kernel's
-/// scheduler statistics: what synchronous work costs, whatever else the
-/// host runs. The wall clock where the kernel does not tell.
-int cpuMicros() {
-  try {
-    final stat = File('/proc/thread-self/schedstat').readAsStringSync();
-    return int.parse(stat.split(' ').first) ~/ 1000;
-  } on Object {
-    return DateTime.now().microsecondsSinceEpoch;
-  }
-}
+/// The CPU time this thread has run, in microseconds: what synchronous
+/// work costs, whatever else the host runs ([threadCpuMicros]).
+int cpuMicros() => threadCpuMicros();
 
 /// The CPU time showing [names] as the replay shows a member's name takes,
 /// in ms: the fastest of three runs, each synchronous on one thread.

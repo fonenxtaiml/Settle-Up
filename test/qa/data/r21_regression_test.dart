@@ -37,7 +37,10 @@ void main() {
           final r = await measureR17();
           rows.add(
             'ordinary ${r.open.ordinaryMs} ms, marks ${r.open.openMs} ms, '
-            'names ${r.open.cpuMs} ms CPU',
+            'names ${r.open.cpuMs} ms CPU; display CPU us: ordinary '
+            '${r.ordinary.toStringAsFixed(1)}, marks '
+            '${r.marks.toStringAsFixed(1)}, group '
+            '${r.group.toStringAsFixed(1)}',
           );
           runs.add(r);
         }
@@ -52,45 +55,34 @@ void main() {
       // suite must stay green on the shared host it runs on.
       runs.forEach(expectR17);
     },
-    // Reopened in round 23: fails 2 of 5 runs alone on the host (the
-    // display bound, r17_regression_test.dart:119-120), see below.
-    skip:
-        'QA DATA-R21-01: The DATA-R15-01 reverification in '
-        'r17_regression_test.dart fails under the full -j 2 suite load',
     timeout: const Timeout(Duration(minutes: 6)),
   );
 
-  test(
-    'QA DATA-R21-01 (round 23): the display bound of the DATA-R15-01 '
-    'reverification is held in CPU time over ~1 ms windows, which the '
-    "kernel's schedstat clock does not resolve: an ordinary name reads "
-    '0 us, so 5 x ordinary + 50 is an absolute 50 us',
-    () {
-      // r17_regression_test.dart displayMicros: the fastest of three runs of
-      // 300 displays, each timed with cpuMicros (/proc/thread-self/schedstat,
-      // which advances in steps of 0.3-3.8 ms on this host). 300 ordinary
-      // displays take ~1.2 ms, so the fastest window usually sees no step.
-      final ordinary = [
-        for (var k = 0; k < 10; k++)
-          displayMicros((i) => 'Person ${'x' * 150}$i', 40),
-      ];
-      final marks = displayMicros(markName, 40);
-      final group = displayMicros(
-        (i) => 'x${'\u0F77' * 238}${i % 10}',
-        NameText.maxGroupLength,
-      );
-      // ignore: avoid_print
-      print(
-        '[r23] display CPU us: ordinary $ordinary, marks $marks, '
-        'group $group',
-      );
-      // Each measurement must resolve the cost it measures, or the relative
-      // bound is no bound: group names take ~26 us quiet and 48-52 us beside
-      // four busy isolates, against 5 x 0 + 50.
-      expect(ordinary, everyElement(greaterThan(0)));
-    },
-    skip:
-        'QA DATA-R21-01: The DATA-R15-01 reverification in '
-        'r17_regression_test.dart fails under the full -j 2 suite load',
-  );
+  test('QA DATA-R21-01 (round 23): the display bound of the DATA-R15-01 '
+      'reverification is held in CPU time over ~1 ms windows, which the '
+      "kernel's schedstat clock does not resolve: an ordinary name reads "
+      '0 us, so 5 x ordinary + 50 is an absolute 50 us', () {
+    // r17_regression_test.dart displayMicros: the fastest of three runs of
+    // 300 displays, each timed with cpuMicros (/proc/thread-self/schedstat,
+    // which advances in steps of 0.3-3.8 ms on this host). 300 ordinary
+    // displays take ~1.2 ms, so the fastest window usually sees no step.
+    final ordinary = [
+      for (var k = 0; k < 10; k++)
+        displayMicros((i) => 'Person ${'x' * 150}$i', 40),
+    ];
+    final marks = displayMicros(markName, 40);
+    final group = displayMicros(
+      (i) => 'x${'\u0F77' * 238}${i % 10}',
+      NameText.maxGroupLength,
+    );
+    // ignore: avoid_print
+    print(
+      '[r23] display CPU us: ordinary $ordinary, marks $marks, '
+      'group $group',
+    );
+    // Each measurement must resolve the cost it measures, or the relative
+    // bound is no bound: group names take ~26 us quiet and 48-52 us beside
+    // four busy isolates, against 5 x 0 + 50.
+    expect(ordinary, everyElement(greaterThan(0)));
+  });
 }
