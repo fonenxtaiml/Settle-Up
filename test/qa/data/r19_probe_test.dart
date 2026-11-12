@@ -45,6 +45,17 @@ Future<({int openMs, int rss, int shown})> open(
   return (openMs: r.openMs, rss: rss, shown: shown);
 }
 
+/// This thread's run time as the kernel's scheduler statistics count it,
+/// or null where they are not readable.
+int? _schedstatMicros() {
+  try {
+    final stat = File('/proc/thread-self/schedstat').readAsStringSync();
+    return int.parse(stat.split(' ').first) ~/ 1000;
+  } on Object {
+    return null;
+  }
+}
+
 void main() {
   test('cold relaunch: 13,107 members whose names cover every code point '
       'outside the BMP open about as fast, and keep about as much memory, as '
@@ -148,19 +159,34 @@ void main() {
     sleep(const Duration(milliseconds: 300));
     final idle = cpuMicros() - t;
     var x = 0;
+    final sched0 = _schedstatMicros();
     final t2 = cpuMicros();
     final spin = Stopwatch()..start();
     while (spin.elapsedMilliseconds < 300) {
       x = (x * 31 + 7) & 0xFFFFFF;
     }
     final busy = cpuMicros() - t2;
+    final sched1 = _schedstatMicros();
     // ignore: avoid_print
     print(
       '[r19] cpuMicros: idle 300 ms -> $idle us, busy 300 ms -> $busy us '
       '(wall ${wall.elapsedMilliseconds} ms, $x)',
     );
     expect(idle, lessThan(50000));
-    expect(busy, greaterThan(100000));
+    // 300 ms of spinning is at least 100 ms of CPU unless the host starves
+    // this thread (a load average near 8 on 4 CPUs gave it 77 ms in round
+    // 24); then the kernel's own count for the thread must agree instead.
+    if (busy <= 100000 && sched1 != null && sched0 != null) {
+      expect(
+        (busy - (sched1 - sched0)).abs(),
+        lessThan(5000 + busy ~/ 20),
+        reason:
+            'starved: cpuMicros $busy us, schedstat '
+            '${sched1 - sched0} us',
+      );
+    } else {
+      expect(busy, greaterThan(100000));
+    }
   });
 
   differentialProbe();
