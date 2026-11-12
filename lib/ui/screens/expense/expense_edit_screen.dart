@@ -337,6 +337,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   // ------------------------------------------------------------ actions --
 
   Future<void> _pickGroup() async {
+    if (_saving) return;
     final profile = ref.read(profileProvider).value;
     final snap = ref.read(ledgerProvider).value;
     if (profile == null || snap == null) return;
@@ -561,18 +562,20 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       }
     });
     if (!mounted) return;
-    setState(() => _saving = false);
-    if (!ok) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
+    }
+    // Still locked: the form keeps showing what was saved while it closes.
     _saved = true;
     if (_editing != null) {
       Haptics.medium(context);
       showSnack(context, S.expenseSaved);
     }
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go(groupId == null ? Routes.home : Routes.group(groupId!));
-    }
+    closeScreen(
+      context,
+      fallback: groupId == null ? Routes.home : Routes.group(groupId!),
+    );
   }
 
   // -------------------------------------------------------------- build --
@@ -708,161 +711,167 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
           canSave: canSave,
           onSave: _save,
         ),
-        body: ListView(
-          padding: const EdgeInsets.only(bottom: Space.lg),
-          children: [
-            if (!groupInBar)
+        body: InputLock(
+          locked: _saving,
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: Space.lg),
+            children: [
+              if (!groupInBar)
+                textGutter(
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: groupLabel,
+                  ),
+                ),
+              const SizedBox(height: 6),
               textGutter(
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: groupLabel,
+                AmountField(
+                  key: ValueKey('amount-$_amountKey-$_currency'),
+                  currency: _currency,
+                  initialMinor: _amount,
+                  autofocus: editing == null,
+                  currencyName: _cur.name,
+                  errorText: amountError,
+                  onCurrencyTap: _pickCurrency,
+                  onChanged: (v) => setState(() {
+                    _amount = v;
+                    _touch();
+                  }),
                 ),
               ),
-            const SizedBox(height: 6),
-            textGutter(
-              AmountField(
-                key: ValueKey('amount-$_amountKey-$_currency'),
-                currency: _currency,
-                initialMinor: _amount,
-                autofocus: editing == null,
-                currencyName: _cur.name,
-                errorText: amountError,
-                onCurrencyTap: _pickCurrency,
-                onChanged: (v) => setState(() {
-                  _amount = v;
-                  _touch();
-                }),
-              ),
-            ),
-            const SizedBox(height: 14),
-            gutter(
-              LabeledTextField(
-                label: S.description,
-                hintText: S.descriptionHint,
-                controller: _description,
-                errorText:
-                    descriptionError ??
-                    descriptionInputError(_description.text),
-                textInputAction: TextInputAction.done,
-                multiline: true,
-                inputFormatters: descriptionFormatters(),
-                onChanged: (_) => setState(_touch),
-                trailing: CategoryChip(
-                  categoryId: _category,
-                  label: categoryLabel(_category),
-                  onTap: _pickCategory,
+              const SizedBox(height: 14),
+              gutter(
+                LabeledTextField(
+                  label: S.description,
+                  hintText: S.descriptionHint,
+                  controller: _description,
+                  errorText:
+                      descriptionError ??
+                      descriptionInputError(_description.text),
+                  textInputAction: TextInputAction.done,
+                  multiline: true,
+                  inputFormatters: descriptionFormatters(),
+                  onChanged: (_) => setState(_touch),
+                  trailing: CategoryChip(
+                    categoryId: _category,
+                    label: categoryLabel(_category),
+                    onTap: _pickCategory,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            gutter(
-              Flex(
-                direction: isLargeText(context)
-                    ? Axis.vertical
-                    : Axis.horizontal,
-                crossAxisAlignment: isLargeText(context)
-                    ? CrossAxisAlignment.stretch
-                    : CrossAxisAlignment.center,
-                children: [
-                  _flexible(
-                    context,
-                    PickerTile(
-                      label: S.paidBy,
-                      value: _payerLabel,
-                      leading: _multiPaid == null && _payer != null
-                          ? PersonAvatar(
-                              id: _payer!,
-                              name: _fullNames[_payer] ?? '',
-                              size: Sizes.avatarTiny,
-                              isMe: _payer == _me,
-                            )
-                          : const Icon(Icons.group_outlined, size: 20),
-                      onTap: _pickPayer,
-                    ),
-                  ),
-                  const SizedBox(width: Space.sm, height: Space.sm),
-                  _flexible(
-                    context,
-                    PickerTile(
-                      label: S.date,
-                      value: DateLabels.pickerDate(
-                        _date,
-                        now: ref.watch(clockProvider)(),
+              const SizedBox(height: 10),
+              gutter(
+                Flex(
+                  direction: isLargeText(context)
+                      ? Axis.vertical
+                      : Axis.horizontal,
+                  crossAxisAlignment: isLargeText(context)
+                      ? CrossAxisAlignment.stretch
+                      : CrossAxisAlignment.center,
+                  children: [
+                    _flexible(
+                      context,
+                      PickerTile(
+                        label: S.paidBy,
+                        value: _payerLabel,
+                        leading: _multiPaid == null && _payer != null
+                            ? PersonAvatar(
+                                id: _payer!,
+                                name: _fullNames[_payer] ?? '',
+                                size: Sizes.avatarTiny,
+                                isMe: _payer == _me,
+                              )
+                            : const Icon(Icons.group_outlined, size: 20),
+                        onTap: _pickPayer,
                       ),
-                      leading: const Icon(
-                        Icons.calendar_today_rounded,
-                        size: 20,
-                      ),
-                      onTap: _pickDate,
                     ),
-                  ),
-                ],
-              ),
-            ),
-            if (payersOff)
-              textGutter(
-                Padding(
-                  padding: const EdgeInsets.only(top: Space.xs),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          S.splitNotDone,
-                          style: Theme.of(context).textTheme.bodySmall!
-                              .copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
+                    const SizedBox(width: Space.sm, height: Space.sm),
+                    _flexible(
+                      context,
+                      PickerTile(
+                        label: S.date,
+                        value: DateLabels.pickerDate(
+                          _date,
+                          now: ref.watch(clockProvider)(),
                         ),
-                        if (_multiPaid != null)
+                        leading: const Icon(
+                          Icons.calendar_today_rounded,
+                          size: 20,
+                        ),
+                        onTap: _pickDate,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              if (payersOff)
+                textGutter(
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.xs),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            S.payersAddUp(
-                              MoneyFormat.format(_multiPaidSum, _currency),
-                              MoneyFormat.format(amount, _currency),
-                            ),
+                            S.splitNotDone,
                             style: Theme.of(context).textTheme.bodySmall!
                                 .copyWith(
                                   color: Theme.of(context).colorScheme.error,
                                 ),
                           ),
-                      ],
+                          if (_multiPaid != null)
+                            Text(
+                              S.payersAddUp(
+                                MoneyFormat.format(_multiPaidSum, _currency),
+                                MoneyFormat.format(amount, _currency),
+                              ),
+                              style: Theme.of(context).textTheme.bodySmall!
+                                  .copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            gutter(
-              SectionHeading(
-                S.splitHeading(
-                  _split.method.name,
-                  _split.participants.length,
-                  _order.length,
+              gutter(
+                SectionHeading(
+                  S.splitHeading(
+                    _split.method.name,
+                    _split.participants.length,
+                    _order.length,
+                  ),
                 ),
               ),
-            ),
-            gutter(
-              SplitMethodSelector(value: _split.method, onChanged: _setMethod),
-            ),
-            const SizedBox(height: 5),
-            gutter(
-              ListSection(
-                dividerIndent: 64,
-                children: [for (final m in _order) _memberRow(m, shares)],
+              gutter(
+                SplitMethodSelector(
+                  value: _split.method,
+                  onChanged: _setMethod,
+                ),
               ),
-            ),
-            const SizedBox(height: Space.md),
-            gutter(
-              LabeledTextField(
-                label: S.notes,
-                hintText: S.notesHint,
-                controller: _notes,
-                multiline: true,
-                inputFormatters: notesFormatters(),
-                errorText: notesInputError(_notes.text),
-                onChanged: (_) => setState(_touch),
+              const SizedBox(height: 5),
+              gutter(
+                ListSection(
+                  dividerIndent: 64,
+                  children: [for (final m in _order) _memberRow(m, shares)],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: Space.md),
+              gutter(
+                LabeledTextField(
+                  label: S.notes,
+                  hintText: S.notesHint,
+                  controller: _notes,
+                  multiline: true,
+                  inputFormatters: notesFormatters(),
+                  errorText: notesInputError(_notes.text),
+                  onChanged: (_) => setState(_touch),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

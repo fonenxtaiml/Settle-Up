@@ -1,7 +1,6 @@
 // Edit a recorded payment: amount, how it was paid, date and note.
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:go_router/go_router.dart';
 
 import '../../../core/models.dart';
 import '../../../data/repositories.dart';
@@ -9,6 +8,7 @@ import '../../../theme/tokens.dart';
 import '../../format/dates.dart';
 import '../../format/money_format.dart';
 import '../../providers.dart';
+import '../../router.dart';
 import '../../strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
@@ -75,11 +75,14 @@ class _PaymentEditScreenState extends ConsumerState<PaymentEditScreen> {
       ),
     );
     if (!mounted) return;
-    setState(() => _saving = false);
-    if (!ok) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
+    }
+    // Still locked: the form keeps showing what was saved while it closes.
     Haptics.medium(context);
     showSnack(context, S.expenseSaved);
-    context.pop();
+    closeScreen(context, fallback: Routes.group(e.groupId));
   }
 
   @override
@@ -107,84 +110,87 @@ class _PaymentEditScreenState extends ConsumerState<PaymentEditScreen> {
           ),
         ),
       ),
-      body: ListView(
-        children: [
-          const SizedBox(height: Space.sm),
-          gutter(
-            TetherTransfer(
-              fromId: e.payer,
-              fromName: full[e.payer] ?? S.someone,
-              toId: e.receiver,
-              toName: full[e.receiver] ?? S.someone,
-              fromIsMe: e.payer == myId,
-              toIsMe: e.receiver == myId,
-              line: TetherLine.solid,
+      body: InputLock(
+        locked: _saving,
+        child: ListView(
+          children: [
+            const SizedBox(height: Space.sm),
+            gutter(
+              TetherTransfer(
+                fromId: e.payer,
+                fromName: full[e.payer] ?? S.someone,
+                toId: e.receiver,
+                toName: full[e.receiver] ?? S.someone,
+                fromIsMe: e.payer == myId,
+                toIsMe: e.receiver == myId,
+                line: TetherLine.solid,
+              ),
             ),
-          ),
-          const SizedBox(height: Space.lg),
-          textGutter(
-            AmountField(
-              currency: currency,
-              initialMinor: e.money.total,
-              onChanged: (v) => setState(() => _amount = v),
+            const SizedBox(height: Space.lg),
+            textGutter(
+              AmountField(
+                currency: currency,
+                initialMinor: e.money.total,
+                onChanged: (v) => setState(() => _amount = v),
+              ),
             ),
-          ),
-          gutter(const SectionHeading(S.howYouPaid)),
-          gutter(
-            PaymentMethodSelector(
-              value: _method,
-              onChanged: (m) => setState(() => _method = m),
+            gutter(const SectionHeading(S.howYouPaid)),
+            gutter(
+              PaymentMethodSelector(
+                value: _method,
+                onChanged: _saving ? null : (m) => setState(() => _method = m),
+              ),
             ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            ListSection(
-              children: [
-                KeyValueRow(
-                  label: S.date,
-                  value: DateLabels.pickerDate(_date, now: now),
-                  onTap: () async {
-                    final d = await pickEntryDate(
-                      context,
-                      initial: _date,
-                      now: now,
-                    );
-                    if (d != null) {
-                      setState(
-                        () => _date = DateTime(
-                          d.year,
-                          d.month,
-                          d.day,
-                          _date.hour,
-                          _date.minute,
-                        ),
+            const SizedBox(height: Space.md),
+            gutter(
+              ListSection(
+                children: [
+                  KeyValueRow(
+                    label: S.date,
+                    value: DateLabels.pickerDate(_date, now: now),
+                    onTap: () async {
+                      final d = await pickEntryDate(
+                        context,
+                        initial: _date,
+                        now: now,
                       );
-                    }
-                  },
-                ),
-              ],
+                      if (d != null) {
+                        setState(
+                          () => _date = DateTime(
+                            d.year,
+                            d.month,
+                            d.day,
+                            _date.hour,
+                            _date.minute,
+                          ),
+                        );
+                      }
+                    },
+                  ),
+                ],
+              ),
             ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            LabeledTextField(
-              label: S.notes,
-              hintText: S.notesHint,
-              controller: _notes,
-              multiline: true,
-              inputFormatters: notesFormatters(),
-              errorText: notesInputError(_notes.text),
-              onChanged: (_) => setState(() {}),
+            const SizedBox(height: Space.md),
+            gutter(
+              LabeledTextField(
+                label: S.notes,
+                hintText: S.notesHint,
+                controller: _notes,
+                multiline: true,
+                inputFormatters: notesFormatters(),
+                errorText: notesInputError(_notes.text),
+                onChanged: (_) => setState(() {}),
+              ),
             ),
-          ),
-          const SizedBox(height: Space.sm),
-          textGutter(
-            Text(
-              MoneyFormat.format(e.money.total, currency),
-              style: Theme.of(context).textTheme.bodySmall,
+            const SizedBox(height: Space.sm),
+            textGutter(
+              Text(
+                MoneyFormat.format(e.money.total, currency),
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }

@@ -179,15 +179,20 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       }
     });
     if (!mounted) return;
-    setState(() => _saving = false);
-    if (!ok) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
+    }
+    // Still locked: the form keeps showing what was saved while it closes.
     Haptics.medium(context);
     if (created != null) {
       showSnack(context, S.groupCreated);
-      context.pushReplacement(Routes.group(created!));
+      if (bringScreenToFront(context)) {
+        context.pushReplacement(Routes.group(created!));
+      }
     } else {
       showSnack(context, S.groupSaved);
-      context.pop();
+      closeScreen(context, fallback: Routes.group(widget.groupId!));
     }
   }
 
@@ -271,200 +276,212 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.xl),
-        children: [
-          const SizedBox(height: Space.sm),
-          gutter(
-            LabeledTextField(
-              label: S.groupName,
-              hintText: S.groupNameHint,
-              controller: _name,
-              maxLength: kGroupNameMax,
-              inputFormatters: nameFormatters(kGroupNameMax),
-              errorText: _name.text.trim().isEmpty
-                  ? (_tried ? S.nameNeeded : null)
-                  : _nameKept
-                  ? null
-                  : nameInputError(_name.text, limit: kGroupNameMax),
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          gutter(const SectionHeading(S.groupType)),
-          gutter(
-            _GroupTypePicker(
-              value: _type,
-              onChanged: (t) => setState(() => _type = t),
-            ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            PickerTile(
-              label: S.currency,
-              value: '${currency.name} (${currency.code})',
-              leading: SymbolText(
-                currency.symbol,
-                style: theme.textTheme.titleMedium,
-                maxWidth: SymbolText.maxLeadingWidth(context),
-              ),
-              onTap: () async {
-                final code = await pickCurrency(
-                  context,
-                  selected: currency.code,
-                  pinned: [profile.homeCurrency],
-                );
-                if (code != null) setState(() => _currency = code);
-              },
-            ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            ListSection(
-              children: [
-                KitListRow(
-                  title: S.emoji,
-                  minHeight: Sizes.rowMinDense,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _emoji == null || _emoji!.isEmpty ? S.noEmoji : _emoji!,
-                        style: theme.textTheme.bodyLarge!.copyWith(color: ink2),
-                      ),
-                      const SizedBox(width: Space.xs),
-                      Icon(Icons.chevron_right_rounded, color: ink2),
-                    ],
-                  ),
-                  onTap: () async {
-                    final e = await pickOption<String>(
-                      context,
-                      title: S.emoji,
-                      selected: _emoji ?? '',
-                      options: [
-                        ('', S.noEmoji),
-                        for (final e in _emojis) (e, e),
-                      ],
-                    );
-                    if (e == null) return;
-                    setState(() => _emoji = e.isEmpty ? null : e);
-                  },
-                ),
-                MergeSemantics(
-                  child: KitListRow(
-                    title: S.simplifyDebts,
-                    subtitle: simplify ? S.simplifyHelpOn : S.simplifyHelpOff,
-                    trailing: Switch(
-                      value: simplify,
-                      onChanged: (v) => setState(() => _simplify = v),
-                    ),
-                    onTap: () => setState(() => _simplify = !simplify),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_isNew) ...[
-            gutter(const SectionHeading(S.addPeople)),
-            textGutter(
-              Text(
-                S.youAreIncluded,
-                style: theme.textTheme.bodySmall!.copyWith(color: ink2),
-              ),
-            ),
+      body: InputLock(
+        locked: _saving,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: Space.xl),
+          children: [
             const SizedBox(height: Space.sm),
             gutter(
               LabeledTextField(
-                label: S.personName,
-                hintText: S.personNameHint,
-                controller: _person,
-                maxLength: kMemberNameMax,
-                inputFormatters: nameFormatters(kMemberNameMax),
-                errorText: _personError,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _addPerson(people),
-                onChanged: (_) => setState(() => _personError = null),
-                trailing: FilledButton.tonal(
-                  onPressed: !isSavableName(_person.text, kMemberNameMax)
-                      ? null
-                      : () => _addPerson(people),
-                  style: KitButtonStyles.small(context),
-                  child: const Text(S.addPerson),
-                ),
+                label: S.groupName,
+                hintText: S.groupNameHint,
+                controller: _name,
+                maxLength: kGroupNameMax,
+                inputFormatters: nameFormatters(kGroupNameMax),
+                errorText: _name.text.trim().isEmpty
+                    ? (_tried ? S.nameNeeded : null)
+                    : _nameKept
+                    ? null
+                    : nameInputError(_name.text, limit: kGroupNameMax),
+                onChanged: (_) => setState(() {}),
               ),
             ),
-            if (_newNames.isNotEmpty)
-              gutter(
-                Padding(
-                  padding: const EdgeInsets.only(top: Space.sm),
-                  child: Wrap(
-                    spacing: Space.sm,
-                    runSpacing: Space.xs,
-                    children: [
-                      for (final (i, n) in _newNames.indexed)
-                        InputChip(
-                          label: Text(n),
-                          avatar: PersonAvatar(id: 'new-$i', name: n, size: 24),
-                          onDeleted: () =>
-                              setState(() => _newNames.removeAt(i)),
-                        ),
-                    ],
-                  ),
-                ),
+            gutter(const SectionHeading(S.groupType)),
+            gutter(
+              _GroupTypePicker(
+                value: _type,
+                onChanged: (t) => setState(() => _type = t),
               ),
-            if (sortedPeople.isNotEmpty) ...[
-              gutter(const SectionHeading(S.fromYourGroups)),
-              gutter(
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.xs,
-                  children: [
-                    for (final p in sortedPeople)
-                      FilterChip(
-                        label: Text(p.value),
-                        selected: _existing.contains(p.key),
-                        onSelected: (v) => setState(() {
-                          if (v) {
-                            _existing.add(p.key);
-                          } else {
-                            _existing.remove(p.key);
-                          }
-                        }),
-                      ),
-                  ],
+            ),
+            const SizedBox(height: Space.md),
+            gutter(
+              PickerTile(
+                label: S.currency,
+                value: '${currency.name} (${currency.code})',
+                leading: SymbolText(
+                  currency.symbol,
+                  style: theme.textTheme.titleMedium,
+                  maxWidth: SymbolText.maxLeadingWidth(context),
                 ),
+                onTap: () async {
+                  final code = await pickCurrency(
+                    context,
+                    selected: currency.code,
+                    pinned: [profile.homeCurrency],
+                  );
+                  if (code != null) setState(() => _currency = code);
+                },
               ),
-            ],
-          ] else ...[
+            ),
             const SizedBox(height: Space.md),
             gutter(
               ListSection(
                 children: [
                   KitListRow(
-                    title: S.members,
+                    title: S.emoji,
                     minHeight: Sizes.rowMinDense,
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.push(Routes.members(widget.groupId!)),
-                  ),
-                  KitListRow(
-                    title: original!.archived
-                        ? S.unarchiveGroup
-                        : S.archiveGroup,
-                    minHeight: Sizes.rowMinDense,
-                    onTap: () => _archive(original),
-                  ),
-                  KitListRow(
-                    title: S.deleteGroup,
-                    minHeight: Sizes.rowMinDense,
-                    titleStyle: theme.textTheme.titleSmall!.copyWith(
-                      color: theme.colorScheme.error,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _emoji == null || _emoji!.isEmpty
+                              ? S.noEmoji
+                              : _emoji!,
+                          style: theme.textTheme.bodyLarge!.copyWith(
+                            color: ink2,
+                          ),
+                        ),
+                        const SizedBox(width: Space.xs),
+                        Icon(Icons.chevron_right_rounded, color: ink2),
+                      ],
                     ),
-                    onTap: () => _delete(original, gs!.liveExpenses.length),
+                    onTap: () async {
+                      final e = await pickOption<String>(
+                        context,
+                        title: S.emoji,
+                        selected: _emoji ?? '',
+                        options: [
+                          ('', S.noEmoji),
+                          for (final e in _emojis) (e, e),
+                        ],
+                      );
+                      if (e == null) return;
+                      setState(() => _emoji = e.isEmpty ? null : e);
+                    },
+                  ),
+                  MergeSemantics(
+                    child: KitListRow(
+                      title: S.simplifyDebts,
+                      subtitle: simplify ? S.simplifyHelpOn : S.simplifyHelpOff,
+                      trailing: Switch(
+                        value: simplify,
+                        onChanged: (v) => setState(() => _simplify = v),
+                      ),
+                      onTap: () => setState(() => _simplify = !simplify),
+                    ),
                   ),
                 ],
               ),
             ),
+            if (_isNew) ...[
+              gutter(const SectionHeading(S.addPeople)),
+              textGutter(
+                Text(
+                  S.youAreIncluded,
+                  style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+                ),
+              ),
+              const SizedBox(height: Space.sm),
+              gutter(
+                LabeledTextField(
+                  label: S.personName,
+                  hintText: S.personNameHint,
+                  controller: _person,
+                  maxLength: kMemberNameMax,
+                  inputFormatters: nameFormatters(kMemberNameMax),
+                  errorText: _personError,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _addPerson(people),
+                  onChanged: (_) => setState(() => _personError = null),
+                  trailing: FilledButton.tonal(
+                    onPressed: !isSavableName(_person.text, kMemberNameMax)
+                        ? null
+                        : () => _addPerson(people),
+                    style: KitButtonStyles.small(context),
+                    child: const Text(S.addPerson),
+                  ),
+                ),
+              ),
+              if (_newNames.isNotEmpty)
+                gutter(
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.sm),
+                    child: Wrap(
+                      spacing: Space.sm,
+                      runSpacing: Space.xs,
+                      children: [
+                        for (final (i, n) in _newNames.indexed)
+                          InputChip(
+                            label: Text(n),
+                            avatar: PersonAvatar(
+                              id: 'new-$i',
+                              name: n,
+                              size: 24,
+                            ),
+                            onDeleted: () =>
+                                setState(() => _newNames.removeAt(i)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (sortedPeople.isNotEmpty) ...[
+                gutter(const SectionHeading(S.fromYourGroups)),
+                gutter(
+                  Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.xs,
+                    children: [
+                      for (final p in sortedPeople)
+                        FilterChip(
+                          label: Text(p.value),
+                          selected: _existing.contains(p.key),
+                          onSelected: (v) => setState(() {
+                            if (v) {
+                              _existing.add(p.key);
+                            } else {
+                              _existing.remove(p.key);
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ] else ...[
+              const SizedBox(height: Space.md),
+              gutter(
+                ListSection(
+                  children: [
+                    KitListRow(
+                      title: S.members,
+                      minHeight: Sizes.rowMinDense,
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          context.push(Routes.members(widget.groupId!)),
+                    ),
+                    KitListRow(
+                      title: original!.archived
+                          ? S.unarchiveGroup
+                          : S.archiveGroup,
+                      minHeight: Sizes.rowMinDense,
+                      onTap: () => _archive(original),
+                    ),
+                    KitListRow(
+                      title: S.deleteGroup,
+                      minHeight: Sizes.rowMinDense,
+                      titleStyle: theme.textTheme.titleSmall!.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                      onTap: () => _delete(original, gs!.liveExpenses.length),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }
