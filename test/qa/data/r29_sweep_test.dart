@@ -10,6 +10,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/data/repositories.dart';
+import 'package:settle_up/data/schema.dart';
+import 'package:sqlite3/sqlite3.dart';
 import 'package:settle_up/sync/protocol/session.dart';
 
 import '../../sync/support/harness.dart';
@@ -161,6 +163,38 @@ void main() {
         'QA DATA-R29-01: after this phone\'s clock ran more than 7 days '
         'ahead for one edit, every later change it makes is held back '
         'by peers until real time catches up, with no sign on this phone',
+  );
+
+  test(
+    'QA DATA-R29-01 repro (variant): one flipped bit in the leading digit '
+    'of a stored hlc.last does not stop later changes reaching a peer',
+    () async {
+      await join();
+      await a.close();
+      final db = sqlite3.open(a.path);
+      try {
+        final row = db.select('SELECT value FROM kv WHERE key = ?', [
+          KvKeys.hlcLast,
+        ]);
+        final v = row.single.columnAt(0) as String;
+        // '0' (0x30) -> '8' (0x38): still a well-formed HLC.
+        db.execute('UPDATE kv SET value = ? WHERE key = ?', [
+          '8${v.substring(1)}',
+          KvKeys.hlcLast,
+        ]);
+      } finally {
+        db.close();
+      }
+      await a.launch();
+      final lunch = await a.ledger.addExpense(
+        qaDraft(t.g, [t.me, t.priya], description: 'Lunch'),
+      );
+      await sync(a.ledger, b.ledger);
+      expect(b.snap.state.expense(lunch), isNotNull);
+    },
+    skip:
+        'QA DATA-R29-01: a stored clock far ahead of the wall clock is '
+        'restored as is, so every later change is held back by peers',
   );
 
   test('within the 7-day window the same story syncs (control)', () async {
