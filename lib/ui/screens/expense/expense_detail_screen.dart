@@ -110,8 +110,9 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
         context,
         () => ledger.restoreExpense(e.id, groupId: e.groupId),
       );
-      if (done && context.mounted)
+      if (done && context.mounted) {
         showSnack(context, S.entryRestored(e.isPayment));
+      }
     }
 
     final impact = myId == null ? 0 : _impact(g, e, myId);
