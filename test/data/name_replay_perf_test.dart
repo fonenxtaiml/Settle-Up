@@ -45,6 +45,70 @@ Future<int> openMs(List<Operation> extra, {bool base = true}) async {
   return r.openMs;
 }
 
+/// Wraps one timed open of [fasterOpens]: [run] counts from 0, [heavy] is
+/// true for the log under test; it must call [open] once and return its ms.
+typedef OpenRun = Future<int> Function(
+  int run,
+  bool heavy,
+  Future<int> Function() open,
+);
+
+/// How many times [fasterOpens] opens each log by default.
+const int kOpenRuns = 3;
+
+/// The wall-clock ms the log of [ordinary] and that of [heavy] take to
+/// open: each opened [runs] times, alternately (ordinary, heavy, ordinary,
+/// ...), and the fastest run of each taken.
+///
+/// The one way the suite times opens it compares (DATA-R18-02,
+/// DATA-R32-02): the wall clock counts whatever else the host runs (the
+/// other test file `flutter test -j 2` runs beside this one, other work on
+/// a shared host), and a burst of that load over one sample alone would
+/// decide a single-sample comparison. Alternating spreads the samples of
+/// both logs over the same stretch of time, and the fastest of each is the
+/// one load slowed least. [around] wraps each run (for a probe that loads
+/// the host over some of them).
+Future<({int ordinaryMs, int heavyMs})> fasterOpens(
+  List<Operation> ordinary,
+  List<Operation> heavy, {
+  bool base = true,
+  int runs = kOpenRuns,
+  OpenRun? around,
+}) async {
+  final wrap = around ?? (_, _, open) => open();
+  var ordinaryMs = 1 << 30, heavyMs = 1 << 30;
+  for (var k = 0; k < runs; k++) {
+    ordinaryMs = min(
+      ordinaryMs,
+      await wrap(k, false, () => openMs(ordinary, base: base)),
+    );
+    heavyMs = min(
+      heavyMs,
+      await wrap(k, true, () => openMs(heavy, base: base)),
+    );
+  }
+  return (ordinaryMs: ordinaryMs, heavyMs: heavyMs);
+}
+
+/// The 20k ops of the base log and 5,000 members created with ordinary
+/// names, and with distinct 159 x U+FDFA names: the logs of the creates
+/// bound ([expectCreatesWithinBudget]).
+({List<Operation> ordinary, List<Operation> heavy}) createsLogs() =>
+    (ordinary: creates(5000, (i) => 'Person $i'), heavy: creates(5000, heavy));
+
+/// The bound on the open of [createsLogs]: 0.1 ms an op for what the names
+/// add, held on the wall clock with room for the load the suite runs under,
+/// scaled by how much slower than on a quiet host the open of ordinary
+/// names was ([quietBaseOrdinaryMs]). Both from [fasterOpens].
+void expectCreatesWithinBudget(({int ordinaryMs, int heavyMs}) r) {
+  final load = max(1.0, r.ordinaryMs / quietBaseOrdinaryMs);
+  expect(
+    r.heavyMs - r.ordinaryMs,
+    lessThan(1000 * load),
+    reason: 'ordinary ${r.ordinaryMs} ms, heavy ${r.heavyMs} ms',
+  );
+}
+
 /// A name of 160 units: a number, then [piece] repeated.
 String Function(int) markName(String piece) => (i) {
   final b = StringBuffer('$i');
@@ -91,8 +155,7 @@ int showCpuMs(List<String> names) {
 
 /// What 4,000 members created with names of [piece] cost against as many
 /// with ordinary names: the CPU time showing the names takes, and the
-/// open of each log, each open measured twice, alternately, and the
-/// faster run taken.
+/// open of each log, measured by [fasterOpens].
 Future<MarkCost> markCost(String piece) => nameCost(markName(piece));
 
 /// What 4,000 members created with [name]s cost against as many with
@@ -100,18 +163,15 @@ Future<MarkCost> markCost(String piece) => nameCost(markName(piece));
 Future<MarkCost> nameCost(String Function(int) name) async {
   final ordinaryNames = [for (var i = 1; i <= 4000; i++) 'Person $i'];
   final names = [for (var i = 1; i <= 4000; i++) name(i)];
-  var ordinary = 1 << 30, ms = 1 << 30;
-  for (var k = 0; k < 2; k++) {
-    ordinary = min(
-      ordinary,
-      await openMs(creates(4000, (i) => ordinaryNames[i - 1]), base: false),
-    );
-    ms = min(ms, await openMs(creates(4000, (i) => names[i - 1]), base: false));
-  }
+  final r = await fasterOpens(
+    creates(4000, (i) => ordinaryNames[i - 1]),
+    creates(4000, (i) => names[i - 1]),
+    base: false,
+  );
   return (
     cpuMs: showCpuMs(names) - showCpuMs(ordinaryNames),
-    openMs: ms,
-    ordinaryMs: ordinary,
+    openMs: r.heavyMs,
+    ordinaryMs: r.ordinaryMs,
   );
 }
 
@@ -142,18 +202,46 @@ void expectWithinMarkBudget(MarkCost r) {
 }
 
 void main() {
+  test('fasterOpens alternates the two logs and takes the fastest run of '
+      'each, so a burst of load over any one sample does not decide it '
+      '(DATA-R32-02)', () async {
+    final rnd = Random(3202);
+    for (var trial = 0; trial < 200; trial++) {
+      final runs = 1 + rnd.nextInt(4);
+      final order = <(int, bool)>[];
+      final times = {
+        for (var k = 0; k < runs; k++)
+          for (final h in [false, true]) (k, h): 100 + rnd.nextInt(2000),
+      };
+      final r = await fasterOpens(
+        const [],
+        const [],
+        runs: runs,
+        // Stands in for the timed open: no log is opened.
+        around: (run, heavy, open) async {
+          order.add((run, heavy));
+          return times[(run, heavy)]!;
+        },
+      );
+      expect(order, [
+        for (var k = 0; k < runs; k++) ...[(k, false), (k, true)],
+      ]);
+      int best(bool h) =>
+          [for (var k = 0; k < runs; k++) times[(k, h)]!].reduce(min);
+      expect(r.ordinaryMs, best(false));
+      expect(r.heavyMs, best(true));
+    }
+  });
+
   test('20k ops + 20,000 renames with distinct 159 x U+FDFA names open '
       'about as fast as with ordinary names', () async {
-    // Each measured twice, alternately, and the faster run taken, so a
-    // burst of load on the shared host does not decide it (DATA-R18-02).
-    var ordinary = 1 << 30, heavyMs = 1 << 30;
-    for (var k = 0; k < 2; k++) {
-      ordinary = min(
-        ordinary,
-        await openMs(renames(20000, (i) => 'Person $i')),
-      );
-      heavyMs = min(heavyMs, await openMs(renames(20000, heavy)));
-    }
+    // Measured alternately, the fastest run of each taken, so a burst of
+    // load on the shared host does not decide it (DATA-R18-02).
+    final r = await fasterOpens(
+      renames(20000, (i) => 'Person $i'),
+      renames(20000, heavy),
+    );
+    final ordinary = r.ordinaryMs, heavyMs = r.heavyMs;
     // ignore: avoid_print
     print(
       '[perf] 20k ops + 20k renames: ordinary $ordinary ms, '
@@ -167,20 +255,22 @@ void main() {
       'open within the budget of 0.1 ms an op', () async {
     final ordinaryNames = [for (var i = 1; i <= 5000; i++) 'Person $i'];
     final heavyNames = [for (var i = 1; i <= 5000; i++) heavy(i)];
-    final ordinary = await openMs(creates(5000, (i) => ordinaryNames[i - 1]));
-    final heavyMs = await openMs(creates(5000, (i) => heavyNames[i - 1]));
+    final logs = createsLogs();
+    // Measured alternately, the fastest run of each taken: one sample of
+    // each once failed the -j 2 suite on a loaded host, 1282 ms against a
+    // bound of 1007 ms, and passes alone at about 200 ms (DATA-R32-02).
+    final r = await fasterOpens(logs.ordinary, logs.heavy);
     final cpuMs = showCpuMs(heavyNames) - showCpuMs(ordinaryNames);
     // ignore: avoid_print
     print(
-      '[perf] 20k ops + 5k member creates: ordinary $ordinary ms, '
-      'heavy $heavyMs ms, the names $cpuMs ms of CPU',
+      '[perf] 20k ops + 5k member creates: ordinary ${r.ordinaryMs} ms, '
+      'heavy ${r.heavyMs} ms, the names $cpuMs ms of CPU',
     );
     // As for the marks below: what the names add in CPU time, which load
     // does not change, and the open on the wall clock with room for the
     // load the suite runs under (DATA-R18-02).
     expect(cpuMs, lessThan(500)); // 5,000 x 0.1 ms
-    final load = max(1.0, ordinary / quietBaseOrdinaryMs);
-    expect(heavyMs - ordinary, lessThan(1000 * load));
+    expectCreatesWithinBudget(r);
   }, timeout: const Timeout(Duration(minutes: 4)));
 
   test('applyRemote of 1,000 renames with such names takes about as long '
