@@ -96,7 +96,7 @@ reference screens. Copy its layouts when you build the real screens.
 ### Chrome
 - **AddExpenseFab**: the extended ink FAB (radius 16, soft two-layer shadow). `AddExpenseFab({required VoidCallback? onPressed, String label = 'Add expense', IconData icon = Icons.add_rounded, Object? heroTag})`
 - **AppNavigationBar**: Home, Activity and Sync, with a count badge on Sync. `AppNavigationBar({required int selectedIndex, required ValueChanged<int> onDestinationSelected, int pendingCount = 0})`
-- **AppBarTitle**: an app bar title with a subline, for example "Goa trip" over "6 people, ₹38,400 spent". `AppBarTitle(String title, {String? subtitle})`. With a leading icon, set `AppBar(titleSpacing: 0)`.
+- **AppBarTitle**: an app bar title with a subline, for example "Goa trip" over "6 people, ₹38,400 spent". `AppBarTitle(String title, {String? subtitle})`. With a leading icon, set `AppBar(titleSpacing: 0)`. The title takes one line; a screen whose title is the user's data (a group, a person) wraps its `Scaffold` in `TitleCutScope` and puts `CutTitleHeading()` at the top of its body, which shows the title in full while the app bar cuts it. The expense detail screen names the kind of entry in the app bar and shows the entry's title as the body's heading.
 - **DropdownChip**: an outlined chip with a chevron, for example the group picker on Add expense. `DropdownChip({required String label, required VoidCallback? onTap, String? semanticLabel})`
 - Buttons use the themed `FilledButton` (ink pill), `FilledButton.tonal` (stone pill) and `OutlinedButton`. `KitButtonStyles.small(context)` gives the 36 dp row buttons, and `KitButtonStyles.block` the 52 dp full-width ones.
 

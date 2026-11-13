@@ -339,7 +339,6 @@ void main() {
     'QA VISUAL-R34-02: the expense and payment detail screens cut the '
     "entry's title (\"Dinner at ...\", \"Sam paid ...\") in a one-line app "
     'bar and show it nowhere else',
-    skip: true, // QA VISUAL-R34-02: detail screen title cut in the app bar
     (t) async {
       late VisualWorld real, long;
       await t.runAsync(() async {

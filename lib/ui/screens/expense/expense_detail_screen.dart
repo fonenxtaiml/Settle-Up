@@ -147,7 +147,14 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
     return Scaffold(
       appBar: screenAppBar(
         leading: const BackArrow(),
-        title: AppBarTitle(title, subtitle: groupTitle(g, me)),
+        // The app bar names the kind of entry; its title (a description
+        // of up to 120 characters, or who paid whom) reads in full in the
+        // body, which is where a row's capped line is read in full
+        // (VISUAL-R34-02).
+        title: AppBarTitle(
+          e.isPayment ? S.paymentTitle : S.expenseTitle,
+          subtitle: groupTitle(g, me),
+        ),
         actions: [
           if (!e.isDeleted)
             IconButton(
@@ -216,6 +223,16 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
                   ),
                 ),
               ),
+            // The screen's heading: wraps in full, never cut, and set
+            // smaller when one word ("Bartholomew" at 2.0x) is wider than
+            // the line, so no word is broken.
+            textGutter(
+              Semantics(
+                header: true,
+                child: FitWordsText(title, style: theme.textTheme.titleLarge),
+              ),
+            ),
+            const SizedBox(height: Space.md),
             textGutter(
               Row(
                 children: [

@@ -135,11 +135,22 @@ class AppBarTitle extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            title,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: theme.textTheme.titleLarge,
+          LayoutBuilder(
+            builder: (context, constraints) {
+              final style = theme.textTheme.titleLarge;
+              TitleCutScope._report(
+                context,
+                title,
+                constraints.hasBoundedWidth &&
+                    !textFitsWords(context, title, style, constraints.maxWidth),
+              );
+              return Text(
+                title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: style,
+              );
+            },
           ),
           if (subtitle != null)
             LayoutBuilder(
@@ -178,6 +189,100 @@ class AppBarTitle extends StatelessWidget {
             ),
         ],
       ),
+    );
+  }
+}
+
+/// Lets a screen show its [AppBarTitle] in full when the one-line app bar
+/// cuts it: wrap the screen's [Scaffold] in a [TitleCutScope] and put a
+/// [CutTitleHeading] at the top of its body. The heading appears only
+/// while the app bar cuts the title (a 60-character group name, a 40-
+/// character name, a large text scale), so a title that fits is not shown
+/// twice. Rows cap a name to one line because it reads in full one tap
+/// away; this is that place (VISUAL-R34-02).
+class TitleCutScope extends StatefulWidget {
+  const TitleCutScope({super.key, required this.child});
+
+  final Widget child;
+
+  /// Records whether the app bar under [context] cut [title].
+  static void _report(BuildContext context, String title, bool cut) {
+    final state = context
+        .getInheritedWidgetOfExactType<_TitleCutInherited>()
+        ?.state;
+    if (state == null) return;
+    final value = cut ? title : null;
+    if (state._cut.value == value) return;
+    // Reported from layout: the heading updates after this frame.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (state.mounted) state._cut.value = value;
+    });
+  }
+
+  @override
+  State<TitleCutScope> createState() => _TitleCutScopeState();
+}
+
+class _TitleCutScopeState extends State<TitleCutScope> {
+  /// The title the app bar cuts, or null while it fits.
+  final _cut = ValueNotifier<String?>(null);
+
+  @override
+  void dispose() {
+    _cut.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) =>
+      _TitleCutInherited(state: this, child: widget.child);
+}
+
+class _TitleCutInherited extends InheritedWidget {
+  const _TitleCutInherited({required this.state, required super.child});
+
+  final _TitleCutScopeState state;
+
+  @override
+  bool updateShouldNotify(_TitleCutInherited old) => old.state != state;
+}
+
+/// The screen's title in full, as a heading at the top of the body, while
+/// the app bar cuts it ([TitleCutScope]). It wraps and is never cut; a
+/// word wider than the line sets it smaller rather than break the word.
+class CutTitleHeading extends StatelessWidget {
+  const CutTitleHeading({
+    super.key,
+    this.padding = const EdgeInsets.fromLTRB(
+      Space.text,
+      0,
+      Space.text,
+      Space.md,
+    ),
+  });
+
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context
+        .getInheritedWidgetOfExactType<_TitleCutInherited>()
+        ?.state;
+    if (state == null) return const SizedBox.shrink();
+    return ValueListenableBuilder<String?>(
+      valueListenable: state._cut,
+      builder: (context, title, _) => title == null
+          ? const SizedBox.shrink()
+          : Padding(
+              padding: padding,
+              child: Semantics(
+                header: true,
+                child: FitWordsText(
+                  title,
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+              ),
+            ),
     );
   }
 }
