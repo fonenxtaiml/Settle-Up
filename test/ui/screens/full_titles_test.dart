@@ -17,7 +17,6 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/widgets/app_chrome.dart';
 
 import '../../qa/visual/visual_harness.dart';
