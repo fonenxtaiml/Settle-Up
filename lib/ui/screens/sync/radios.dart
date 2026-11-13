@@ -98,16 +98,15 @@ class RadioIssuesCard extends StatelessWidget {
               RadioIssue.locationOff => S.locationOffBody,
               RadioIssue.wifiOff => S.wifiOffBody,
             },
-            fullText: true,
             leading: Icon(switch (i) {
               RadioIssue.wifiOff => Icons.wifi_off_rounded,
               RadioIssue.locationOff => Icons.location_off_rounded,
               _ => Icons.bluetooth_disabled_rounded,
             }),
-            // Beside the text, except at a large text size, where the
-            // button ("Turn on Bluetooth") has no room beside it on a
-            // small phone and goes under the help.
-            keepTrailingBeside: !isLargeText(context),
+            fullText: true,
+            // The button ("Turn on Bluetooth") sits beside the text while
+            // the text keeps room for its widest word, else under the help
+            // (VISUAL-R32-02), as at a large text size.
             trailing: FilledButton.tonal(
               style: KitButtonStyles.small(context),
               onPressed: switch (i) {

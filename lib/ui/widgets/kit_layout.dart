@@ -4,6 +4,12 @@ import 'package:flutter/material.dart';
 /// and side-by-side layouts become vertical (DESIGN-level 3.4, kept).
 const double kLargeTextScale = 1.6;
 
+/// The least width a row's text keeps beside its trailing block (an
+/// amount, a button, a switch) before the block goes under the text: the
+/// expense and activity rows, and every [KitListRow] whose text wraps in
+/// full, which also keeps half the row (VISUAL-R32-02).
+const double kMinTextBeside = 96;
+
 /// True when the user's text scale is large enough that two-column rows
 /// would squeeze their text; such rows stack instead.
 bool isLargeText(BuildContext context) =>

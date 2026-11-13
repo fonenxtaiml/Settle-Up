@@ -1,13 +1,22 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
+import 'beside_or_below.dart';
 import 'kit_layout.dart';
 
-/// The two-line row used inside [ListSection]s (render 1, 2, 5): 62 dp
-/// minimum, 16 dp side padding, 14 dp gaps, a 16/22 semibold title and a
-/// 13/18 secondary subline, both one line with ellipsis, and a trailing
-/// block. No fixed height: at a large text scale the trailing block moves
-/// under the text, still end-aligned, and the lines may wrap.
+/// The row used inside [ListSection]s (render 1, 2, 5): 62 dp minimum,
+/// 16 dp side padding, 14 dp gaps, a 16/22 semibold title, a 13/18
+/// secondary subline and a trailing block. No fixed height.
+///
+/// Text: the title and subline are one line each with an ellipsis (three
+/// at large text), except for a notice ([fullText]).
+///
+/// Trailing: beside the text while the text keeps room for its widest
+/// word (and, when the text wraps in full, [kMinTextBeside] and half the
+/// row), else under it, end-aligned ([BesideOrBelow], VISUAL-R32-02); at
+/// a large text scale always under it unless [keepTrailingBeside].
 class KitListRow extends StatelessWidget {
   const KitListRow({
     super.key,
@@ -27,7 +36,6 @@ class KitListRow extends StatelessWidget {
     this.fullText = false,
     this.stackTrailing = false,
     this.trailingWidth,
-    this.leadingWidth = 0,
   });
 
   final String title;
@@ -44,7 +52,8 @@ class KitListRow extends StatelessWidget {
   /// Small widget after the subline (the "not yet shared" mark).
   final Widget? subtitleTrailing;
 
-  /// Keep [trailing] beside the text at every text scale (buttons).
+  /// Keep [trailing] beside the text at a large text scale too (buttons),
+  /// still only while the text keeps room for its widest word.
   final bool keepTrailingBeside;
 
   /// Lines the subline may take below the large-text threshold (it always
@@ -55,8 +64,7 @@ class KitListRow extends StatelessWidget {
   /// A notice rather than a list entry: the title and the subline carry
   /// what happened and what to do, so both wrap in full at every text
   /// scale and are never cut with an ellipsis ([subtitleLines] is then
-  /// ignored). List entries (names, amounts in a list) keep their caps and
-  /// the full text one tap away (VISUAL-R31-02).
+  /// ignored). List entries keep their caps (VISUAL-R31-02).
   final bool fullText;
 
   /// Put [trailing] under the text, end-aligned, below the large-text
@@ -64,60 +72,29 @@ class KitListRow extends StatelessWidget {
   /// it ([ExpenseRow] on a small phone at 1.3x) stack early.
   final bool stackTrailing;
 
-  /// The natural width of [trailing], when the row should measure it: the
-  /// row then stacks [trailing] under the text below the large-text
-  /// threshold too, whenever the title or subline would get less room than
-  /// its longest word beside it (VISUAL-R4-04, VISUAL-R4-05). [leadingWidth]
-  /// is the width of [leading].
+  /// The natural width of [trailing] as its owner measured it (an amount
+  /// that scales down once stacked), used instead of its intrinsic width
+  /// when the row decides whether it fits beside the text (VISUAL-R4-04,
+  /// VISUAL-R4-05).
   final double? trailingWidth;
-  final double leadingWidth;
 
   @override
   Widget build(BuildContext context) {
-    final w = trailingWidth;
-    if (w == null ||
-        trailing == null ||
-        keepTrailingBeside ||
-        stackTrailing ||
-        isLargeText(context)) {
-      return _build(context, stackTrailing);
-    }
-    final theme = Theme.of(context);
-    final titleStyle = this.titleStyle ?? theme.textTheme.titleMedium;
-    final subtitleStyle = this.subtitleStyle ?? theme.textTheme.bodySmall;
-    return LayoutBuilder(
-      builder: (context, c) {
-        final room =
-            c.maxWidth -
-            Space.rowInset * 2 -
-            (leading != null ? leadingWidth + 14 : 0) -
-            Space.md -
-            w -
-            (subtitleTrailing != null ? Space.sm + 8 : 0);
-        final needs = [
-          longestWordWidth(context, title, titleStyle),
-          if (subtitle != null)
-            longestWordWidth(context, subtitle!, subtitleStyle),
-        ].fold(0.0, (a, b) => a > b ? a : b);
-        return _build(context, room + 0.5 < needs);
-      },
-    );
-  }
-
-  Widget _build(BuildContext context, bool stack) {
     final theme = Theme.of(context);
     final large = isLargeText(context);
-    final stacked = (large || stack) && trailing != null && !keepTrailingBeside;
-    final maxLines = fullText ? null : (large ? 3 : 1);
-    final overflow = fullText ? null : TextOverflow.ellipsis;
+    int? cap(int? lines) =>
+        lines == null ? null : (large ? math.max(lines, 3) : lines);
+    final titleCap = fullText ? null : cap(1);
+    final subtitleCap = fullText ? null : cap(subtitleLines);
+    final wraps = titleCap == null || (subtitle != null && subtitleCap == null);
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
           title,
-          maxLines: maxLines,
-          overflow: overflow,
+          maxLines: titleCap,
+          overflow: titleCap == null ? null : TextOverflow.ellipsis,
           style: titleStyle ?? theme.textTheme.titleMedium,
         ),
         if (subtitle != null)
@@ -126,8 +103,8 @@ class KitListRow extends StatelessWidget {
               Flexible(
                 child: Text(
                   subtitle!,
-                  maxLines: fullText || large ? maxLines : subtitleLines,
-                  overflow: overflow,
+                  maxLines: subtitleCap,
+                  overflow: subtitleCap == null ? null : TextOverflow.ellipsis,
                   style:
                       subtitleStyle ??
                       theme.textTheme.bodySmall!.copyWith(
@@ -141,10 +118,6 @@ class KitListRow extends StatelessWidget {
               ],
             ],
           ),
-        if (stacked) ...[
-          const SizedBox(height: Space.xs),
-          Align(alignment: AlignmentDirectional.centerEnd, child: trailing),
-        ],
       ],
     );
     final row = ConstrainedBox(
@@ -155,19 +128,18 @@ class KitListRow extends StatelessWidget {
           // A 48 dp trailing button brings its own vertical room.
           vertical: keepTrailingBeside ? verticalPadding - 2 : verticalPadding,
         ),
-        child: Row(
-          // Stacked rows are tall; keep the avatar or icon by the title.
-          crossAxisAlignment: stacked
-              ? CrossAxisAlignment.start
-              : CrossAxisAlignment.center,
-          children: [
-            if (leading != null) ...[leading!, const SizedBox(width: 14)],
-            Expanded(child: text),
-            if (!stacked && trailing != null) ...[
-              const SizedBox(width: Space.md),
-              trailing!,
-            ],
-          ],
+        child: BesideOrBelow(
+          leading: leading,
+          main: text,
+          trailing: trailing,
+          gap: Space.md,
+          spacing: Space.xs,
+          below: stackTrailing || (large && !keepTrailingBeside),
+          // Text that wraps in full keeps a readable column beside the
+          // trailing block, else the block goes under it (VISUAL-R32-02).
+          minMainWidth: wraps ? kMinTextBeside : 0,
+          minMainFraction: wraps ? 0.5 : 0,
+          trailingWidth: trailingWidth,
         ),
       ),
     );

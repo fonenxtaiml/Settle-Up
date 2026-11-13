@@ -142,7 +142,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R32-02: the sync radio rows squeeze their title and help '
     'into a column too narrow for a word on a 320 dp phone (1.0x and 1.3x)',
-    skip: true, // QA VISUAL-R32-02: sync radio rows break words mid-word
     (t) async {
       final problems = await _radioCard(t, repro: true);
       expect(problems, isEmpty, reason: problems.join('\n'));
@@ -319,10 +318,22 @@ Future<List<String>> _radioCard(WidgetTester t, {required bool repro}) async {
     for (final (name, g) in [
       ('androidTapTargetGuideline', androidTapTargetGuideline),
       ('labeledTapTargetGuideline', labeledTapTargetGuideline),
-      if (repro || !squeezed) ('textContrastGuideline', textContrastGuideline),
     ]) {
       final res = await g.evaluate(t);
       if (!res.passed) problems.add('$at $name: ${res.reason}');
+    }
+    if (repro || !squeezed) {
+      // Contrast with the whole card on screen: a paragraph cut by the
+      // viewport's bottom edge has its inflated paint rect sampled over
+      // the scaffold under the clip, and the guideline then reports that
+      // grey against the card's white (1.14) instead of the text's ink.
+      final card = t.getRect(find.byType(RadioIssuesCard));
+      if (card.bottom > v.size.height - 16) {
+        setView(t, Size(v.size.width, card.bottom + 64));
+        await t.pumpAndSettle();
+      }
+      final res = await textContrastGuideline.evaluate(t);
+      if (!res.passed) problems.add('$at textContrastGuideline: ${res.reason}');
     }
     if (repro) {
       for (final e

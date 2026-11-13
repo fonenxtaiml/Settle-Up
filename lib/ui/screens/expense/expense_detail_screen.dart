@@ -401,7 +401,6 @@ class _PersonAmountRow extends StatelessWidget {
       MoneyFormat.format(minor, currency),
       AppType.amount(context),
     ),
-    leadingWidth: Sizes.avatarSmall,
     leading: PersonAvatar(
       id: id,
       name: fullName,
