@@ -78,9 +78,11 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 KitListRow(
                   title: profile.displayName,
+                  titleLines: 1,
                   subtitle: device == null
                       ? null
                       : S.thisPhoneLine(device.deviceName),
+                  subtitleLines: 1,
                   leading: PersonAvatar(
                     id: profile.personId,
                     name: profile.displayName,
@@ -262,7 +264,6 @@ class SettingsScreen extends ConsumerWidget {
                     subtitle: clockNotice == ClockNotice.ownChangesAhead
                         ? S.clockOwnChangesAheadHelp
                         : S.clockLooksWrongHelp,
-                    fullText: true,
                     minHeight: Sizes.rowMinDense,
                     trailing: Icon(
                       Icons.schedule_rounded,

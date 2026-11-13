@@ -142,7 +142,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R32-02: the sync radio rows squeeze their title and help '
     'into a column too narrow for a word on a 320 dp phone (1.0x and 1.3x)',
-    skip: true, // QA VISUAL-R32-02: sync radio rows break words mid-word
     (t) async {
       final problems = await _radioCard(t, repro: true);
       expect(problems, isEmpty, reason: problems.join('\n'));
@@ -172,7 +171,6 @@ void main() {
     'clock notice still cut their text with an ellipsis (Sync empty state, '
     'Everyone is settled up, Invite with a QR code, Simplify debts help, '
     'Home "Not synced" line)',
-    skip: true, // QA VISUAL-R31-02: notice row text cut with an ellipsis
     (t) async {
       late VisualPhone phone;
       late String g;
@@ -253,7 +251,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R32-01: the Settings switch label "Simplify debts in new '
     'groups" is cut with an ellipsis at 1.0x on 320 dp and 1.3x on 360 dp',
-    skip: true, // QA VISUAL-R32-01: Settings switch label cut
     (t) async {
       late VisualPhone phone;
       await t.runAsync(() async => phone = await VisualPhone.create());
@@ -319,10 +316,22 @@ Future<List<String>> _radioCard(WidgetTester t, {required bool repro}) async {
     for (final (name, g) in [
       ('androidTapTargetGuideline', androidTapTargetGuideline),
       ('labeledTapTargetGuideline', labeledTapTargetGuideline),
-      if (repro || !squeezed) ('textContrastGuideline', textContrastGuideline),
     ]) {
       final res = await g.evaluate(t);
       if (!res.passed) problems.add('$at $name: ${res.reason}');
+    }
+    if (repro || !squeezed) {
+      // Contrast with the whole card on screen: a paragraph cut by the
+      // viewport's bottom edge has its inflated paint rect sampled over
+      // the scaffold under the clip, and the guideline then reports that
+      // grey against the card's white (1.14) instead of the text's ink.
+      final card = t.getRect(find.byType(RadioIssuesCard));
+      if (card.bottom > v.size.height - 16) {
+        setView(t, Size(v.size.width, card.bottom + 64));
+        await t.pumpAndSettle();
+      }
+      final res = await textContrastGuideline.evaluate(t);
+      if (!res.passed) problems.add('$at textContrastGuideline: ${res.reason}');
     }
     if (repro) {
       for (final e

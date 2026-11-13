@@ -4,9 +4,9 @@
 // - Every field's helper and error text wraps in full (the app theme sets
 //   no practical line cap; Flutter's own default keeps them to one line).
 // - The text prompt gives its field the dialog's full width.
-// - A notice row ([KitListRow.fullText]: the Settings clock notice, the
-//   sync radio issues) wraps its title and its help in full; list entries
-//   keep their caps.
+// - A notice row (any KitListRow without a line cap: the Settings clock
+//   notice, the sync radio issues) wraps its title and its help in full;
+//   list entries that set a cap keep it.
 // - The sync banner's "stopped" line wraps in full.
 //
 // The property tests draw seeded random texts, widths and text scales.
@@ -199,7 +199,6 @@ void main() {
                 key: const Key('notice'),
                 title: title,
                 subtitle: help,
-                fullText: true,
                 leading: r.nextBool() ? const Icon(Icons.schedule) : null,
                 keepTrailingBeside: button,
                 trailing: button
@@ -212,7 +211,9 @@ void main() {
               KitListRow(
                 key: const Key('entry'),
                 title: 'Maximiliana Konstantinopoulou-Rasmussen ' * 4,
+                titleLines: 1,
                 subtitle: 'Paid back in cash at the station ' * 6,
+                subtitleLines: 1,
               ),
             ],
           ),

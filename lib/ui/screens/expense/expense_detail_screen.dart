@@ -392,6 +392,7 @@ class _PersonAmountRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) => KitListRow(
     title: name,
+    titleLines: 1,
     minHeight: Sizes.rowMinDense,
     // The amount keeps its natural width beside the name; when that leaves
     // the name less than its longest word, it goes under the name, where
@@ -401,7 +402,6 @@ class _PersonAmountRow extends StatelessWidget {
       MoneyFormat.format(minor, currency),
       AppType.amount(context),
     ),
-    leadingWidth: Sizes.avatarSmall,
     leading: PersonAvatar(
       id: id,
       name: fullName,

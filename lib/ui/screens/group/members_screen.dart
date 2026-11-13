@@ -220,6 +220,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
                 for (final m in members)
                   KitListRow(
                     title: m.id == myId ? S.you : m.displayName,
+                    titleLines: 1,
                     subtitle: m.id == myId
                         ? S.youSub
                         : m.isPlaceholder

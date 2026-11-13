@@ -122,6 +122,7 @@ class PersonScreen extends ConsumerWidget {
                 for (final r in rows)
                   KitListRow(
                     title: r.name,
+                    titleLines: 1,
                     trailing: _trailing(r.net),
                     // Stack the balance before the group name loses its
                     // longest word (VISUAL-R4-05).
