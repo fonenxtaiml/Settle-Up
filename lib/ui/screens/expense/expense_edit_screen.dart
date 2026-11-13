@@ -804,7 +804,9 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
                                 ),
                           ),
                           if (_multiPaid != null)
-                            Text(
+                            // Two amounts in a sentence: neither is ever
+                            // split across lines (VISUAL-R34-01).
+                            FitWordsText(
                               S.payersAddUp(
                                 MoneyFormat.format(_multiPaidSum, _currency),
                                 MoneyFormat.format(amount, _currency),

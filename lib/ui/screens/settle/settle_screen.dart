@@ -400,7 +400,12 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                   )
                 : null,
             style: KitButtonStyles.block,
-            child: Text(S.recordPayment(amountText)),
+            // The amount in the label is never split across lines: a word
+            // wider than the label sets it smaller (VISUAL-R34-01).
+            child: FitWordsText(
+              S.recordPayment(amountText),
+              textAlign: TextAlign.center,
+            ),
           ),
         ),
       ),
@@ -435,7 +440,8 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
               textGutter(
                 Padding(
                   padding: const EdgeInsets.only(top: Space.sm),
-                  child: Text(
+                  // An amount in a sentence is never split (VISUAL-R34-01).
+                  child: FitWordsText(
                     overText,
                     textAlign: TextAlign.center,
                     style: theme.textTheme.bodySmall!.copyWith(color: ink2),
