@@ -268,10 +268,9 @@ void main() {
         for (final (gname, g) in [
           ('tap target', androidTapTargetGuideline),
           ('labelled', labeledTapTargetGuideline),
-          // Edit payment: the guideline samples the bare "₹200" line
-          // (VISUAL-R34-03) over a 360 dp wide node and finds mostly
-          // background; the text itself is the body ink.
-          if (name != 'edit payment') ('contrast', textContrastGuideline),
+          // Edit payment included: the bare "₹200" line the guideline
+          // used to sample (VISUAL-R34-03) is gone.
+          ('contrast', textContrastGuideline),
         ]) {
           final r = await g.evaluate(t);
           if (!r.passed) problems.add('$at $gname: ${r.reason}');
@@ -384,7 +383,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R34-03: Edit payment shows a bare, unlabelled "₹200" under '
     'Note that keeps the stored amount after the user changes it',
-    skip: true, // QA VISUAL-R34-03: bare stale amount on Edit payment
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());
