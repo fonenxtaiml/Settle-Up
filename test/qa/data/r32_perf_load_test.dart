@@ -20,7 +20,7 @@ import '../../data/name_replay_perf_test.dart'
     show createsLogs, expectCreatesWithinBudget, fasterOpens;
 
 /// Runs [open] while six isolates keep the host's CPUs busy.
-Future<int> underLoad(Future<int> Function() open) async {
+Future<T> underLoad<T>(Future<T> Function() open) async {
   final busy = <Isolate>[
     for (var k = 0; k < 6; k++)
       await Isolate.spawn((_) {
