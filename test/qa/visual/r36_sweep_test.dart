@@ -119,7 +119,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R36-01: a 40-character phone name from an earlier sync is '
     "cut in Sync's Recent syncs and in Activity, and reads in full nowhere",
-    skip: true, // QA VISUAL-R36-01
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async {
