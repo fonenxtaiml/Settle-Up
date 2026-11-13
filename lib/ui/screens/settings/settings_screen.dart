@@ -76,13 +76,14 @@ class SettingsScreen extends ConsumerWidget {
             ListSection(
               dividerIndent: Space.avatarRowInset,
               children: [
+                // Your name and this phone's name wrap in full: Settings is
+                // the one place they are shown, and two phones of one owner
+                // may differ only at the end (VISUAL-R38-01).
                 KitListRow(
                   title: profile.displayName,
-                  titleLines: 1,
                   subtitle: device == null
                       ? null
                       : S.thisPhoneLine(device.deviceName),
-                  subtitleLines: 1,
                   leading: PersonAvatar(
                     id: profile.personId,
                     name: profile.displayName,
@@ -359,6 +360,11 @@ Future<void> renameMeEverywhere(WidgetRef ref, PersonId me, String name) async {
 }
 
 /// "Theme            Light ›": a setting with its current value.
+///
+/// The value is never cut: it wraps in full beside the title while the
+/// title keeps its room, else under it, end-aligned ([KitListRow]). A
+/// value can be the user's own data (this phone's name, up to 40
+/// characters), which Settings is the one place to read (VISUAL-R38-01).
 class _ValueRow extends StatelessWidget {
   const _ValueRow({required this.title, required this.value, this.onTap});
 
@@ -378,11 +384,12 @@ class _ValueRow extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           if (value != null)
-            ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 160),
-              child: Text(
+            Flexible(
+              // A word wider than the column (a phone name with no
+              // space) is set smaller rather than broken (VISUAL-R34-01).
+              child: FitWordsText(
                 value!,
-                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
                 style: theme.textTheme.bodyLarge!.copyWith(color: ink2),
               ),
             ),

@@ -301,7 +301,8 @@ Future<bool?> askChoice(
   );
 }
 
-/// A single-line text prompt ("Rename", "Your name", "Phone name").
+/// A text prompt ("Rename", "Your name", "Phone name"): one line of
+/// text, wrapped on screen so it reads in full, or [multiline] (a note).
 Future<String?> promptText(
   BuildContext context, {
   required String title,
@@ -450,19 +451,32 @@ class _TextPromptState extends State<_TextPrompt> {
             autofocus: true,
             maxLength: max,
             minLines: 1,
-            maxLines: widget.multiline ? null : 1,
-            keyboardType: widget.multiline ? TextInputType.multiline : null,
+            // A one-line text (a name, a phone's name) still wraps on
+            // screen, so it reads in full as it is edited instead of
+            // scrolling sideways out of view (VISUAL-R38-01). It stays one
+            // line: the keyboard's action key saves and a pasted line
+            // break is left out, as in a one-line field.
+            maxLines: null,
+            keyboardType: widget.multiline
+                ? TextInputType.multiline
+                : TextInputType.text,
+            textInputAction: widget.multiline ? null : TextInputAction.done,
             // A free text keeps its own cap ([TextCapFormatter]): the
             // TextField's would cut the end of the text when a paste in the
             // middle runs over.
             maxLengthEnforcement: max != null && !widget.isName
                 ? MaxLengthEnforcement.none
                 : null,
-            inputFormatters: WellFormedTextFormatter.first(switch (max) {
-              null => null,
-              final max when widget.isName => nameFormatters(max),
-              final max => [TextCapFormatter(max)],
-            }),
+            inputFormatters: [
+              // What a one-line field drops, first, as it does there.
+              if (!widget.multiline)
+                FilteringTextInputFormatter.singleLineFormatter,
+              ...WellFormedTextFormatter.first(switch (max) {
+                null => null,
+                final max when widget.isName => nameFormatters(max),
+                final max => [TextCapFormatter(max)],
+              }),
+            ],
             textCapitalization: widget.multiline
                 ? TextCapitalization.sentences
                 : TextCapitalization.words,
