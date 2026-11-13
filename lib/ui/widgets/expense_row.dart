@@ -237,6 +237,7 @@ class ExpenseRow extends StatelessWidget {
     };
     Widget rowFor(bool stack) => KitListRow(
       title: title,
+      titleLines: 1,
       subtitle: metaText,
       leading: leading,
       trailing: trailing,

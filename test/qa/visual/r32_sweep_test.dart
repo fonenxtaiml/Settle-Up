@@ -171,7 +171,6 @@ void main() {
     'clock notice still cut their text with an ellipsis (Sync empty state, '
     'Everyone is settled up, Invite with a QR code, Simplify debts help, '
     'Home "Not synced" line)',
-    skip: true, // QA VISUAL-R31-02: notice row text cut with an ellipsis
     (t) async {
       late VisualPhone phone;
       late String g;

@@ -103,7 +103,6 @@ class RadioIssuesCard extends StatelessWidget {
               RadioIssue.locationOff => Icons.location_off_rounded,
               _ => Icons.bluetooth_disabled_rounded,
             }),
-            fullText: true,
             // The button ("Turn on Bluetooth") sits beside the text while
             // the text keeps room for its widest word, else under the help
             // (VISUAL-R32-02), as at a large text size.
