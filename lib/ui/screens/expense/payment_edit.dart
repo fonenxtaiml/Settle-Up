@@ -6,7 +6,6 @@ import '../../../core/models.dart';
 import '../../../data/repositories.dart';
 import '../../../theme/tokens.dart';
 import '../../format/dates.dart';
-import '../../format/money_format.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
@@ -182,13 +181,10 @@ class _PaymentEditScreenState extends ConsumerState<PaymentEditScreen> {
                 onChanged: (_) => setState(() {}),
               ),
             ),
-            const SizedBox(height: Space.sm),
-            textGutter(
-              Text(
-                MoneyFormat.format(e.money.total, currency),
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-            ),
+            // No bare amount under the note: the amount field is the
+            // payment's amount, and a second, unlabelled one would keep the
+            // stored total after the user changes it (VISUAL-R34-03).
+            const SizedBox(height: Space.lg),
           ],
         ),
       ),
