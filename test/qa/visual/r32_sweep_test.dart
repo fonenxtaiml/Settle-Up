@@ -17,9 +17,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/ui/router.dart';
+import 'package:settle_up/ui/screens/sync/radios.dart';
 import 'package:settle_up/ui/strings.dart';
 import 'package:settle_up/ui/widgets/kit_strings.dart';
 
+import '../../ui/widgets/kit_harness.dart' show kitApp;
 import 'visual_harness.dart';
 
 /// One text to read in full on a screen.
@@ -116,6 +118,36 @@ void main() {
     await t.runAsync(phone.dispose);
     expect(problems, isEmpty, reason: problems.join('\n'));
   });
+
+  // Regression around the VISUAL-R31-02 fix: the sync radio rows now
+  // show their text in full and put their button under the help at a
+  // large text size. Every row keeps a 48 dp labeled button on screen and
+  // no overflow; contrast holds except where VISUAL-R32-02 squeezes the
+  // text (repro below).
+  testWidgets('R32 sweep: the sync radio rows keep their buttons and '
+      'labels over the charter matrix', (t) async {
+    expect(await _radioCard(t, repro: false), isEmpty);
+  });
+
+  // ------------------------------------------------------------------
+  // VISUAL-R32-02: below the large-text threshold a sync radio row keeps
+  // its button beside the text (keepTrailingBeside), and since the
+  // VISUAL-R31-02 fix its title and help wrap in full. On a 320 dp phone
+  // at 1.3x the button leaves the text a 32 to 65 dp column: words break
+  // in the middle ("Blu/eto/oth is off", "Tur/n it on"), a row is up to
+  // 500 dp tall, and textContrastGuideline fails on the help. At 1.0x on
+  // 320 dp "Bluetooth" (68 dp) already breaks in a 65 dp column.
+  // ------------------------------------------------------------------
+
+  testWidgets(
+    'QA VISUAL-R32-02: the sync radio rows squeeze their title and help '
+    'into a column too narrow for a word on a 320 dp phone (1.0x and 1.3x)',
+    skip: true, // QA VISUAL-R32-02: sync radio rows break words mid-word
+    (t) async {
+      final problems = await _radioCard(t, repro: true);
+      expect(problems, isEmpty, reason: problems.join('\n'));
+    },
+  );
 
   // ------------------------------------------------------------------
   // VISUAL-R31-02 (reopened): the fix gave KitListRow a fullText mode and
@@ -243,4 +275,86 @@ void main() {
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
   );
+}
+
+/// The sync radio card with every issue over [kVariants]. Always checks
+/// layout errors, 48 dp labeled buttons and that each button lies on
+/// screen, and contrast outside 320 dp @1.3x; with [repro] also words cut
+/// in the middle by a narrow text column and contrast everywhere
+/// (VISUAL-R32-02).
+Future<List<String>> _radioCard(WidgetTester t, {required bool repro}) async {
+  final handle = t.ensureSemantics();
+  final problems = <String>[];
+  for (final v in kVariants) {
+    final at = variantName(v);
+    setView(t, v.size);
+    final errors = await collectLayoutErrors(() async {
+      await t.pumpWidget(
+        kitApp(
+          Padding(
+            // The sync screen's 16 dp gutter.
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: RadioIssuesCard(issues: RadioIssue.values, onAllow: () {}),
+          ),
+          brightness: v.brightness,
+          textScale: v.scale,
+        ),
+      );
+      await t.pumpAndSettle();
+    });
+    for (final e in errors) {
+      problems.add('$at: $e');
+    }
+    final buttons = find.byWidgetPredicate((w) => w is ButtonStyleButton);
+    if (buttons.evaluate().length != RadioIssue.values.length) {
+      problems.add('$at: ${buttons.evaluate().length} buttons');
+    }
+    for (final b in buttons.evaluate()) {
+      final r = t.getRect(find.byWidget(b.widget));
+      if (r.left < 0 || r.right > v.size.width + 0.5) {
+        problems.add('$at: button at ${r.left.round()}-${r.right.round()}');
+      }
+    }
+    final squeezed = v.size.width == 320 && v.scale == 1.3;
+    for (final (name, g) in [
+      ('androidTapTargetGuideline', androidTapTargetGuideline),
+      ('labeledTapTargetGuideline', labeledTapTargetGuideline),
+      if (repro || !squeezed) ('textContrastGuideline', textContrastGuideline),
+    ]) {
+      final res = await g.evaluate(t);
+      if (!res.passed) problems.add('$at $name: ${res.reason}');
+    }
+    if (repro) {
+      for (final e
+          in find
+              .descendant(
+                of: find.byType(RadioIssuesCard),
+                matching: find.byType(RichText),
+              )
+              .evaluate()) {
+        final p = e.renderObject! as RenderParagraph;
+        final span = p.text;
+        if (span is! TextSpan) continue;
+        for (final word in span.toPlainText().split(RegExp(r'\s+'))) {
+          if (word.isEmpty) continue;
+          final tp = TextPainter(
+            text: TextSpan(text: word, style: span.style),
+            textScaler: p.textScaler,
+            textDirection: TextDirection.ltr,
+          )..layout();
+          final room = p.constraints.maxWidth;
+          if (tp.width > room + 0.5) {
+            problems.add(
+              '$at: "$word" is ${tp.width.round()} dp wide in a '
+              '${room.round()} dp column',
+            );
+          }
+          tp.dispose();
+        }
+      }
+    }
+    await t.pumpWidget(const SizedBox.shrink());
+  }
+  handle.dispose();
+  return problems;
 }
