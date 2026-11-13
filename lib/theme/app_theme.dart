@@ -350,9 +350,12 @@ abstract final class AppTheme {
       // do, so they wrap in full under every field. Flutter's default
       // (null) cuts them to one line with an ellipsis, and any small cap
       // cuts them at a large text size or beside the counter
-      // (VISUAL-R31-01).
+      // (VISUAL-R31-01). The hint ("For example, Priya", "Search
+      // currencies") is the app's words too and wraps the same way
+      // (VISUAL-R33-03): Flutter's default holds it to the field's lines.
       helperMaxLines: fieldNoteMaxLines,
       errorMaxLines: fieldNoteMaxLines,
+      hintMaxLines: fieldNoteMaxLines,
     );
 
     return ThemeData(

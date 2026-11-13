@@ -1,16 +1,26 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/well_formed_formatter.dart';
+import 'beside_or_below.dart';
 import 'button_semantics.dart';
 import 'category_glyph.dart';
+import 'kit_layout.dart';
 import 'kit_strings.dart';
 
 /// White 12 dp-radius input with a small label above the text and an
 /// optional trailing widget, usually a [CategoryChip] (render 3,
 /// "Description").
+///
+/// The label and the hint are the app's words and always read in full
+/// (VISUAL-R33-03, as VISUAL-R31-01 for helper and error text): the label
+/// wraps over the input's top padding (the whole field still takes a tap,
+/// VISUAL-R8-01), the hint wraps, and the trailing widget goes under the
+/// field, end-aligned, when beside it the label or the hint would get less
+/// room than its widest word ([BesideOrBelow]).
 class LabeledTextField extends StatelessWidget {
   const LabeledTextField({
     super.key,
@@ -55,14 +65,94 @@ class LabeledTextField extends StatelessWidget {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final valueStyle = theme.textTheme.titleMedium!.withWeight(FontWeight.w500);
+    final labelStyle = theme.textTheme.labelSmall!
+        .withWeight(FontWeight.w500)
+        .copyWith(color: scheme.onSurfaceVariant);
+    final hintStyle = valueStyle.copyWith(color: scheme.onSurfaceVariant);
+
+    Widget field(double labelHeight) => TextField(
+      controller: controller,
+      focusNode: focusNode,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
+      textInputAction: textInputAction,
+      maxLength: maxLength,
+      inputFormatters: WellFormedTextFormatter.first(inputFormatters),
+      minLines: 1,
+      maxLines: multiline ? null : 1,
+      // With an action of its own (Done on the description) the key
+      // performs it: line breaks the field holds are kept, none is typed.
+      keyboardType: !multiline
+          ? null
+          : textInputAction == null ||
+                textInputAction == TextInputAction.newline
+          ? TextInputType.multiline
+          : TextInputType.text,
+      textCapitalization: TextCapitalization.sentences,
+      style: valueStyle,
+      decoration: InputDecoration(
+        isDense: true,
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        // The 8 dp above the label and below the text are the field's own
+        // padding, and so is the label's room, so the whole height takes a
+        // tap (at least 48 dp, VISUAL-R8-01).
+        contentPadding: EdgeInsets.only(
+          top: _fieldPad + labelHeight,
+          bottom: _fieldPad,
+        ),
+        counterText: '',
+        hintText: hintText,
+        // The hint wraps in full (the theme's hintMaxLines, VISUAL-R33-03).
+        hintMaxLines: AppTheme.fieldNoteMaxLines,
+        hintStyle: hintStyle,
+      ),
+    );
+
+    // The label (render 3: 12 dp, medium) wraps in the field's width and
+    // sits in the field's top padding; taps go through it to the field,
+    // and TalkBack reads it as the field's label (one merged node).
+    final main = _NoMinIntrinsicWidth(
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final painter = TextPainter(
+            text: TextSpan(
+              text: label,
+              style: effectiveTextStyle(context, labelStyle),
+            ),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            locale: Localizations.maybeLocaleOf(context),
+          )..layout(maxWidth: c.maxWidth);
+          final labelHeight = painter.height;
+          painter.dispose();
+          return MergeSemantics(
+            child: Stack(
+              children: [
+                field(labelHeight),
+                PositionedDirectional(
+                  top: _fieldPad,
+                  start: 0,
+                  end: 0,
+                  child: IgnorePointer(child: Text(label, style: labelStyle)),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    final trailing = this.trailing;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           constraints: const BoxConstraints(minHeight: 56),
-          // The 8 dp above and below are the field's own padding, so the
-          // whole height takes a tap (at least 48 dp, VISUAL-R8-01).
           padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 12, 0),
           decoration: BoxDecoration(
             color: scheme.surfaceContainerLowest,
@@ -71,73 +161,32 @@ class LabeledTextField extends StatelessWidget {
                 ? null
                 : Border.all(color: scheme.error, width: 2),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onChanged: onChanged,
-                  onSubmitted: onSubmitted,
-                  textInputAction: textInputAction,
-                  maxLength: maxLength,
-                  inputFormatters: WellFormedTextFormatter.first(
-                    inputFormatters,
-                  ),
-                  minLines: 1,
-                  maxLines: multiline ? null : 1,
-                  // With an action of its own (Done on the description)
-                  // the key performs it: line breaks the field holds are
-                  // kept, none is typed.
-                  keyboardType: !multiline
-                      ? null
-                      : textInputAction == null ||
-                            textInputAction == TextInputAction.newline
-                      ? TextInputType.multiline
-                      : TextInputType.text,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: valueStyle,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    filled: false,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: _fieldPad,
+          child: trailing == null
+              ? main
+              : BesideOrBelow(
+                  main: main,
+                  gap: Space.md,
+                  spacing: 0,
+                  // What the user types never moves the chip: only the
+                  // label's and the hint's widest words decide whether it
+                  // fits beside the field.
+                  minMainWidth: [
+                    longestWordWidth(context, label, labelStyle),
+                    if (hintText case final hint?)
+                      longestWordWidth(context, hint, hintStyle),
+                  ].reduce((a, b) => a > b ? a : b),
+                  trailing: Padding(
+                    // A CategoryChip brings its own 48 dp target (8 dp
+                    // above and below its 32 dp chip), so the field stays
+                    // 56 dp with the chip where it was (VISUAL-R9-01).
+                    padding: EdgeInsets.symmetric(
+                      vertical: trailing is CategoryChip
+                          ? _fieldPad - CategoryChip.targetPad / 2
+                          : _fieldPad,
                     ),
-                    counterText: '',
-                    labelText: label,
-                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                    // M3 draws a floating label at 0.75x; 16 renders as the
-                    // 12 dp label of render 3.
-                    floatingLabelStyle: theme.textTheme.labelSmall!
-                        .withWeight(FontWeight.w500)
-                        .copyWith(fontSize: 16, color: scheme.onSurfaceVariant),
-                    hintText: hintText,
-                    hintStyle: valueStyle.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+                    child: trailing,
                   ),
                 ),
-              ),
-              if (trailing != null) ...[
-                const SizedBox(width: Space.md),
-                Padding(
-                  // A CategoryChip brings its own 48 dp target (8 dp above
-                  // and below its 32 dp chip), so the field stays 56 dp
-                  // with the chip where it was (VISUAL-R9-01).
-                  padding: EdgeInsets.symmetric(
-                    vertical: trailing is CategoryChip
-                        ? _fieldPad - CategoryChip.targetPad / 2
-                        : _fieldPad,
-                  ),
-                  child: trailing,
-                ),
-              ],
-            ],
-          ),
         ),
         if (errorText != null)
           Padding(
@@ -153,6 +202,22 @@ class LabeledTextField extends StatelessWidget {
       ],
     );
   }
+}
+
+/// [child] with no least width of its own (and none asked of it): a text
+/// field's typed words do not count when a row decides whether its trailing
+/// block fits beside it.
+class _NoMinIntrinsicWidth extends SingleChildRenderObjectWidget {
+  const _NoMinIntrinsicWidth({required Widget super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderNoMinIntrinsicWidth();
+}
+
+class _RenderNoMinIntrinsicWidth extends RenderProxyBox {
+  @override
+  double computeMinIntrinsicWidth(double height) => 0;
 }
 
 /// Tonal category chip (render 3, "Transport"): stone fill, 8 dp radius,
@@ -222,6 +287,59 @@ class CategoryChip extends StatelessWidget {
   }
 }
 
+/// Two [PickerTile]s side by side (Add expense: Paid by | Date), each
+/// taking half the row, or one above the other when either would break a
+/// word of its label or value in half the row ("Today / , 9 / Nov" on a
+/// 320 dp phone at 1.3x, VISUAL-R33-02, the VISUAL-R32-02 rule) and at a
+/// large text scale.
+class PickerTilePair extends StatelessWidget {
+  const PickerTilePair({super.key, required this.first, required this.second});
+
+  final PickerTile first;
+  final PickerTile second;
+
+  static const double _gap = Space.sm;
+
+  bool _fitsBeside(BuildContext context, double width) {
+    if (!width.isFinite) return true;
+    final half = (width - _gap) / 2;
+    for (final t in [first, second]) {
+      final need = PickerTile.minWidthFor(
+        context,
+        label: t.label,
+        value: t.value,
+        hasLeading: t.leading != null,
+      );
+      if (half + 0.5 < need) return false;
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      if (!isLargeText(context) && _fitsBeside(context, c.maxWidth)) {
+        return Row(
+          children: [
+            Expanded(child: first),
+            const SizedBox(width: _gap),
+            Expanded(child: second),
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          first,
+          const SizedBox(height: _gap),
+          second,
+        ],
+      );
+    },
+  );
+}
+
 /// A picker button on Add expense ("Paid by Priya", "Date Today, 9 Nov"):
 /// white, 12 dp radius, a leading avatar or icon, a small label above the
 /// value, and an expand chevron.
@@ -273,9 +391,12 @@ class PickerTile extends StatelessWidget {
       ellipsis: '\u2026',
       locale: Localizations.maybeLocaleOf(context),
     );
+    // A width narrower than a word would break it at character level
+    // ("Today / , 9 / Nov") and still count as a fit: the value never
+    // gets less than its widest word (VISUAL-R33-02).
     bool fits(double w) {
       painter.layout(maxWidth: w);
-      return !painter.didExceedMaxLines;
+      return !painter.didExceedMaxLines && painter.minIntrinsicWidth <= w + 0.5;
     }
 
     try {
@@ -294,6 +415,37 @@ class PickerTile extends StatelessWidget {
     } finally {
       painter.dispose();
     }
+  }
+
+  /// The horizontal padding of the tile (12 + 10).
+  static const double _padding = 12 + 10;
+
+  /// The gap between the leading and the value.
+  static const double _leadingGap = 10;
+
+  static TextStyle _labelStyle(ThemeData theme) => theme.textTheme.labelSmall!
+      .withWeight(FontWeight.w500)
+      .copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+  /// The least width a tile showing [label] and [value] beside a 26 dp
+  /// leading needs so that neither breaks a word: layouts that put two
+  /// tiles side by side (Paid by | Date) stack them when half the row is
+  /// less (VISUAL-R33-02, the VISUAL-R32-02 rule).
+  static double minWidthFor(
+    BuildContext context, {
+    required String label,
+    required String value,
+    bool hasLeading = true,
+  }) {
+    final theme = Theme.of(context);
+    final text = [
+      longestWordWidth(context, label, _labelStyle(theme)),
+      longestWordWidth(context, value, theme.textTheme.titleSmall),
+    ].reduce((a, b) => a > b ? a : b);
+    return _padding +
+        (hasLeading ? _leadingMin + _leadingGap : 0) +
+        text.ceilToDouble() +
+        _chrome;
   }
 
   @override
@@ -362,12 +514,7 @@ class PickerTile extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              label,
-                              style: theme.textTheme.labelSmall!
-                                  .withWeight(FontWeight.w500)
-                                  .copyWith(color: scheme.onSurfaceVariant),
-                            ),
+                            Text(label, style: _labelStyle(theme)),
                             Text(
                               value,
                               maxLines: maxLines,
@@ -398,6 +545,11 @@ class PickerTile extends StatelessWidget {
 /// Key and value row in a grouped list (render 4, "Date Today, 9 Nov"):
 /// a 72 dp secondary key column, a semibold value, a chevron. A null value
 /// shows [placeholder] in secondary ink ("Optional").
+///
+/// When the key column or the room beside it is narrower than a word of
+/// the key or the value ("Optional" at 2.0x on a 320 dp phone), the value
+/// goes under the key: no word is broken mid-word (the VISUAL-R32-02 rule,
+/// as [PickerTilePair] and the Settle up table, VISUAL-R33-01/02).
 class KeyValueRow extends StatelessWidget {
   const KeyValueRow({
     super.key,
@@ -412,12 +564,27 @@ class KeyValueRow extends StatelessWidget {
   final String? placeholder;
   final VoidCallback? onTap;
 
+  /// The chevron.
+  static const double _chevron = 20;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final shown = value ?? placeholder ?? '';
-    final keyWidth = MediaQuery.textScalerOf(context).scale(72);
+    final keyWidth = MediaQuery.textScalerOf(context)
+        .scale(72)
+        .clamp(72.0, 140.0);
+    final keyStyle = theme.textTheme.bodyMedium!.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final valueStyle = value == null
+        ? theme.textTheme.titleSmall!
+              .withWeight(FontWeight.w500)
+              .copyWith(color: scheme.onSurfaceVariant)
+        : theme.textTheme.titleSmall!;
+    final keyText = Text(label, style: keyStyle);
+    final valueText = Text(shown, style: valueStyle);
     return ButtonSemantics(
       alwaysButton: false,
       label: '$label, $shown',
@@ -428,35 +595,39 @@ class KeyValueRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 52),
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 12, 6),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: keyWidth.clamp(72, 140),
-                  child: Text(
-                    label,
-                    style: theme.textTheme.bodyMedium!.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: Space.md),
-                Expanded(
-                  child: Text(
-                    shown,
-                    style: value == null
-                        ? theme.textTheme.titleSmall!
-                              .withWeight(FontWeight.w500)
-                              .copyWith(color: scheme.onSurfaceVariant)
-                        : theme.textTheme.titleSmall,
-                  ),
-                ),
-                if (onTap != null)
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: scheme.onSurfaceVariant,
-                  ),
-              ],
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final room =
+                    c.maxWidth - (onTap == null ? 0 : _chevron) - Space.md;
+                final beside =
+                    !c.hasBoundedWidth ||
+                    (longestWordWidth(context, label, keyStyle) <=
+                            keyWidth + 0.5 &&
+                        longestWordWidth(context, shown, valueStyle) <=
+                            room - keyWidth + 0.5);
+                return Row(
+                  children: [
+                    if (beside) ...[
+                      SizedBox(width: keyWidth, child: keyText),
+                      const SizedBox(width: Space.md),
+                      Expanded(child: valueText),
+                    ] else
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [keyText, valueText],
+                        ),
+                      ),
+                    if (onTap != null)
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: _chevron,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),

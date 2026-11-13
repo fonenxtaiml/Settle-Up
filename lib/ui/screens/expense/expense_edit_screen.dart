@@ -617,6 +617,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final groupName = _direct != null
         ? _direct!.$2
         : groupTitle(snap.state.groups[_groupId]!, me);
+    final dateLabel = DateLabels.pickerDate(
+      _date,
+      now: ref.watch(clockProvider)(),
+    );
     final amount = _amount ?? 0;
     final check = _split.check(amount, _cur);
     final shares = check.shares ?? const <MemberId, int>{};
@@ -761,47 +765,26 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
               ),
               const SizedBox(height: 10),
               gutter(
-                Flex(
-                  direction: isLargeText(context)
-                      ? Axis.vertical
-                      : Axis.horizontal,
-                  crossAxisAlignment: isLargeText(context)
-                      ? CrossAxisAlignment.stretch
-                      : CrossAxisAlignment.center,
-                  children: [
-                    _flexible(
-                      context,
-                      PickerTile(
-                        label: S.paidBy,
-                        value: _payerLabel,
-                        leading: _multiPaid == null && _payer != null
-                            ? PersonAvatar(
-                                id: _payer!,
-                                name: _fullNames[_payer] ?? '',
-                                size: Sizes.avatarTiny,
-                                isMe: _payer == _me,
-                              )
-                            : const Icon(Icons.group_outlined, size: 20),
-                        onTap: _pickPayer,
-                      ),
-                    ),
-                    const SizedBox(width: Space.sm, height: Space.sm),
-                    _flexible(
-                      context,
-                      PickerTile(
-                        label: S.date,
-                        value: DateLabels.pickerDate(
-                          _date,
-                          now: ref.watch(clockProvider)(),
-                        ),
-                        leading: const Icon(
-                          Icons.calendar_today_rounded,
-                          size: 20,
-                        ),
-                        onTap: _pickDate,
-                      ),
-                    ),
-                  ],
+                PickerTilePair(
+                  first: PickerTile(
+                    label: S.paidBy,
+                    value: _payerLabel,
+                    leading: _multiPaid == null && _payer != null
+                        ? PersonAvatar(
+                            id: _payer!,
+                            name: _fullNames[_payer] ?? '',
+                            size: Sizes.avatarTiny,
+                            isMe: _payer == _me,
+                          )
+                        : const Icon(Icons.group_outlined, size: 20),
+                    onTap: _pickPayer,
+                  ),
+                  second: PickerTile(
+                    label: S.date,
+                    value: dateLabel,
+                    leading: const Icon(Icons.calendar_today_rounded, size: 20),
+                    onTap: _pickDate,
+                  ),
                 ),
               ),
               if (payersOff)
@@ -876,9 +859,6 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       ),
     );
   }
-
-  Widget _flexible(BuildContext context, Widget child) =>
-      isLargeText(context) ? child : Expanded(child: child);
 
   String _summary(SplitCheck check, int amount) {
     final n = _split.participants.length;
