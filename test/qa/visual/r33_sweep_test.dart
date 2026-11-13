@@ -263,7 +263,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R33-03: the Description field label and the name hints are '
     'cut with an ellipsis at 2.0x',
-    skip: true, // QA VISUAL-R33-03: field label and hint cut at 2.0x
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());
