@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
 import '../format/well_formed_formatter.dart';
+import 'beside_or_below.dart';
 import 'button_semantics.dart';
 import 'category_glyph.dart';
 import 'kit_layout.dart';
@@ -12,7 +14,13 @@ import 'kit_strings.dart';
 /// White 12 dp-radius input with a small label above the text and an
 /// optional trailing widget, usually a [CategoryChip] (render 3,
 /// "Description").
-class LabeledTextField extends StatelessWidget {
+///
+/// The label and the hint are the app's words and always read in full
+/// (VISUAL-R33-03, as VISUAL-R31-01 for helper and error text): the label
+/// is drawn above the input and wraps, the hint wraps, and the trailing
+/// widget goes under the field, end-aligned, when beside it the label or
+/// the hint would get less room than its widest word ([BesideOrBelow]).
+class LabeledTextField extends StatefulWidget {
   const LabeledTextField({
     super.key,
     required this.label,
@@ -49,104 +57,142 @@ class LabeledTextField extends StatelessWidget {
   /// it holds on the first key.
   final bool multiline;
 
+  @override
+  State<LabeledTextField> createState() => _LabeledTextFieldState();
+}
+
+class _LabeledTextFieldState extends State<LabeledTextField> {
   static const double _fieldPad = 8;
+
+  FocusNode? _ownFocus;
+
+  FocusNode get _focus =>
+      widget.focusNode ?? (_ownFocus ??= FocusNode(debugLabel: widget.label));
+
+  @override
+  void dispose() {
+    _ownFocus?.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final valueStyle = theme.textTheme.titleMedium!.withWeight(FontWeight.w500);
+    final labelStyle = theme.textTheme.labelSmall!
+        .withWeight(FontWeight.w500)
+        .copyWith(color: scheme.onSurfaceVariant);
+    final hintStyle = valueStyle.copyWith(color: scheme.onSurfaceVariant);
+    final multiline = widget.multiline;
+    final textInputAction = widget.textInputAction;
+    final hint = widget.hintText;
+
+    final field = TextField(
+      controller: widget.controller,
+      focusNode: _focus,
+      onChanged: widget.onChanged,
+      onSubmitted: widget.onSubmitted,
+      textInputAction: textInputAction,
+      maxLength: widget.maxLength,
+      inputFormatters: WellFormedTextFormatter.first(widget.inputFormatters),
+      minLines: 1,
+      maxLines: multiline ? null : 1,
+      // With an action of its own (Done on the description) the key
+      // performs it: line breaks the field holds are kept, none is typed.
+      keyboardType: !multiline
+          ? null
+          : textInputAction == null ||
+                textInputAction == TextInputAction.newline
+          ? TextInputType.multiline
+          : TextInputType.text,
+      textCapitalization: TextCapitalization.sentences,
+      style: valueStyle,
+      decoration: InputDecoration(
+        isDense: true,
+        filled: false,
+        border: InputBorder.none,
+        enabledBorder: InputBorder.none,
+        focusedBorder: InputBorder.none,
+        errorBorder: InputBorder.none,
+        contentPadding: const EdgeInsets.only(bottom: _fieldPad),
+        counterText: '',
+        hintText: hint,
+        // The hint wraps in full (the theme's hintMaxLines, VISUAL-R33-03).
+        hintMaxLines: AppTheme.fieldNoteMaxLines,
+        hintStyle: hintStyle,
+      ),
+    );
+
+    // The label above the input (render 3: 12 dp, medium). A tap on it, or
+    // on the 8 dp above it, focuses the field, so the whole height takes a
+    // tap (at least 48 dp, VISUAL-R8-01); TalkBack reads it as the field's
+    // label (one merged node).
+    final main = MergeSemantics(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            excludeFromSemantics: true,
+            onTap: _focus.requestFocus,
+            child: Padding(
+              padding: const EdgeInsets.only(top: _fieldPad),
+              child: Text(widget.label, style: labelStyle),
+            ),
+          ),
+          // What the user types never moves the trailing chip: only the
+          // label and the hint decide whether it fits beside the field.
+          _NoMinIntrinsicWidth(child: field),
+        ],
+      ),
+    );
+
+    final trailing = widget.trailing;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
       children: [
         Container(
           constraints: const BoxConstraints(minHeight: 56),
-          // The 8 dp above and below are the field's own padding, so the
-          // whole height takes a tap (at least 48 dp, VISUAL-R8-01).
           padding: const EdgeInsetsDirectional.fromSTEB(16, 0, 12, 0),
           decoration: BoxDecoration(
             color: scheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(Radii.md),
-            border: errorText == null
+            border: widget.errorText == null
                 ? null
                 : Border.all(color: scheme.error, width: 2),
           ),
-          child: Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  onChanged: onChanged,
-                  onSubmitted: onSubmitted,
-                  textInputAction: textInputAction,
-                  maxLength: maxLength,
-                  inputFormatters: WellFormedTextFormatter.first(
-                    inputFormatters,
-                  ),
-                  minLines: 1,
-                  maxLines: multiline ? null : 1,
-                  // With an action of its own (Done on the description)
-                  // the key performs it: line breaks the field holds are
-                  // kept, none is typed.
-                  keyboardType: !multiline
-                      ? null
-                      : textInputAction == null ||
-                            textInputAction == TextInputAction.newline
-                      ? TextInputType.multiline
-                      : TextInputType.text,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: valueStyle,
-                  decoration: InputDecoration(
-                    isDense: true,
-                    filled: false,
-                    border: InputBorder.none,
-                    enabledBorder: InputBorder.none,
-                    focusedBorder: InputBorder.none,
-                    errorBorder: InputBorder.none,
-                    contentPadding: const EdgeInsets.symmetric(
-                      vertical: _fieldPad,
+          child: trailing == null
+              ? main
+              : BesideOrBelow(
+                  main: main,
+                  gap: Space.md,
+                  spacing: 0,
+                  minMainWidth: hint == null
+                      ? 0
+                      : longestWordWidth(context, hint, hintStyle),
+                  trailing: Padding(
+                    // A CategoryChip brings its own 48 dp target (8 dp
+                    // above and below its 32 dp chip), so the field stays
+                    // 56 dp with the chip where it was (VISUAL-R9-01).
+                    padding: EdgeInsets.symmetric(
+                      vertical: trailing is CategoryChip
+                          ? _fieldPad - CategoryChip.targetPad / 2
+                          : _fieldPad,
                     ),
-                    counterText: '',
-                    labelText: label,
-                    floatingLabelBehavior: FloatingLabelBehavior.always,
-                    // M3 draws a floating label at 0.75x; 16 renders as the
-                    // 12 dp label of render 3.
-                    floatingLabelStyle: theme.textTheme.labelSmall!
-                        .withWeight(FontWeight.w500)
-                        .copyWith(fontSize: 16, color: scheme.onSurfaceVariant),
-                    hintText: hintText,
-                    hintStyle: valueStyle.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
+                    child: trailing,
                   ),
                 ),
-              ),
-              if (trailing != null) ...[
-                const SizedBox(width: Space.md),
-                Padding(
-                  // A CategoryChip brings its own 48 dp target (8 dp above
-                  // and below its 32 dp chip), so the field stays 56 dp
-                  // with the chip where it was (VISUAL-R9-01).
-                  padding: EdgeInsets.symmetric(
-                    vertical: trailing is CategoryChip
-                        ? _fieldPad - CategoryChip.targetPad / 2
-                        : _fieldPad,
-                  ),
-                  child: trailing,
-                ),
-              ],
-            ],
-          ),
         ),
-        if (errorText != null)
+        if (widget.errorText != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, Space.xs, 4, 0),
             child: Semantics(
               liveRegion: true,
               child: Text(
-                errorText!,
+                widget.errorText!,
                 style: theme.textTheme.bodySmall!.copyWith(color: scheme.error),
               ),
             ),
@@ -154,6 +200,21 @@ class LabeledTextField extends StatelessWidget {
       ],
     );
   }
+}
+
+/// [child] with no least width of its own: a text field's typed words do
+/// not count when a row decides whether its trailing block fits beside it.
+class _NoMinIntrinsicWidth extends SingleChildRenderObjectWidget {
+  const _NoMinIntrinsicWidth({required Widget super.child});
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderNoMinIntrinsicWidth();
+}
+
+class _RenderNoMinIntrinsicWidth extends RenderProxyBox {
+  @override
+  double computeMinIntrinsicWidth(double height) => 0;
 }
 
 /// Tonal category chip (render 3, "Transport"): stone fill, 8 dp radius,

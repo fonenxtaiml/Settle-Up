@@ -20,6 +20,7 @@ import 'package:settle_up/ui/providers.dart';
 import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/screens/common.dart';
 import 'package:settle_up/ui/strings.dart';
+import 'package:settle_up/ui/widgets/form_tiles.dart';
 
 final DateTime qaNow = DateTime(2026, 11, 9, 10);
 
@@ -159,10 +160,22 @@ Future<void> qaTap(WidgetTester tester, Finder finder) async {
   await qaSettle(tester);
 }
 
-/// The text field labelled [label] (LabeledTextField puts it in labelText).
-Finder fieldLabeled(String label) => find.byWidgetPredicate(
-  (w) => w is TextField && w.decoration?.labelText == label,
-);
+/// The text field labelled [label]: the field of the LabeledTextField
+/// with that label (it draws the label above its TextField), or a
+/// TextField with that labelText.
+Finder fieldLabeled(String label) => find.byElementPredicate((e) {
+  final w = e.widget;
+  if (w is! TextField) return false;
+  if (w.decoration?.labelText == label) return true;
+  var labeled = false;
+  e.visitAncestorElements((a) {
+    final aw = a.widget;
+    if (aw is! LabeledTextField) return true;
+    labeled = aw.label == label;
+    return false;
+  });
+  return labeled;
+});
 
 FilledButton filledButton(WidgetTester tester, String label) =>
     tester.widget<FilledButton>(
