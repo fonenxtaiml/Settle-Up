@@ -144,222 +144,229 @@ class _ExpenseDetailScreenState extends ConsumerState<ExpenseDetailScreen> {
         ? KitStrings.settled
         : KitStrings.notInvolved;
 
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: const BackArrow(),
-        // The app bar names the kind of entry; its title (a description
-        // of up to 120 characters, or who paid whom) reads in full in the
-        // body, which is where a row's capped line is read in full
-        // (VISUAL-R34-02).
-        title: AppBarTitle(
-          e.isPayment ? S.paymentTitle : S.expenseTitle,
-          subtitle: groupTitle(g, me),
-        ),
-        actions: [
-          if (!e.isDeleted)
-            IconButton(
-              onPressed: _deleting
-                  ? null
-                  : () => context.push(
-                      Routes.editExpense(e.id, groupId: e.groupId),
-                    ),
-              tooltip: S.edit,
-              icon: const Icon(Icons.edit_outlined),
-            ),
-          PopupMenuButton<_Menu>(
-            tooltip: S.moreOptions,
-            enabled: !_deleting,
-            icon: const Icon(Icons.more_vert_rounded),
-            onSelected: (m) => switch (m) {
-              _Menu.delete => delete(),
-              _Menu.restore => restore(),
-            },
-            itemBuilder: (context) => [
-              if (e.isDeleted)
-                const PopupMenuItem(
-                  value: _Menu.restore,
-                  child: Text(S.restore),
-                )
-              else
-                PopupMenuItem(
-                  value: _Menu.delete,
-                  child: Text(S.deleteEntry(e.isPayment)),
-                ),
-            ],
+    // A group name the app bar's subline cuts reads in full at the top
+    // of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(),
+          // The app bar names the kind of entry; its title (a description
+          // of up to 120 characters, or who paid whom) reads in full in the
+          // body, which is where a row's capped line is read in full
+          // (VISUAL-R34-02).
+          title: AppBarTitle(
+            e.isPayment ? S.paymentTitle : S.expenseTitle,
+            subtitle: groupTitle(g, me),
           ),
-        ],
-      ),
-      body: InputLock(
-        locked: _deleting,
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: Space.xxl),
-          children: [
-            if (e.isDeleted)
-              gutter(
-                Padding(
-                  padding: const EdgeInsets.only(bottom: Space.md),
-                  child: Material(
-                    color: theme.colorScheme.surfaceContainer,
-                    borderRadius: BorderRadius.circular(Radii.lg),
-                    child: Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              S.deletedBanner,
-                              style: theme.textTheme.bodyMedium,
+          actions: [
+            if (!e.isDeleted)
+              IconButton(
+                onPressed: _deleting
+                    ? null
+                    : () => context.push(
+                        Routes.editExpense(e.id, groupId: e.groupId),
+                      ),
+                tooltip: S.edit,
+                icon: const Icon(Icons.edit_outlined),
+              ),
+            PopupMenuButton<_Menu>(
+              tooltip: S.moreOptions,
+              enabled: !_deleting,
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: (m) => switch (m) {
+                _Menu.delete => delete(),
+                _Menu.restore => restore(),
+              },
+              itemBuilder: (context) => [
+                if (e.isDeleted)
+                  const PopupMenuItem(
+                    value: _Menu.restore,
+                    child: Text(S.restore),
+                  )
+                else
+                  PopupMenuItem(
+                    value: _Menu.delete,
+                    child: Text(S.deleteEntry(e.isPayment)),
+                  ),
+              ],
+            ),
+          ],
+        ),
+        body: InputLock(
+          locked: _deleting,
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: Space.xxl),
+            children: [
+              const CutTitleHeading(),
+              if (e.isDeleted)
+                gutter(
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: Space.md),
+                    child: Material(
+                      color: theme.colorScheme.surfaceContainer,
+                      borderRadius: BorderRadius.circular(Radii.lg),
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                S.deletedBanner,
+                                style: theme.textTheme.bodyMedium,
+                              ),
                             ),
+                            const SizedBox(width: Space.sm),
+                            FilledButton(
+                              onPressed: restore,
+                              style: KitButtonStyles.small(context),
+                              child: const Text(S.restore),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              // The screen's heading: wraps in full, never cut, and set
+              // smaller when one word ("Bartholomew" at 2.0x) is wider than
+              // the line, so no word is broken.
+              textGutter(
+                Semantics(
+                  header: true,
+                  child: FitWordsText(title, style: theme.textTheme.titleLarge),
+                ),
+              ),
+              const SizedBox(height: Space.md),
+              textGutter(
+                Row(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(right: Space.md),
+                      child: e.isPayment
+                          ? const TetherGlyph(direction: MoneyDirection.neutral)
+                          : CategoryGlyph(categoryId: e.category, size: 28),
+                    ),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            e.isPayment
+                                ? S.paymentMethodLine(
+                                    ExpenseRow.methodLabel(
+                                      e.paymentMethod ?? PaymentMethod.other,
+                                    ),
+                                  )
+                                : categoryLabel(e.category),
+                            style: theme.textTheme.titleSmall,
                           ),
-                          const SizedBox(width: Space.sm),
-                          FilledButton(
-                            onPressed: restore,
-                            style: KitButtonStyles.small(context),
-                            child: const Text(S.restore),
+                          Text(
+                            DateLabels.pickerDate(e.date, now: now),
+                            style: theme.textTheme.bodyMedium!.copyWith(
+                              color: ink2,
+                            ),
                           ),
                         ],
                       ),
                     ),
-                  ),
+                  ],
                 ),
               ),
-            // The screen's heading: wraps in full, never cut, and set
-            // smaller when one word ("Bartholomew" at 2.0x) is wider than
-            // the line, so no word is broken.
-            textGutter(
-              Semantics(
-                header: true,
-                child: FitWordsText(title, style: theme.textTheme.titleLarge),
-              ),
-            ),
-            const SizedBox(height: Space.md),
-            textGutter(
-              Row(
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.only(right: Space.md),
-                    child: e.isPayment
-                        ? const TetherGlyph(direction: MoneyDirection.neutral)
-                        : CategoryGlyph(categoryId: e.category, size: 28),
-                  ),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          e.isPayment
-                              ? S.paymentMethodLine(
-                                  ExpenseRow.methodLabel(
-                                    e.paymentMethod ?? PaymentMethod.other,
-                                  ),
-                                )
-                              : categoryLabel(e.category),
-                          style: theme.textTheme.titleSmall,
+              const SizedBox(height: Space.lg),
+              textGutter(
+                // The 46 dp total scales down to fit beside "you lent ...",
+                // as the balance heroes do; it is never cut.
+                LayoutBuilder(
+                  builder: (context, constraints) => Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(
+                        child: FittedBox(
+                          fit: BoxFit.scaleDown,
+                          alignment: AlignmentDirectional.bottomStart,
+                          child: MoneyText(
+                            minor: e.money.total,
+                            currency: currency,
+                            style: MoneyTextStyle.headline,
+                            signed: false,
+                            colored: false,
+                          ),
                         ),
-                        Text(
-                          DateLabels.pickerDate(e.date, now: now),
-                          style: theme.textTheme.bodyMedium!.copyWith(
-                            color: ink2,
+                      ),
+                      if (myId != null) ...[
+                        const SizedBox(width: Space.sm),
+                        ConstrainedBox(
+                          constraints: BoxConstraints(
+                            maxWidth: constraints.maxWidth * 0.45,
+                          ),
+                          child: BalanceTrailing(
+                            word: word,
+                            // "not involved" alone, as in the rows: no ₹0.
+                            minor: word == KitStrings.notInvolved
+                                ? null
+                                : impact,
+                            currency: currency,
+                            direction: e.isPayment
+                                ? MoneyDirection.neutral
+                                : MoneyDirection.of(impact),
                           ),
                         ),
                       ],
-                    ),
+                    ],
                   ),
-                ],
+                ),
               ),
-            ),
-            const SizedBox(height: Space.lg),
-            textGutter(
-              // The 46 dp total scales down to fit beside "you lent ...",
-              // as the balance heroes do; it is never cut.
-              LayoutBuilder(
-                builder: (context, constraints) => Row(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Expanded(
-                      child: FittedBox(
-                        fit: BoxFit.scaleDown,
-                        alignment: AlignmentDirectional.bottomStart,
-                        child: MoneyText(
-                          minor: e.money.total,
+              if (!e.isPayment) ...[
+                gutter(
+                  ListSection(
+                    title: S.whoPaidTitle,
+                    dividerIndent: Space.avatarRowInset,
+                    children: [
+                      for (final p in e.money.paid.entries)
+                        _PersonAmountRow(
+                          id: g.resolve(p.key),
+                          name: names[p.key] ?? S.someone,
+                          fullName: full[p.key] ?? '',
+                          isMe: g.resolve(p.key) == myId,
+                          minor: p.value,
                           currency: currency,
-                          style: MoneyTextStyle.headline,
-                          signed: false,
-                          colored: false,
                         ),
-                      ),
-                    ),
-                    if (myId != null) ...[
-                      const SizedBox(width: Space.sm),
-                      ConstrainedBox(
-                        constraints: BoxConstraints(
-                          maxWidth: constraints.maxWidth * 0.45,
-                        ),
-                        child: BalanceTrailing(
-                          word: word,
-                          // "not involved" alone, as in the rows: no ₹0.
-                          minor: word == KitStrings.notInvolved ? null : impact,
+                    ],
+                  ),
+                ),
+                gutter(
+                  ListSection(
+                    title: S.whoOwesTitle,
+                    dividerIndent: Space.avatarRowInset,
+                    children: [
+                      for (final o in _sortedOwed(e, myId, g))
+                        _PersonAmountRow(
+                          id: g.resolve(o.key),
+                          name: names[o.key] ?? S.someone,
+                          fullName: full[o.key] ?? '',
+                          isMe: g.resolve(o.key) == myId,
+                          minor: o.value,
                           currency: currency,
-                          direction: e.isPayment
-                              ? MoneyDirection.neutral
-                              : MoneyDirection.of(impact),
                         ),
+                    ],
+                  ),
+                ),
+              ],
+              if (e.notes.isNotEmpty)
+                gutter(
+                  ListSection(
+                    title: S.notes,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.all(16),
+                        child: Text(e.notes, style: theme.textTheme.bodyLarge),
                       ),
                     ],
-                  ],
+                  ),
                 ),
-              ),
-            ),
-            if (!e.isPayment) ...[
-              gutter(
-                ListSection(
-                  title: S.whoPaidTitle,
-                  dividerIndent: Space.avatarRowInset,
-                  children: [
-                    for (final p in e.money.paid.entries)
-                      _PersonAmountRow(
-                        id: g.resolve(p.key),
-                        name: names[p.key] ?? S.someone,
-                        fullName: full[p.key] ?? '',
-                        isMe: g.resolve(p.key) == myId,
-                        minor: p.value,
-                        currency: currency,
-                      ),
-                  ],
-                ),
-              ),
-              gutter(
-                ListSection(
-                  title: S.whoOwesTitle,
-                  dividerIndent: Space.avatarRowInset,
-                  children: [
-                    for (final o in _sortedOwed(e, myId, g))
-                      _PersonAmountRow(
-                        id: g.resolve(o.key),
-                        name: names[o.key] ?? S.someone,
-                        fullName: full[o.key] ?? '',
-                        isMe: g.resolve(o.key) == myId,
-                        minor: o.value,
-                        currency: currency,
-                      ),
-                  ],
-                ),
-              ),
+              _History(expense: e, group: g, me: me),
             ],
-            if (e.notes.isNotEmpty)
-              gutter(
-                ListSection(
-                  title: S.notes,
-                  children: [
-                    Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: Text(e.notes, style: theme.textTheme.bodyLarge),
-                    ),
-                  ],
-                ),
-              ),
-            _History(expense: e, group: g, me: me),
-          ],
+          ),
         ),
       ),
     );
@@ -457,7 +464,9 @@ class _HistoryRow extends StatelessWidget {
           children: [
             Text(title, style: theme.textTheme.titleSmall),
             const SizedBox(height: 2),
-            for (final l in lines) Text(l, style: sub),
+            // A change line can carry an amount ("Amount: KD1.000 →
+            // KD99,999,999.999"): never split (VISUAL-R34-01).
+            for (final l in lines) FitWordsText(l, style: sub),
           ],
         ),
       ),
