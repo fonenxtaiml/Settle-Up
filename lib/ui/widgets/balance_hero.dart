@@ -7,6 +7,7 @@ import 'button_semantics.dart';
 import 'kit_strings.dart';
 import 'money_text.dart';
 import 'tether.dart';
+import 'kit_layout.dart';
 
 /// Home hero (render 1): the answer first. A sentence with an inline
 /// tether in the direction colour, the signed overall amount in ink at
@@ -148,7 +149,8 @@ class BalanceHero extends StatelessWidget {
         ),
         for (final o in others) ...[
           const SizedBox(height: Space.sm),
-          Text(_otherLine(o.key, o.value), style: captionStyle),
+          // An amount in a sentence is never split (VISUAL-R34-01).
+          FitWordsText(_otherLine(o.key, o.value), style: captionStyle),
         ],
       ],
     );
@@ -247,7 +249,9 @@ class GroupBalanceHero extends StatelessWidget {
           if (detail != null)
             Padding(
               padding: const EdgeInsets.only(top: 8),
-              child: Text(
+              // "You paid ₹6,000 and your share is ₹6,840.": an amount
+              // is never split across lines (VISUAL-R34-01).
+              child: FitWordsText(
                 detail!,
                 style: theme.textTheme.bodyMedium!.copyWith(
                   color: scheme.onSurfaceVariant,

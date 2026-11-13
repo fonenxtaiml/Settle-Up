@@ -103,7 +103,10 @@ class KitListRow extends StatelessWidget {
           Row(
             children: [
               Flexible(
-                child: Text(
+                // An amount in the subline ("Sam paid KD99,999,999.999")
+                // is never split across lines: when a word is wider than
+                // the line, the subline is set smaller (VISUAL-R34-01).
+                child: FitWordsText(
                   subtitle!,
                   maxLines: subtitleCap,
                   overflow: subtitleCap == null ? null : TextOverflow.ellipsis,
