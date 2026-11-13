@@ -128,7 +128,6 @@ class BalanceRow extends StatelessWidget {
         // Stack the balance under the name before the name loses its
         // longest word (VISUAL-R4-05), as ExpenseRow and ActivityRow do.
         trailingWidth: trailing.naturalWidth(context),
-        leadingWidth: leading == null ? 0 : Sizes.avatar,
         onTap: onTap,
         onLongPress: onLongPress,
       ),
