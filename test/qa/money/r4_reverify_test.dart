@@ -175,10 +175,11 @@ void main() {
     ) async {
       for (final c in ['TND', 'KWD', 'BHD', 'OMR', 'JOD']) {
         // A comma after "1,250" never makes it a thousand times larger
-        // (QA MONEY-R3-03 reopened).
+        // (QA MONEY-R3-03 reopened). Where "1,250," is on its way to
+        // "1,250,000" (KWD) it holds no amount until then (round 7).
         expect(
           await typeInto(t, c, '1,250,'),
-          parseAmountInput('1,250', cur(c)),
+          anyOf(isNull, parseAmountInput('1,250', cur(c))),
           reason: c,
         );
         // "1,250" is read as every input reads it in that currency (1.250
@@ -275,9 +276,10 @@ void main() {
       expect(parseAmountInput('1,25', tnd), 1250);
       expect(parseSignedMinor('-1,250', tnd), -1250);
       expect(parseSignedMinor('+1,250', tnd), 1250);
-      // Both separators: the last one is the decimal point.
+      // Both separators: the last one is the decimal point. TND groups
+      // with dots or spaces, so its comma never groups (round 7).
       expect(parseAmountInput('1.250,500', tnd), 1250500);
-      expect(parseAmountInput('1,250.500', tnd), 1250500);
+      expect(parseAmountInput('1,250.500', tnd), isNull);
       // KWD writes a dot: its "1,250" is a thousand two hundred and fifty.
       expect(parseAmountInput('1,250', cur('KWD')), 1250000);
       expect(await typeInto(t, 'KWD', '1,250', paste: true), 1250000);

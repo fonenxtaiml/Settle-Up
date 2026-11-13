@@ -235,7 +235,7 @@ class ActivityRow extends ConsumerWidget {
                 ? S.you.toLowerCase()
                 : names[expense.receiver] ?? S.someone,
           )
-        : expense.description;
+        : KitStrings.expenseTitle(expense.description);
     final memberName = member?.displayName ?? S.someone;
 
     final sentence = switch (entry.kind) {
@@ -324,21 +324,6 @@ class ActivityRow extends ConsumerWidget {
             isMe: g != null && g.resolve(actorId) == myId,
           );
 
-    Widget rowFor(bool stack) => KitListRow(
-      title: sentence,
-      subtitle: subtitle,
-      leading: leading,
-      trailing: trailing,
-      stackTrailing: stack,
-      onTap: expense == null
-          ? (g?.group == null
-                ? null
-                : () => context.push(Routes.group(entry.groupId)))
-          : () => context.push(
-              Routes.expense(expense.id, groupId: expense.groupId),
-            ),
-    );
-
     // The trailing block keeps its natural width (as on ExpenseRow), so on
     // a small phone at 1.3x to 1.6x, or with a huge amount, the sentence
     // beside it could get less room than one word, or none. Then the row
@@ -351,6 +336,26 @@ class ActivityRow extends ConsumerWidget {
             _textButtonPadding,
       _ => 0.0,
     };
+    Widget rowFor(bool stack) => KitListRow(
+      title: sentence,
+      // The sentence names people and expenses (data, in full one tap
+      // away); the subline's notes ("Not yet shared", "Possible
+      // duplicate") wrap in full.
+      titleLines: 1,
+      subtitle: subtitle,
+      leading: leading,
+      trailing: trailing,
+      stackTrailing: stack,
+      trailingWidth: trailingWidth == 0 ? null : trailingWidth,
+      onTap: expense == null
+          ? (g?.group == null
+                ? null
+                : () => context.push(Routes.group(entry.groupId)))
+          : () => context.push(
+              Routes.expense(expense.id, groupId: expense.groupId),
+            ),
+    );
+
     if (trailingWidth == 0 || isLargeText(context)) return rowFor(false);
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -364,7 +369,7 @@ class ActivityRow extends ConsumerWidget {
         bool wordsFit(String text, TextStyle? style) =>
             textFitsWords(context, text, style, textRoom, maxLines: 1 << 10);
         final fits =
-            textRoom >= _minTextBeside &&
+            textRoom >= kMinTextBeside &&
             wordsFit(sentence, theme.textTheme.titleMedium) &&
             wordsFit(subtitle, theme.textTheme.bodySmall);
         return rowFor(!fits);
@@ -372,10 +377,6 @@ class ActivityRow extends ConsumerWidget {
     );
   }
 }
-
-/// The least room the sentence keeps beside the trailing block before the
-/// row stacks (the same as on ExpenseRow).
-const double _minTextBeside = 96;
 
 /// A TextButton's side padding around its label.
 const double _textButtonPadding = 24;
@@ -394,6 +395,7 @@ class SyncRecordRow extends StatelessWidget {
       title: ok
           ? S.syncedWith(record.peerName)
           : S.syncStoppedWith(record.peerName),
+      titleLines: 1,
       subtitle:
           '${S.sentGot(record.sentOps, record.receivedOps)}, '
           '${transportWord(record.transport)}, '

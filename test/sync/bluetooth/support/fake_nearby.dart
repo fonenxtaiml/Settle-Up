@@ -206,6 +206,10 @@ final class FakeNearbyApi implements NearbyApi {
   void receiveFrom(String from, Uint8List bytes) =>
       _emit(NearbyBytesReceived(from, bytes));
 
+  /// Delivers [e] to this phone as if the plugin reported it (for
+  /// scripted discovery, e.g. a loss that is never reported).
+  void deliver(NearbyEvent e) => _emit(e);
+
   @override
   Future<void> stopAllEndpoints() async {
     calls.add('stopAllEndpoints');

@@ -8,9 +8,11 @@ import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
 import '../../../theme/tokens.dart';
+import '../../format/well_formed_formatter.dart';
 import '../../providers.dart';
 import '../../router.dart';
 import '../../strings.dart';
+import '../../widgets/kit_strings.dart';
 import '../../widgets/widgets.dart';
 import '../common.dart';
 
@@ -27,7 +29,10 @@ List<(GroupState, Expense)> searchExpenses(LedgerState state, String query) {
     final names = memberFullNames(g);
     for (final e in g.liveExpenses) {
       final haystack = [
-        e.description,
+        if (e.isPayment)
+          e.description
+        else
+          KitStrings.expenseTitle(e.description),
         e.notes,
         categoryLabel(e.category),
         g.group!.name,
@@ -79,6 +84,7 @@ class _SearchScreenState extends ConsumerState<SearchScreen> {
         leading: const BackArrow(),
         title: TextField(
           controller: _query,
+          inputFormatters: const [WellFormedTextFormatter()],
           autofocus: true,
           textInputAction: TextInputAction.search,
           style: theme.textTheme.titleMedium,

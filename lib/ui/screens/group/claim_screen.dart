@@ -76,10 +76,11 @@ class ClaimScreen extends ConsumerWidget {
         helper: S.nameTakenHelper(dup),
         confirmLabel: S.addPerson,
         maxLength: kMemberNameMax,
+        isName: true,
       );
       if (other == null || !context.mounted) return;
       name = other.trim();
-      if (name.isEmpty) return;
+      if (!isSavableName(name, kMemberNameMax)) return;
       final still = sameName();
       if (still != null) {
         Haptics.invalid(context);
@@ -141,6 +142,7 @@ class ClaimScreen extends ConsumerWidget {
                   for (final m in candidates)
                     KitListRow(
                       title: m.displayName,
+                      titleLines: 1,
                       subtitle: S.placeholderSub,
                       leading: PersonAvatar(
                         id: m.id,

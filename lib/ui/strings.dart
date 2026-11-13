@@ -135,6 +135,10 @@ abstract final class S {
   static const groupDeleted = 'Group deleted';
   static const groupArchived = 'Group archived';
   static const nameNeeded = 'Add a name, like Goa trip';
+
+  /// A name typed with no letter or number (only spaces, symbols or
+  /// characters that show nothing).
+  static const nameNeedsLetter = 'Use at least one letter or number';
   static const emoji = 'Emoji';
   static const noEmoji = 'None';
   static const youAreIncluded = "You're in this group";
@@ -280,6 +284,21 @@ abstract final class S {
       'it from the expense.';
   static const expenseDeleted = 'Expense deleted';
   static const expenseRestored = 'Expense restored';
+  // The same actions on a payment call it a payment (UIFLOW-R29-01).
+  static const deletePayment = 'Delete payment';
+  static const deletePaymentBody =
+      'It will be removed for everyone after the next sync. You can restore '
+      'it from the payment.';
+  static const paymentDeleted = 'Payment deleted';
+  static const paymentRestored = 'Payment restored';
+  static String deleteEntry(bool payment) =>
+      payment ? deletePayment : deleteExpense;
+  static String deleteEntryBody(bool payment) =>
+      payment ? deletePaymentBody : deleteExpenseBody;
+  static String entryDeleted(bool payment) =>
+      payment ? paymentDeleted : expenseDeleted;
+  static String entryRestored(bool payment) =>
+      payment ? paymentRestored : expenseRestored;
   static const pickCategory = 'Category';
   static const suggested = 'Suggested';
   static const pickCurrency = 'Currency';
@@ -325,8 +344,15 @@ abstract final class S {
   static String recordPayment(String amount) => 'Record $amount payment';
   static const paymentRecorded = 'Payment recorded';
   static const whoIsPaying = 'Who is paying?';
-  static String overpay(String extra, String name) =>
-      "That's $extra more than the balance. $name will owe you $extra.";
+  static String overpay(String extra) => "That's $extra more than the balance.";
+
+  /// "Sam will owe you ₹10.", "You will owe Sam ₹10.", "Priya will owe
+  /// Sam ₹10.": a null name is me.
+  static String willOwe(String? debtor, String? creditor, String amount) =>
+      '${debtor ?? 'You'} will owe ${creditor ?? 'you'} $amount.';
+
+  /// "Priya owes": a pair cell where the one paid now owes the payer.
+  static String nameOwes(String name) => '$name owes';
   static const partTitle = 'How much?';
   static const nothingToSettle = 'Nothing to settle';
   static const nothingToSettleBody = 'Everyone in this group is settled up.';
@@ -560,6 +586,14 @@ abstract final class S {
   static String csvSubject(String group) => '$group expenses';
   static const licenses = 'Licenses';
   static const version = 'Version';
+  static const clockLooksWrong = "This phone's clock looks wrong";
+  static const clockLooksWrongHelp =
+      'A phone you synced with is more than an hour ahead. Check this '
+      "phone's date and time.";
+  // DATA-R31-01: own changes stamped while this phone's date ran ahead.
+  static const clockOwnChangesAheadHelp =
+      "Changes made while this phone's date was ahead are shared once "
+      'that date is near.';
   static const editName = 'Your name';
   static const noGroupsToExport = 'Create a group first.';
 

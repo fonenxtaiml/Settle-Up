@@ -5,17 +5,17 @@ import 'dart:convert';
 import 'dart:developer' as developer;
 import 'dart:io' show Platform;
 
-import 'package:characters/characters.dart';
-
 import '../core/hlc.dart';
 import '../core/ids.dart';
 import '../core/ledger_state.dart';
 import '../core/models.dart';
 import '../core/money.dart';
+import '../core/name_text.dart';
 import 'codecs.dart';
 import 'locale_currency.dart';
 import 'repositories.dart';
 import 'schema.dart';
+import 'text_rules.dart';
 
 final class KvSettingsRepository implements SettingsRepository {
   KvSettingsRepository._(
@@ -42,7 +42,9 @@ final class KvSettingsRepository implements SettingsRepository {
     final deviceJson = _decode(storedDevice);
     var device = deviceFromJson(deviceJson);
     if (device == null) {
-      final name = defaultDeviceName.trim();
+      final name = NameText.isValid(defaultDeviceName)
+          ? NameText.fit(defaultDeviceName)
+          : '';
       // A missing or unreadable row on a phone that already wrote ops
       // keeps its id (a fresh install has no hlc.last).
       final recovered = await _recoverDeviceId(store);
@@ -58,8 +60,8 @@ final class KvSettingsRepository implements SettingsRepository {
       final oldName = deviceJson is Map ? deviceJson['deviceName'] : null;
       device = DeviceIdentity(
         deviceId: recovered ?? ids.newId(),
-        deviceName: oldName is String && oldName.trim().isNotEmpty
-            ? oldName.trim()
+        deviceName: oldName is String && NameText.isValid(oldName)
+            ? NameText.fit(oldName)
             : (name.isEmpty ? 'Phone' : name),
       );
       await store.setKv(KvKeys.device, jsonEncode(deviceToJson(device)));
@@ -205,11 +207,16 @@ final class KvSettingsRepository implements SettingsRepository {
       throw ArgumentError.value(
           profile.personId, 'profile.personId', 'must not change');
     }
+    // A name saved before the 40 limit (or before names were normalised)
+    // is kept as it is until it is changed, so changing the home currency
+    // never fails on the name.
+    final unchanged = profile.displayName == current.displayName ||
+        profile.displayName.trim() == current.displayName;
     await _saveProfile(Profile(
       personId: current.personId,
-      // A name saved before the 40 limit is kept until it is changed.
-      displayName: _name(profile.displayName, 'profile.displayName',
-          capped: profile.displayName.trim() != current.displayName),
+      displayName: unchanged
+          ? current.displayName
+          : _name(profile.displayName, 'profile.displayName'),
       homeCurrency: _currency(profile.homeCurrency),
     ));
   }
@@ -245,13 +252,23 @@ final class KvSettingsRepository implements SettingsRepository {
     _profiles.add(profile);
   }
 
-  /// Your name and the phone name: 1..40 characters (SPEC 5.16, 8.9).
-  static const int maxNameLength = 40;
+  /// Your name and the phone name: 1..40 characters (SPEC 5.16, 8.9), the
+  /// limit of a member name ([TextRules.memberName]).
+  static const int maxNameLength = TextRules.memberName;
 
-  static String _name(String value, String field, {bool capped = true}) {
-    final t = value.trim();
-    if (t.isEmpty) throw ArgumentError.value(value, field, 'must not be empty');
-    if (capped && t.characters.length > maxNameLength) {
+  /// A name as it is stored, shown and compared ([NameText.fit]): it must
+  /// keep a letter or a number and fit [maxNameLength] characters by the
+  /// rules a member name is held to ([TextRules.nameTooLong]); one that
+  /// normalising makes longer than it was typed is cut, as the Ledger cuts
+  /// it (DATA-R8-01). My name becomes my member's name in every group, so
+  /// a name saved here is always one the Ledger accepts there (DATA-R6-02).
+  static String _name(String value, String field) {
+    final t = NameText.fit(value, maxNameLength);
+    if (!NameText.hasLetterOrNumber(t)) {
+      throw ArgumentError.value(
+          value, field, 'must have at least one letter or number');
+    }
+    if (TextRules.nameTooLong(value, maxNameLength) != null) {
       throw ArgumentError.value(
           value, field, 'must be at most $maxNameLength characters');
     }

@@ -12,6 +12,7 @@ import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/core/version_vector.dart';
 import 'package:settle_up/data/kv_settings_repository.dart';
@@ -456,9 +457,14 @@ void main() {
       for (final name in names) {
         // Names a user can set go through Settings; longer ones (a peer
         // build without the limit) straight into the handshake.
-        if (name.characters.length <= KvSettingsRepository.maxNameLength) {
+        // A phone name needs a letter or a number (UIFLOW-R6-01): emoji
+        // alone are refused.
+        if (!NameText.isValid(name)) {
+          expect(() => a.settings.setDeviceName(name), throwsArgumentError);
+        } else if (name.characters.length <=
+            KvSettingsRepository.maxNameLength) {
           await a.settings.setDeviceName(name);
-          expect(a.settings.device.deviceName, name);
+          expect(a.settings.device.deviceName, NameText.normalize(name));
         }
         final sent = await helloOf(name);
         expect(sent.length, lessThanOrEqualTo(kMaxDeviceNameLength));
@@ -499,7 +505,9 @@ void main() {
       // 40-character limit, so Settings accepts it.
       final name = 'a${'\u0301' * 100}';
       await a.settings.setDeviceName(name);
-      expect(a.settings.device.deviceName, name);
+      // Stored normalised: NFC composes the base letter and its first mark.
+      expect(a.settings.device.deviceName, NameText.normalize(name));
+      expect(a.settings.device.deviceName, '\u00E1${'\u0301' * 99}');
       final sent = await helloOf(a.settings.device.deviceName);
       // Expected: a non-empty, well-formed name (the base letter, a
       // code-point cut, or a fallback such as "Phone"). Actual: '' - the

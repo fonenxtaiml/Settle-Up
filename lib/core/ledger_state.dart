@@ -158,7 +158,8 @@ final class LedgerReducer {
   /// supportedSchemaVersion are ignored (return false).
   bool apply(Operation op) => _engine.apply(op);
 
-  /// Applies many; returns ids of entities whose state changed.
+  /// Applies many, rebuilding each entity they touch once; returns ids of
+  /// entities whose materialized state the batch changed.
   Set<String> applyAll(Iterable<Operation> ops) => _engine.applyAll(ops);
 
   /// Immutable snapshot of the current state (safe to hand to the UI).

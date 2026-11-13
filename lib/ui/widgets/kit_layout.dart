@@ -1,8 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 
 /// Text scale at which rows stack their trailing amount under the title
 /// and side-by-side layouts become vertical (DESIGN-level 3.4, kept).
 const double kLargeTextScale = 1.6;
+
+/// The least width a row's text keeps beside its trailing block (an
+/// amount, a button, a switch) before the block goes under the text: the
+/// expense and activity rows, and every [KitListRow] whose text wraps in
+/// full, which also keeps half the row (VISUAL-R32-02).
+const double kMinTextBeside = 96;
 
 /// True when the user's text scale is large enough that two-column rows
 /// would squeeze their text; such rows stack instead.
@@ -161,7 +168,11 @@ class ButtonPair extends StatelessWidget {
 /// A [Text] that never breaks a word over two lines: when its longest word
 /// (an amount: "₹1,20,000.50", "KD99,999,999.999") is wider than the room
 /// it gets, the whole text is set smaller until that word fits, as the
-/// balance heroes scale theirs (VISUAL-R4-03, VISUAL-R5-02).
+/// balance heroes scale theirs (VISUAL-R4-03, VISUAL-R5-02, VISUAL-R34-01).
+///
+/// It answers intrinsic and dry layout queries itself, as a [Text] does,
+/// so it can sit in rows that measure their text before laying it out
+/// ([KitListRow]'s subline, a button label).
 class FitWordsText extends StatelessWidget {
   const FitWordsText(
     this.data, {
@@ -169,22 +180,179 @@ class FitWordsText extends StatelessWidget {
     this.style,
     this.maxLines,
     this.overflow,
+    this.textAlign,
   });
 
   final String data;
   final TextStyle? style;
   final int? maxLines;
   final TextOverflow? overflow;
+  final TextAlign? textAlign;
 
   @override
-  Widget build(BuildContext context) => LayoutBuilder(
-    builder: (context, c) => Text(
-      data,
-      style: fitWordsStyle(context, data, style, c.maxWidth),
-      maxLines: maxLines,
-      overflow: overflow,
+  Widget build(BuildContext context) => _TextMetrics(
+    data: data,
+    style: effectiveTextStyle(context, style),
+    textScaler: MediaQuery.textScalerOf(context),
+    textDirection: Directionality.maybeOf(context) ?? TextDirection.ltr,
+    locale: Localizations.maybeLocaleOf(context),
+    maxLines: maxLines ?? DefaultTextStyle.of(context).maxLines,
+    child: LayoutBuilder(
+      builder: (context, c) => Text(
+        data,
+        style: fitWordsStyle(context, data, style, c.maxWidth),
+        maxLines: maxLines,
+        overflow: overflow,
+        textAlign: textAlign,
+      ),
     ),
   );
+}
+
+/// Answers the intrinsic and dry sizes of a [FitWordsText] from its text,
+/// which its [LayoutBuilder] cannot; lays out and paints the child as is.
+class _TextMetrics extends SingleChildRenderObjectWidget {
+  const _TextMetrics({
+    required this.data,
+    required this.style,
+    required this.textScaler,
+    required this.textDirection,
+    required this.locale,
+    required this.maxLines,
+    required super.child,
+  });
+
+  final String data;
+  final TextStyle style;
+  final TextScaler textScaler;
+  final TextDirection textDirection;
+  final Locale? locale;
+  final int? maxLines;
+
+  @override
+  _RenderTextMetrics createRenderObject(BuildContext context) =>
+      _RenderTextMetrics(
+        data,
+        style,
+        textScaler,
+        textDirection,
+        locale,
+        maxLines,
+      );
+
+  @override
+  void updateRenderObject(BuildContext context, _RenderTextMetrics r) =>
+      r..update(data, style, textScaler, textDirection, locale, maxLines);
+}
+
+class _RenderTextMetrics extends RenderProxyBox {
+  _RenderTextMetrics(
+    this._data,
+    this._style,
+    this._scaler,
+    this._direction,
+    this._locale,
+    this._maxLines,
+  );
+
+  String _data;
+  TextStyle _style;
+  TextScaler _scaler;
+  TextDirection _direction;
+  Locale? _locale;
+  int? _maxLines;
+
+  void update(
+    String data,
+    TextStyle style,
+    TextScaler scaler,
+    TextDirection direction,
+    Locale? locale,
+    int? maxLines,
+  ) {
+    if (data == _data &&
+        style == _style &&
+        scaler == _scaler &&
+        direction == _direction &&
+        locale == _locale &&
+        maxLines == _maxLines) {
+      return;
+    }
+    _data = data;
+    _style = style;
+    _scaler = scaler;
+    _direction = direction;
+    _locale = locale;
+    _maxLines = maxLines;
+    markNeedsLayout();
+  }
+
+  TextPainter _painter(TextStyle style, {int? maxLines}) => TextPainter(
+    text: TextSpan(text: _data, style: style),
+    textDirection: _direction,
+    textScaler: _scaler,
+    locale: _locale,
+    maxLines: maxLines,
+    ellipsis: maxLines == null ? null : '\u2026',
+  );
+
+  double _longestWord(TextStyle style) {
+    var widest = 0.0;
+    for (final word in _data.split(RegExp(r'\s+'))) {
+      if (word.isEmpty) continue;
+      final p = TextPainter(
+        text: TextSpan(text: word, style: style),
+        textDirection: _direction,
+        textScaler: _scaler,
+        locale: _locale,
+      )..layout();
+      if (p.width > widest) widest = p.width;
+      p.dispose();
+    }
+    return widest;
+  }
+
+  /// The style the text takes at [width], as [fitWordsStyle] picks it.
+  TextStyle _fitted(double width) {
+    if (!width.isFinite || width <= 0) return _style;
+    if (_longestWord(_style) <= width + 0.25) return _style;
+    var lo = 1.0;
+    var hi = _style.fontSize ?? 14;
+    for (var i = 0; i < 14; i++) {
+      final mid = (lo + hi) / 2;
+      if (_longestWord(_style.copyWith(fontSize: mid)) <= width) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+    return _style.copyWith(fontSize: lo);
+  }
+
+  Size _measure(double maxWidth) {
+    final p = _painter(_fitted(maxWidth), maxLines: _maxLines)
+      ..layout(maxWidth: maxWidth.isFinite ? maxWidth : double.infinity);
+    final size = Size(p.width, p.height);
+    p.dispose();
+    return size;
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _longestWord(_style);
+
+  @override
+  double computeMaxIntrinsicWidth(double height) =>
+      _measure(double.infinity).width;
+
+  @override
+  double computeMinIntrinsicHeight(double width) => _measure(width).height;
+
+  @override
+  double computeMaxIntrinsicHeight(double width) => _measure(width).height;
+
+  @override
+  Size computeDryLayout(covariant BoxConstraints constraints) =>
+      constraints.constrain(_measure(constraints.maxWidth));
 }
 
 /// [style] at the largest size (at most its own) at which the longest word

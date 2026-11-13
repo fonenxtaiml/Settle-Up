@@ -1,6 +1,9 @@
 // Shared helpers for the screens: gutters, app bars, async states, error
 // copy, snack bars, confirmations and small ledger lookups.
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
@@ -9,14 +12,20 @@ import '../../core/categories.dart';
 import '../../core/ids.dart';
 import '../../core/ledger_state.dart';
 import '../../core/models.dart';
+import '../../core/name_text.dart';
 import '../../core/text_clean.dart';
 import '../../data/repositories.dart';
 import '../../sync/sync_engine.dart';
 import '../../theme/tokens.dart';
+import '../format/text_cap_formatter.dart';
+import '../format/well_formed_formatter.dart';
 import '../router.dart';
 import '../strings.dart';
 import '../widgets/kit_strings.dart';
 import '../widgets/widgets.dart';
+import 'name_limit.dart';
+
+export 'name_limit.dart';
 
 /// "Now" for every screen. Tests and goldens override it with a fixed time.
 final clockProvider = Provider<DateTime Function()>((ref) => DateTime.now);
@@ -174,6 +183,52 @@ Future<bool> runGuarded(
   }
 }
 
+/// Holds a form still while what it shows is being saved (or once it has
+/// been recorded): no tap, no focus and no keyboard reaches [child], so
+/// nothing can change the values the save is built from and no picker,
+/// sheet or prompt can open over a screen that is about to close
+/// (MONEY-R27-01). The controls stay in place and show what is saved.
+class InputLock extends StatelessWidget {
+  const InputLock({super.key, required this.locked, required this.child});
+
+  final bool locked;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) => ExcludeFocus(
+    excluding: locked,
+    child: IgnorePointer(ignoring: locked, child: child),
+  );
+}
+
+/// Makes the screen [context] belongs to the top one again before it
+/// navigates away after a save: a pop-up still open over it (a picker,
+/// sheet or prompt) is closed first, so a pop takes the screen and not the
+/// pop-up in its place. False when the screen is already closing (the user
+/// went back while it was saving, or it is closed twice): then it must not
+/// navigate, or the screen under it goes too (MONEY-R27-01).
+bool bringScreenToFront(BuildContext context) {
+  if (!context.mounted) return false;
+  final route = ModalRoute.of(context);
+  if (route == null) return true;
+  if (!route.isActive) return false;
+  if (!route.isCurrent) route.navigator?.popUntil((r) => r == route);
+  return true;
+}
+
+/// Closes the screen [context] belongs to, and only that screen (see
+/// [bringScreenToFront]); without a screen below it goes to [fallback].
+/// Returns whether it closed the screen.
+bool closeScreen(BuildContext context, {required String fallback}) {
+  if (!bringScreenToFront(context)) return false;
+  if (context.canPop()) {
+    context.pop();
+  } else {
+    context.go(fallback);
+  }
+  return true;
+}
+
 /// A two-button confirmation. The confirm label is the action verb.
 Future<bool> confirmAction(
   BuildContext context, {
@@ -204,6 +259,9 @@ Future<bool?> askChoice(
   return showDialog<bool>(
     context: context,
     builder: (context) => AlertDialog(
+      // Title and body scroll, the buttons stay on screen: a long name
+      // at a large text size never pushes them off (VISUAL-R29-01).
+      scrollable: true,
       title: Text(title),
       content: Text(body),
       actions: [
@@ -229,6 +287,9 @@ Future<String?> promptText(
   String? helper,
   String confirmLabel = S.save,
   int? maxLength,
+  bool isName = false,
+  bool optional = false,
+  bool multiline = false,
 }) => showDialog<String>(
   context: context,
   builder: (context) => _TextPrompt(
@@ -238,6 +299,9 @@ Future<String?> promptText(
     helper: helper,
     confirmLabel: confirmLabel,
     maxLength: maxLength,
+    isName: isName,
+    optional: optional,
+    multiline: multiline,
   ),
 );
 
@@ -249,7 +313,10 @@ class _TextPrompt extends StatefulWidget {
     this.hint,
     this.helper,
     this.maxLength,
-  });
+    this.isName = false,
+    this.optional = false,
+    this.multiline = false,
+  }) : assert(!(isName && optional), 'a name is never optional');
 
   final String title;
   final String initial;
@@ -260,15 +327,44 @@ class _TextPrompt extends StatefulWidget {
   /// Caps the text (and the initial value) at this many characters.
   final int? maxLength;
 
+  /// The text is a name: Save needs a letter or number in it
+  /// ([NameText.isValid]), as the Ledger and Settings do (DATA-R6-02).
+  final bool isName;
+
+  /// The text may be left empty (a note): Save is on while the field is
+  /// empty and returns '', which takes the text out (UIFLOW-R15-03).
+  final bool optional;
+
+  /// Line breaks are kept (notes, SPEC 5.16), so a held text with them is
+  /// never joined into one line.
+  final bool multiline;
+
   @override
   State<_TextPrompt> createState() => _TextPromptState();
 }
 
 class _TextPromptState extends State<_TextPrompt> {
   late final _controller = TextEditingController(
-    text: widget.maxLength == null
-        ? widget.initial
-        : widget.initial.characters.take(widget.maxLength!).toString(),
+    text: switch (widget.maxLength) {
+      null => widget.initial,
+      final max when widget.isName => NameLimit.fit(widget.initial, max),
+      // A free text the prompt opens with is cut only past the cap as the
+      // Ledger measures it, the way a paste of it would be: a note with
+      // hidden characters, which take no room, comes back whole
+      // (UIFLOW-R18-01).
+      final max =>
+        TextCapFormatter(max)
+            .formatEditUpdate(
+              TextEditingValue.empty,
+              TextEditingValue(
+                text: widget.initial,
+                selection: TextSelection.collapsed(
+                  offset: widget.initial.length,
+                ),
+              ),
+            )
+            .text,
+    },
   );
 
   @override
@@ -277,26 +373,94 @@ class _TextPromptState extends State<_TextPrompt> {
     super.dispose();
   }
 
+  /// "Too long" under a free text the Ledger would refuse for its length
+  /// ([TextCap], the measure the editors' notes fields use too), so Save
+  /// never takes a note that Record then refuses (UIFLOW-R17-02).
+  String? get _freeTextError {
+    final max = widget.maxLength;
+    if (widget.isName || max == null) return null;
+    return _overLimit(_controller.text, max) ? S.errTooLong : null;
+  }
+
+  bool get _accepted {
+    final text = _controller.text;
+    if (_freeTextError != null) return false;
+    if (widget.optional) return true;
+    if (!widget.isName) return !isBlankDescription(text);
+    final max = widget.maxLength;
+    return max == null ? NameText.isValid(text) : isSavableName(text, max);
+  }
+
   void _submit() {
-    final t = _controller.text.trim();
-    if (t.isEmpty) return;
-    Navigator.of(context).pop(t);
+    if (!_accepted) return;
+    Navigator.of(context).pop(_controller.text.trim());
   }
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    // Title and body scroll, the buttons stay on screen: a long name
+    // at a large text size never pushes them off (VISUAL-R29-01).
+    scrollable: true,
     title: Text(widget.title),
-    content: TextField(
-      controller: _controller,
-      autofocus: true,
-      maxLength: widget.maxLength,
-      textCapitalization: TextCapitalization.words,
-      decoration: InputDecoration(
-        hintText: widget.hint,
-        helperText: widget.helper,
-        helperMaxLines: 3,
+    // The field takes the dialog's full width, not the 280 dp of its own
+    // size, so its helper and error (beside the counter) get the room
+    // the screen has and wrap in fewer lines (VISUAL-R31-01).
+    content: SizedBox(
+      width: double.maxFinite,
+      child: ListenableBuilder(
+        listenable: _controller,
+        builder: (context, _) {
+          final max = widget.maxLength;
+          // A name counts as it is stored ([NameLimit.length]) and a free
+          // text as the Ledger measures it, with the spaces and line breaks
+          // at either end counted as the cap holds them once a letter goes
+          // past them ([TextCapFormatter.counted]), so the counter never
+          // says a text fits that Save would refuse, nor shows room the
+          // field refuses.
+          final count = max == null
+              ? null
+              : widget.isName
+              ? NameLimit.length(_controller.text)
+              : TextCapFormatter.counted(_controller.text, max);
+          return TextField(
+            controller: _controller,
+            autofocus: true,
+            maxLength: max,
+            minLines: 1,
+            maxLines: widget.multiline ? null : 1,
+            keyboardType: widget.multiline ? TextInputType.multiline : null,
+            // A free text keeps its own cap ([TextCapFormatter]): the
+            // TextField's would cut the end of the text when a paste in the
+            // middle runs over.
+            maxLengthEnforcement: max != null && !widget.isName
+                ? MaxLengthEnforcement.none
+                : null,
+            inputFormatters: WellFormedTextFormatter.first(switch (max) {
+              null => null,
+              final max when widget.isName => nameFormatters(max),
+              final max => [TextCapFormatter(max)],
+            }),
+            textCapitalization: widget.multiline
+                ? TextCapitalization.sentences
+                : TextCapitalization.words,
+            decoration: InputDecoration(
+              hintText: widget.hint,
+              helperText: widget.helper,
+              errorText: widget.isName
+                  ? nameInputError(_controller.text, limit: max)
+                  : _freeTextError,
+              counterText: count == null ? null : '$count/$max',
+              semanticCounterText: count == null
+                  ? null
+                  : MaterialLocalizations.of(context)
+                        .remainingTextFieldCharacterCount(
+                          math.max(0, max! - count),
+                        ),
+            ),
+            onSubmitted: (_) => _submit(),
+          );
+        },
       ),
-      onSubmitted: (_) => _submit(),
     ),
     actions: [
       TextButton(
@@ -306,7 +470,7 @@ class _TextPromptState extends State<_TextPrompt> {
       ListenableBuilder(
         listenable: _controller,
         builder: (context, _) => FilledButton(
-          onPressed: _controller.text.trim().isEmpty ? null : _submit,
+          onPressed: _accepted ? _submit : null,
           child: Text(widget.confirmLabel),
         ),
       ),
@@ -452,34 +616,135 @@ Set<ExpenseId> _findDuplicatePayments(GroupState g) {
 }
 
 /// SPEC 5.16: member display names are 1..40 characters.
-const int kMemberNameMax = 40;
+const int kMemberNameMax = NameText.maxLength;
 
-/// The existing name [candidate] would duplicate (case and spaces
-/// ignored: "priya " is "Priya"), or null. Both sides are compared as the
-/// Ledger saves them (TextClean.clean), so a name carrying an invisible
-/// mark (U+200B, U+200E, ...) is the plain name it will be stored as
-/// (UIFLOW-R4-01). The marks the Ledger keeps inside a name but that draw
-/// nothing after a letter (soft hyphen, ZWJ, variation selectors,
-/// invisible operators; TextClean.isBlankMark) are left out of the
-/// comparison too, never out of what is stored: "Rahul" with a soft hyphen
-/// looks like "Rahul" everywhere (UIFLOW-R5-01).
+/// SPEC 5.16: group names are 1..60 characters.
+const int kGroupNameMax = NameText.maxGroupLength;
+
+/// The message under a name field whose text is not empty but is no name
+/// (no letter or number in what is saved of it, [NameText.isValid] with
+/// the field's limit, [NameText.maxLength] without one): only spaces,
+/// symbols or characters that show nothing; or, with a [limit], one that
+/// is longer than [limit] once stored ([NameLimit.fits]: "…" is stored as
+/// "...", UIFLOW-R8-01). Null while the field is empty or holds a name
+/// that can be saved.
+String? nameInputError(String text, {int? limit}) {
+  if (text.trim().isEmpty) return null;
+  if (!NameText.isValid(text, limit ?? NameText.maxLength)) {
+    return S.nameNeedsLetter;
+  }
+  if (limit != null && !NameLimit.fits(text, limit)) return S.errTooLong;
+  return null;
+}
+
+/// Whether [text] is a name that can be saved under [limit]: a letter or
+/// number in what is saved of it, and short enough once stored.
+bool isSavableName(String text, int limit) =>
+    NameText.isValid(text, limit) && NameLimit.fits(text, limit);
+
+/// Whether [typed], the text a name prompt or field is saved with, is the
+/// name [opened] it opened with: the same text once trimmed (the field
+/// opens with [opened] cut to [limit], [NameLimit.fit]), or the same name
+/// once saved ([NameText.fit]: a space added or doubled, a character that
+/// shows nothing, a compatibility form). A name saved as it opened is no
+/// rename: sending it would undo a rename another phone made meanwhile, or
+/// the name a group has for me (UIFLOW-R17-01, UIFLOW-R21-01). A typed
+/// text that saves as no name at all is never "the same", so it is still
+/// refused as a name.
+bool isNameAsOpened(String typed, String opened, int limit) {
+  final t = typed.trim();
+  if (t == NameLimit.fit(opened, limit).trim()) return true;
+  final saved = NameText.fit(t, limit);
+  return saved.isNotEmpty && saved == NameText.fit(opened, limit);
+}
+
+/// SPEC 5.16: notes are at most 1000 characters. The one cap of every
+/// notes field: Settle up, Edit payment and the expense editor
+/// (UIFLOW-R15-02). Equal to the Ledger's TextRules.notes (pinned by
+/// test/ui/flows/notes_fields_test.dart).
+const int kNotesMax = 1000;
+
+/// SPEC 5.16: a description is at most 120 characters (TextRules
+/// .description).
+const int kDescriptionMax = 120;
+
+/// The formatters every notes field caps its text with: what is typed or
+/// pasted stays within [kNotesMax], and a note the field already holds is
+/// never cut ([TextCapFormatter]).
+List<TextInputFormatter> notesFormatters() => [TextCapFormatter(kNotesMax)];
+
+/// The formatters the description field caps its text with: as
+/// [notesFormatters], a description the field already holds is never cut.
+List<TextInputFormatter> descriptionFormatters() => [
+  TextCapFormatter(kDescriptionMax),
+];
+
+/// Whether [text] is longer than [limit] as the Ledger measures a
+/// description or note: cleaned ([TextClean.clean], line breaks kept),
+/// then in user-perceived characters and at most
+/// [NameText.unitsPerChar] code units for each.
+bool _overLimit(String text, int limit) =>
+    !TextCap.fits(TextClean.clean(text, multiline: true), limit);
+
+/// Whether a description field holds no description: nothing, or only
+/// spaces and characters that show nothing ([TextClean.isBlank]: a
+/// zero-width space, a bidi mark, a word joiner, a lone surrogate, a
+/// Hangul filler). The Ledger refuses such a text as empty, so the field
+/// says what is missing instead of Save failing with "Check the
+/// highlighted fields." (UIFLOW-R24-01).
+bool isBlankDescription(String text) =>
+    TextClean.isBlank(TextClean.clean(text, multiline: true));
+
+/// The message under a description holding more than [kDescriptionMax]
+/// characters (one a peer or an earlier build saved); null otherwise.
+String? descriptionInputError(String text) =>
+    _overLimit(text, kDescriptionMax) ? S.errTooLong : null;
+
+/// The message under a notes field holding more than [kNotesMax]
+/// characters (a note a peer or an earlier build saved), which the Ledger
+/// will not save until it is shortened; null otherwise.
+String? notesInputError(String text) =>
+    _overLimit(text, kNotesMax) ? S.errTooLong : null;
+
+/// The formatters every name field caps its text with ([NameLimit]).
+List<TextInputFormatter> nameFormatters(int limit) => [
+  NameLengthFormatter(limit),
+];
+
+/// The existing name [candidate] would duplicate, as it is shown, or null.
+/// Both sides are compared in the one form names are stored and shown in
+/// ([NameText.key]): case ignored, a character that draws nothing left
+/// out ("Ra" + soft hyphen + "hul" is "Rahul", UIFLOW-R4-01, UIFLOW-R5-01)
+/// and one that draws a blank as wide as a space read as a space ("Rahul"
+/// + U+3164 + "Kumar" is "Rahul Kumar", never "RahulKumar", UIFLOW-R6-01).
+/// A candidate with no letter or number is no name and matches nothing.
 String? duplicateName(String candidate, Iterable<String> existing) {
-  String key(String n) => String.fromCharCodes(
-    TextClean.clean(n).runes.where((r) => !TextClean.isBlankMark(r)),
-  ).toLowerCase().replaceAll(RegExp(r'\s+'), ' ').trim();
-  final k = key(candidate);
-  if (k.isEmpty) return null;
+  if (!NameText.isValid(candidate)) return null;
+  final k = NameText.key(candidate);
   for (final e in existing) {
-    if (key(e) == k) return TextClean.clean(e);
+    if (NameText.key(e) == k) return NameText.display(e);
   }
   return null;
 }
+
+/// The year this release was built in: a clock that reads an earlier year
+/// is wrong (reset or never set), never the real date.
+const int entryDateFloorYear = 2026;
 
 /// The date picker the expense, payment and settle-up editors open: from
 /// 2000 to the end of next year, widened to take in [initial] when the
 /// stored date lies outside that range (a phone with a reset clock writes
 /// 1970, and a peer may send any date the remote check accepts), so the
 /// user can always see the date and correct it (SECURITY-R5-01).
+///
+/// The end of the range never falls before the end of the year after
+/// [entryDateFloorYear], whatever the clock says: a phone whose clock was
+/// reset to 1970 starts a new expense dated 1970, and its user must still
+/// be able to choose the real date (SECURITY-R6-01).
+///
+/// It is laid out for the phone it opens on ([showEntryDatePicker]): every
+/// day a full tap target and the chosen date inside the header at every
+/// text size (VISUAL-R10-01, VISUAL-R10-02).
 Future<DateTime?> pickEntryDate(
   BuildContext context, {
   required DateTime initial,
@@ -487,9 +752,10 @@ Future<DateTime?> pickEntryDate(
 }) {
   final day = DateTime(initial.year, initial.month, initial.day);
   final first = DateTime(2000);
-  final last = DateTime(now.year + 1, 12, 31);
-  return showDatePicker(
-    context: context,
+  final year = now.year < entryDateFloorYear ? entryDateFloorYear : now.year;
+  final last = DateTime(year + 1, 12, 31);
+  return showEntryDatePicker(
+    context,
     initialDate: day,
     firstDate: day.isBefore(first) ? day : first,
     lastDate: day.isAfter(last) ? day : last,

@@ -19,7 +19,10 @@ class PaymentMethodSelector extends StatelessWidget {
   });
 
   final PaymentMethod value;
-  final ValueChanged<PaymentMethod> onChanged;
+
+  /// Null disables the selector (the payment is being saved): it keeps
+  /// showing [value].
+  final ValueChanged<PaymentMethod>? onChanged;
 
   static const order = [
     PaymentMethod.upi,
@@ -73,10 +76,12 @@ class PaymentMethodSelector extends StatelessWidget {
                       EdgeInsets.symmetric(horizontal: 2),
                     ),
                   ),
-            onSelectionChanged: (s) {
-              Haptics.selection(context);
-              onChanged(s.first);
-            },
+            onSelectionChanged: onChanged == null
+                ? null
+                : (s) {
+                    Haptics.selection(context);
+                    onChanged!(s.first);
+                  },
           );
         },
       ),
@@ -112,7 +117,10 @@ class BeforeAfterEntry {
 
 /// "What changes" on Settle up (render 4): a white card with a Now and an
 /// After column; each row shows a balance before and after the payment,
-/// with a quiet arrow between. At a large text scale each row stacks.
+/// with a quiet arrow between. At a large text scale, or when the two
+/// amount columns would leave a row's label less room than its widest word
+/// (a 320 dp phone), each row stacks: the label is never broken mid-word
+/// (VISUAL-R33-01, the VISUAL-R32-02 rule).
 class BeforeAfterTable extends StatelessWidget {
   const BeforeAfterTable({
     super.key,
@@ -130,11 +138,47 @@ class BeforeAfterTable extends StatelessWidget {
   static const double _col = 96;
   static const double _arrow = 22;
 
+  /// The row's side padding and the gap after the label.
+  static const double _rowChrome = 2 * Space.lg + Space.sm;
+
+  TextStyle _titleStyle(ThemeData theme) =>
+      theme.textTheme.titleSmall!.copyWith(fontSize: 14, height: 19 / 14);
+
+  TextStyle _subtitleStyle(ThemeData theme) => theme.textTheme.labelSmall!
+      .withWeight(FontWeight.w400)
+      .copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+  /// Whether every label keeps its widest word beside the Now and After
+  /// columns in a table [width] wide.
+  bool _labelsFitBeside(BuildContext context, double width) {
+    if (!width.isFinite) return true;
+    final theme = Theme.of(context);
+    final room = width - _rowChrome - 2 * _col - _arrow;
+    for (final e in entries) {
+      if (longestWordWidth(context, e.title, _titleStyle(theme)) > room) {
+        return false;
+      }
+      final sub = e.subtitle;
+      if (sub != null &&
+          longestWordWidth(context, sub, _subtitleStyle(theme)) > room) {
+        return false;
+      }
+    }
+    return true;
+  }
+
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) => _table(
+      context,
+      stacked: isLargeText(context) || !_labelsFitBeside(context, c.maxWidth),
+    ),
+  );
+
+  Widget _table(BuildContext context, {required bool stacked}) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
-    final large = isLargeText(context);
+    final large = stacked;
     final headStyle = theme.textTheme.labelSmall!.copyWith(
       color: scheme.onSurfaceVariant,
     );
@@ -163,20 +207,9 @@ class BeforeAfterTable extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(
-            e.title,
-            style: theme.textTheme.titleSmall!.copyWith(
-              fontSize: 14,
-              height: 19 / 14,
-            ),
-          ),
+          Text(e.title, style: _titleStyle(theme)),
           if (e.subtitle != null)
-            Text(
-              e.subtitle!,
-              style: theme.textTheme.labelSmall!
-                  .withWeight(FontWeight.w400)
-                  .copyWith(color: scheme.onSurfaceVariant),
-            ),
+            Text(e.subtitle!, style: _subtitleStyle(theme)),
         ],
       );
       final body = large

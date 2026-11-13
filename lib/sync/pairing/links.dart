@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../../core/ids.dart';
+import '../peer_label.dart';
 import '../peer_name.dart';
 
 String _b64(Uint8List bytes) => base64Url.encode(bytes).replaceAll('=', '');
@@ -70,7 +71,8 @@ final class InviteLink {
         // Names come from whoever made the link: shown, so cleaned.
         groupName: cleanPeerName(n),
         currency: c,
-        fromName: cleanPeerName(q['f'] ?? ''),
+        // '' when it shows nothing: the join prompt then says "Someone".
+        fromName: shownPeerName(q['f'] ?? ''),
         host: q['h'],
         deviceId: q['d'],
       );
@@ -123,7 +125,7 @@ final class ConnectLink {
     return ConnectLink(
       hosts: hosts,
       deviceId: d,
-      deviceName: cleanPeerName(q['n']?.first ?? ''),
+      deviceName: shownPeerName(q['n']?.first ?? ''),
     );
   }
 }

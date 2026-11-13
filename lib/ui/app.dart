@@ -9,6 +9,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/models.dart';
 import '../theme/app_theme.dart';
+import 'format/app_material_localizations.dart';
 import 'platform/app_window.dart';
 import 'providers.dart';
 import 'router.dart';
@@ -31,17 +32,32 @@ class SettleUpApp extends ConsumerStatefulWidget {
 }
 
 class _SettleUpAppState extends ConsumerState<SettleUpApp> {
+  AppLifecycleListener? _lifecycle;
+
   @override
   void initState() {
     super.initState();
     // Nothing to follow when startup failed: there are no settings.
     if (ref.read(startupFailureProvider) != null) return;
+    // Back in the foreground: time passed or the date may have been
+    // changed meanwhile, which can set or clear the Settings clock notice
+    // (DATA-R31-01).
+    _lifecycle = AppLifecycleListener(
+      onResume: () =>
+          unawaited(ref.read(ledgerRepositoryProvider).recheckClock()),
+    );
     ref.listenManual(appSettingsProvider, (_, next) {
       final settings = next.value;
       if (settings != null) {
         unawaited(AppWindow.setNightMode(settings.themeMode));
       }
     }, fireImmediately: true);
+  }
+
+  @override
+  void dispose() {
+    _lifecycle?.dispose();
+    super.dispose();
   }
 
   @override
@@ -64,6 +80,8 @@ class _SettleUpAppState extends ConsumerState<SettleUpApp> {
       darkTheme: AppTheme.dark(),
       themeMode: SettleUpApp.themeModeOf(settings.themeMode),
       routerConfig: router,
+      // Day-first dates in every Material widget (VISUAL-R11-01).
+      localizationsDelegates: const [AppMaterialLocalizations.delegate],
       builder: (context, child) => HapticsScope(
         enabled: settings.vibration,
         child: child ?? const SizedBox.shrink(),

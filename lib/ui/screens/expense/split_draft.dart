@@ -32,14 +32,15 @@ String formatPercent(int bp) {
   return '$whole.${f.endsWith('0') ? f.substring(0, 1) : f}';
 }
 
-/// Signed minor units: "+50", "-50", "−50", "–50", "50-", "(50)", "50",
-/// "1,000", "1.234,50". A sign on its own (being typed) is zero.
+/// Signed minor units, read by the grammar every amount input uses
+/// ([readAmount]) with one leading sign allowed: "+50", "-50", "−50",
+/// "₹-50", "50", "1,000", "1.234,50". Any other way of writing a minus
+/// ("–50", "(50)", "50-", "minus 50", "▲50") is no amount, so a sign is
+/// never dropped. An empty field, or a sign on its own (being typed), is
+/// zero.
 int? parseSignedMinor(String text, Currency c) {
   final t = text.trim();
-  if (t.isEmpty ||
-      RegExp(r'^[+\-\u2212\u2013\u2014\u2010\u2011()\s]*$').hasMatch(t)) {
-    return 0;
-  }
+  if (RegExp(r'^[+\-\u2212]?$').hasMatch(t)) return 0;
   return parseSignedAmountInput(t, c);
 }
 

@@ -9,6 +9,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/sync/platform/permissions.dart';
+import 'package:settle_up/sync/transport/nearby/nearby_api.dart';
 import 'package:settle_up/sync/transport/nearby/nearby_endpoint_name.dart';
 import 'package:settle_up/sync/transport/nearby/nearby_transport.dart';
 import 'package:settle_up/sync/transport/transport.dart';
@@ -138,6 +139,76 @@ void main() {
       await pumpUntil(() => api.discovering);
       await again.cancel();
       expect(api.count('startDiscovery'), 2);
+    });
+
+    group('SYNC-R6-01: a re-advert under a new endpoint whose loss is missed',
+        () {
+      String nameOf(String advertId, String device) => NearbyEndpointName(
+            advertId: advertId,
+            deviceName: device,
+            groupTokens: [token(1)],
+          ).encode();
+
+      Future<Set<String>> namesOverRounds(
+        NearbyTransport t,
+        FakeNearbyApi api,
+        List<NearbyEvent> events,
+      ) async {
+        final seen = <DiscoveredPeer>[];
+        final sub = t.discover().listen(seen.add);
+        await pumpUntil(() => api.discovering);
+        for (final e in events) {
+          api.deliver(e);
+          await Future<void>.delayed(Duration.zero);
+        }
+        await Future<void>.delayed(_rediscover ~/ 2);
+        seen.clear();
+        await Future<void>.delayed(_rediscover * 4);
+        await sub.cancel();
+        return {for (final p in seen) '${p.address}/${p.name}'};
+      }
+
+      test('the same advert id replaces the old endpoint', () async {
+        final api = air.phone('A');
+        final a = transport(api);
+        final shown = await namesOverRounds(a, api, [
+          NearbyEndpointFound('E1', nameOf('bbbbbbbb', 'Pixel 8')),
+          NearbyEndpointFound('E2', nameOf('bbbbbbbb', "Alex's phone")),
+        ]);
+        expect(shown, {"E2/Alex's phone"});
+      });
+
+      test('a late loss of the old endpoint keeps the new one', () async {
+        final api = air.phone('A');
+        final a = transport(api);
+        final shown = await namesOverRounds(a, api, [
+          NearbyEndpointFound('E1', nameOf('bbbbbbbb', 'Pixel 8')),
+          NearbyEndpointFound('E2', nameOf('bbbbbbbb', "Alex's phone")),
+          NearbyEndpointLost('E1'),
+        ]);
+        expect(shown, {"E2/Alex's phone"});
+      });
+
+      test('different advert ids are different phones and both stay',
+          () async {
+        final api = air.phone('A');
+        final a = transport(api);
+        final shown = await namesOverRounds(a, api, [
+          NearbyEndpointFound('E1', nameOf('bbbbbbbb', 'Pixel 8')),
+          NearbyEndpointFound('E2', nameOf('cccccccc', 'Pixel 8')),
+        ]);
+        expect(shown, {'E1/Pixel 8', 'E2/Pixel 8'});
+      });
+
+      test('phones without an advert id are never merged', () async {
+        final api = air.phone('A');
+        final a = transport(api);
+        final shown = await namesOverRounds(a, api, [
+          NearbyEndpointFound('E1', nameOf('', 'Pixel 8')),
+          NearbyEndpointFound('E2', nameOf('', 'Pixel 8')),
+        ]);
+        expect(shown, {'E1/Pixel 8', 'E2/Pixel 8'});
+      });
     });
 
     test('two listeners share one plugin scan', () async {

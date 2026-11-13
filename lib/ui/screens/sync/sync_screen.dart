@@ -199,6 +199,9 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
   void _help() => showDialog<void>(
     context: context,
     builder: (context) => AlertDialog(
+      // Title and body scroll, the buttons stay on screen: a long name
+      // at a large text size never pushes them off (VISUAL-R29-01).
+      scrollable: true,
       title: const Text(S.howSyncWorks),
       content: const Text(S.howSyncWorksBody),
       actions: [
@@ -255,130 +258,151 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
           ),
         ],
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.xl),
-        children: [
-          textGutter(
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(headline, style: theme.textTheme.headlineSmall),
-                const SizedBox(height: Space.xs),
-                Text(
-                  body,
-                  style: theme.textTheme.bodyMedium!.copyWith(color: ink2),
+      // Slivers, so the nearby phones are built lazily: a stranger who
+      // announces thousands of services must not make every frame build
+      // and lay out every row (SECURITY-R17-01).
+      body: CustomScrollView(
+        slivers: [
+          SliverList.list(
+            children: [
+              textGutter(
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(headline, style: theme.textTheme.headlineSmall),
+                    const SizedBox(height: Space.xs),
+                    Text(
+                      body,
+                      style: theme.textTheme.bodyMedium!.copyWith(color: ink2),
+                    ),
+                    const SizedBox(height: Space.md),
+                    SyncTether(
+                      active: session is SessionActive,
+                      connected: session is SessionCompleted,
+                    ),
+                  ],
                 ),
-                const SizedBox(height: Space.md),
-                SyncTether(
-                  active: session is SessionActive,
-                  connected: session is SessionCompleted,
+              ),
+              if (session is! SessionIdle) ...[
+                const SizedBox(height: 14),
+                gutter(_SessionStrip(session: session)),
+              ],
+              if (radioIssues(_radios).isNotEmpty) ...[
+                const SizedBox(height: 14),
+                gutter(
+                  RadioIssuesCard(
+                    issues: radioIssues(_radios),
+                    onAllow: () => unawaited(_discover()),
+                  ),
                 ),
               ],
-            ),
-          ),
-          if (session is! SessionIdle) ...[
-            const SizedBox(height: 14),
-            gutter(_SessionStrip(session: session)),
-          ],
-          if (radioIssues(_radios).isNotEmpty) ...[
-            const SizedBox(height: 14),
-            gutter(
-              RadioIssuesCard(
-                issues: radioIssues(_radios),
-                onAllow: () => unawaited(_discover()),
+              const SizedBox(height: 14),
+              gutter(
+                _HostCard(host: status.host, onVisibleChanged: _toggleVisible),
               ),
-            ),
-          ],
-          const SizedBox(height: 14),
-          gutter(
-            _HostCard(host: status.host, onVisibleChanged: _toggleVisible),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            FilledButton.tonalIcon(
-              onPressed: () => context.push(Routes.syncScan),
-              style: KitButtonStyles.block.copyWith(
-                minimumSize: const WidgetStatePropertyAll(
-                  Size.fromHeight(Sizes.button),
+              const SizedBox(height: Space.md),
+              gutter(
+                FilledButton.tonalIcon(
+                  onPressed: () => context.push(Routes.syncScan),
+                  style: KitButtonStyles.block.copyWith(
+                    minimumSize: const WidgetStatePropertyAll(
+                      Size.fromHeight(Sizes.button),
+                    ),
+                  ),
+                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
+                  label: const Text(S.scanQr),
                 ),
               ),
-              icon: const Icon(Icons.qr_code_scanner_rounded, size: 20),
-              label: const Text(S.scanQr),
-            ),
-          ),
-          gutter(
-            SectionHeading(
-              S.nearbyPhones,
-              action: status.discovering
-                  ? const LookingIndicator(label: S.looking)
-                  : TextLink(
-                      S.lookAgain,
-                      onPressed: () => unawaited(_discover()),
-                    ),
-            ),
+              gutter(
+                SectionHeading(
+                  S.nearbyPhones,
+                  action: status.discovering
+                      ? const LookingIndicator(label: S.looking)
+                      : TextLink(
+                          S.lookAgain,
+                          onPressed: () => unawaited(_discover()),
+                        ),
+                ),
+              ),
+            ],
           ),
           if (peers.isEmpty)
-            gutter(
-              const ListSection(
-                children: [
-                  KitListRow(
-                    title: S.noneNearbyHeadline,
-                    subtitle: S.noneNearbyBody,
-                  ),
-                ],
+            SliverToBoxAdapter(
+              child: gutter(
+                const ListSection(
+                  children: [
+                    KitListRow(
+                      title: S.noneNearbyHeadline,
+                      subtitle: S.noneNearbyBody,
+                    ),
+                  ],
+                ),
               ),
             )
           else
-            gutter(
-              ListSection(
-                children: [
-                  for (final p in peers)
-                    NearbyPhoneRow(
-                      name: p.name,
-                      subtitle: nearbySubtitle(p, groupNames),
-                      kind: phoneKindOf(p),
-                      action: nearbyActionOf(p, session),
-                      onAction: () => startSyncWith(context, ref, p),
-                    ),
-                ],
-              ),
+            SliverListSection(
+              itemCount: peers.length,
+              itemBuilder: (context, i) {
+                final p = peers[i];
+                return NearbyPhoneRow(
+                  name: p.name,
+                  subtitle: nearbySubtitle(p, groupNames),
+                  kind: phoneKindOf(p),
+                  action: nearbyActionOf(p, session),
+                  onAction: () => startSyncWith(context, ref, p),
+                );
+              },
             ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          SliverPadding(
+            padding: const EdgeInsets.only(bottom: Space.xl),
+            sliver: SliverList.list(
               children: [
-                Icon(Icons.lock_outline_rounded, size: 18, color: ink2),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    S.encrypted,
-                    style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(22, 14, 22, 0),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Icon(Icons.lock_outline_rounded, size: 18, color: ink2),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          S.encrypted,
+                          style: theme.textTheme.bodySmall!.copyWith(
+                            color: ink2,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
+                if (history.isNotEmpty)
+                  gutter(
+                    ListSection(
+                      title: S.recentSyncs,
+                      children: [
+                        for (final r in history.take(5))
+                          KitListRow(
+                            title: r.peerName,
+                            titleLines: 1,
+                            subtitle: S.recentLine(
+                              DateLabels.ago(r.endedAt, now: now),
+                              r.transport == TransportKind.lan
+                                  ? S.wifi
+                                  : S.bluetooth,
+                            ),
+                            trailing: Text(
+                              S.sentGot(r.sentOps, r.receivedOps),
+                              style: theme.textTheme.bodySmall!.copyWith(
+                                color: ink2,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
               ],
             ),
           ),
-          if (history.isNotEmpty)
-            gutter(
-              ListSection(
-                title: S.recentSyncs,
-                children: [
-                  for (final r in history.take(5))
-                    KitListRow(
-                      title: r.peerName,
-                      subtitle: S.recentLine(
-                        DateLabels.ago(r.endedAt, now: now),
-                        r.transport == TransportKind.lan ? S.wifi : S.bluetooth,
-                      ),
-                      trailing: Text(
-                        S.sentGot(r.sentOps, r.receivedOps),
-                        style: theme.textTheme.bodySmall!.copyWith(color: ink2),
-                      ),
-                    ),
-                ],
-              ),
-            ),
         ],
       ),
     );

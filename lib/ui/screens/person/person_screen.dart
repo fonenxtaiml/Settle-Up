@@ -80,84 +80,89 @@ class PersonScreen extends ConsumerWidget {
     // Prefer the group carrying the hero's currency.
     final heroTarget = settleTarget.where((r) => (r.net[currency] ?? 0) != 0);
 
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: const BackArrow(),
-        title: AppBarTitle(
-          person.displayName,
-          subtitle: personSubtitle(person, snap.state),
+    // A name the app bar cuts reads in full at the top of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(),
+          title: AppBarTitle(
+            person.displayName,
+            subtitle: personSubtitle(person, snap.state),
+          ),
         ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.xxl),
-        children: [
-          textGutter(
-            GroupBalanceHero(minor: total, currency: currency, label: label),
-          ),
-          const SizedBox(height: 14),
-          textGutter(
-            ButtonPair(
-              labels: const [S.settleUp, S.addExpense],
-              first: FilledButton(
-                onPressed: settleTarget.isEmpty
-                    ? null
-                    : () => context.push(
-                        heroTarget.isNotEmpty
-                            ? heroTarget.first.settleRoute(currency)
-                            : settleTarget.first.settleRoute(),
-                      ),
-                child: const Text(S.settleUp),
-              ),
-              second: FilledButton.tonal(
-                onPressed: () =>
-                    context.push(Routes.newExpense(personId: personId)),
-                child: const Text(S.addExpense),
+        body: ListView(
+          padding: const EdgeInsets.only(bottom: Space.xxl),
+          children: [
+            const CutTitleHeading(),
+            textGutter(
+              GroupBalanceHero(minor: total, currency: currency, label: label),
+            ),
+            const SizedBox(height: 14),
+            textGutter(
+              ButtonPair(
+                labels: const [S.settleUp, S.addExpense],
+                first: FilledButton(
+                  onPressed: settleTarget.isEmpty
+                      ? null
+                      : () => context.push(
+                          heroTarget.isNotEmpty
+                              ? heroTarget.first.settleRoute(currency)
+                              : settleTarget.first.settleRoute(),
+                        ),
+                  child: const Text(S.settleUp),
+                ),
+                second: FilledButton.tonal(
+                  onPressed: () =>
+                      context.push(Routes.newExpense(personId: personId)),
+                  child: const Text(S.addExpense),
+                ),
               ),
             ),
-          ),
-          gutter(
-            ListSection(
-              title: S.inGroups,
-              children: [
-                for (final r in rows)
-                  KitListRow(
-                    title: r.name,
-                    trailing: _trailing(r.net),
-                    // Stack the balance before the group name loses its
-                    // longest word (VISUAL-R4-05).
-                    trailingWidth: _trailing(r.net).naturalWidth(context),
-                    onTap: () => r.mine == null
-                        ? context.push(Routes.group(r.groupId))
-                        : context.push(r.settleRoute()),
-                  ),
-              ],
-            ),
-          ),
-          if (total > 0)
             gutter(
-              Padding(
-                padding: const EdgeInsets.only(top: Space.md),
-                child: Align(
-                  alignment: Alignment.centerLeft,
-                  child: TextLink(
-                    S.remind,
-                    onPressed: () => SharePlus.instance.share(
-                      ShareParams(
-                        text: S.remindText(
-                          first,
-                          MoneyFormat.format(total, currency),
-                          rows
-                              .where((r) => (r.net[currency] ?? 0) > 0)
-                              .map((r) => r.name)
-                              .join(', '),
+              ListSection(
+                title: S.inGroups,
+                children: [
+                  for (final r in rows)
+                    KitListRow(
+                      title: r.name,
+                      titleLines: 1,
+                      trailing: _trailing(r.net),
+                      // Stack the balance before the group name loses its
+                      // longest word (VISUAL-R4-05).
+                      trailingWidth: _trailing(r.net).naturalWidth(context),
+                      onTap: () => r.mine == null
+                          ? context.push(Routes.group(r.groupId))
+                          : context.push(r.settleRoute()),
+                    ),
+                ],
+              ),
+            ),
+            if (total > 0)
+              gutter(
+                Padding(
+                  padding: const EdgeInsets.only(top: Space.md),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: TextLink(
+                      S.remind,
+                      onPressed: () => SharePlus.instance.share(
+                        ShareParams(
+                          text: S.remindText(
+                            first,
+                            MoneyFormat.format(total, currency),
+                            rows
+                                .where((r) => (r.net[currency] ?? 0) > 0)
+                                .map((r) => r.name)
+                                .join(', '),
+                          ),
                         ),
                       ),
                     ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

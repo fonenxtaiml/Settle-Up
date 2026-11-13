@@ -6,6 +6,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/ids.dart';
 import '../../../core/models.dart';
 import '../../../core/money.dart';
+import '../../../core/name_text.dart';
+import '../../../data/repositories.dart' show ClockNotice;
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
 import '../../strings.dart';
@@ -36,7 +38,8 @@ class SettingsScreen extends ConsumerWidget {
     final device = ref.watch(deviceIdentityProvider).value;
     // Kept live while Settings is open (CSV export, rename): Riverpod pauses
     // what only the covered Home screen watches.
-    ref.watch(ledgerProvider);
+    final clockNotice =
+        ref.watch(ledgerProvider).value?.clockNotice ?? ClockNotice.none;
     final theme = Theme.of(context);
     if (profile == null) {
       return Scaffold(
@@ -75,9 +78,11 @@ class SettingsScreen extends ConsumerWidget {
               children: [
                 KitListRow(
                   title: profile.displayName,
+                  titleLines: 1,
                   subtitle: device == null
                       ? null
                       : S.thisPhoneLine(device.deviceName),
+                  subtitleLines: 1,
                   leading: PersonAvatar(
                     id: profile.personId,
                     name: profile.displayName,
@@ -91,8 +96,20 @@ class SettingsScreen extends ConsumerWidget {
                       initial: profile.displayName,
                       helper: S.yourNameHelper,
                       maxLength: kMemberNameMax,
+                      isName: true,
                     );
                     if (name == null || !context.mounted) return;
+                    // Saved as it opened: nothing changed, so nothing is
+                    // saved or sent. Renaming me everywhere would undo the
+                    // name a group has for me, my own per-group rename or
+                    // another phone's (UIFLOW-R21-01).
+                    if (isNameAsOpened(
+                      name,
+                      profile.displayName,
+                      kMemberNameMax,
+                    )) {
+                      return;
+                    }
                     // Two members with one name cannot be told apart in
                     // Paid by or the split (the Members rule).
                     final clash = nameClashForMe(ref, profile.personId, name);
@@ -205,8 +222,17 @@ class SettingsScreen extends ConsumerWidget {
                       helper: S.phoneNameHelp,
                       // SPEC 8.9: the mDNS service name, at most 40.
                       maxLength: kDeviceNameMax,
+                      isName: true,
                     );
                     if (name == null || !context.mounted) return;
+                    // Saved as it opened: nothing to save (UIFLOW-R21-01).
+                    if (isNameAsOpened(
+                      name,
+                      device?.deviceName ?? '',
+                      kDeviceNameMax,
+                    )) {
+                      return;
+                    }
                     await runGuarded(context, () => repo.setDeviceName(name));
                   },
                 ),
@@ -230,6 +256,20 @@ class SettingsScreen extends ConsumerWidget {
             ListSection(
               title: S.sectionAbout,
               children: [
+                // SPEC 7.3: the skew guard saw a peer stamp far ahead, or
+                // this phone holds changes peers hold back (DATA-R31-01).
+                if (clockNotice != ClockNotice.none)
+                  KitListRow(
+                    title: S.clockLooksWrong,
+                    subtitle: clockNotice == ClockNotice.ownChangesAhead
+                        ? S.clockOwnChangesAheadHelp
+                        : S.clockLooksWrongHelp,
+                    minHeight: Sizes.rowMinDense,
+                    trailing: Icon(
+                      Icons.schedule_rounded,
+                      color: theme.colorScheme.error,
+                    ),
+                  ),
                 KitListRow(
                   title: S.licenses,
                   minHeight: Sizes.rowMinDense,
@@ -309,7 +349,7 @@ String? nameClashForMe(WidgetRef ref, PersonId me, String name) {
 /// so friends see it after the next sync.
 Future<void> renameMeEverywhere(WidgetRef ref, PersonId me, String name) async {
   final ledger = ref.read(ledgerRepositoryProvider);
-  final trimmed = name.trim();
+  final trimmed = NameText.fit(name);
   for (final g in ledger.current.state.visibleGroups) {
     final mine = myMemberIn(g, me);
     if (mine == null) continue;

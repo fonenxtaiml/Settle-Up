@@ -43,6 +43,12 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
   Future<void> _add(GroupState g) async {
     final n = _name.text.trim();
     if (n.isEmpty) return;
+    final notName = nameInputError(n, limit: kMemberNameMax);
+    if (notName != null) {
+      Haptics.invalid(context);
+      setState(() => _nameError = notName);
+      return;
+    }
     final dup = duplicateName(n, [
       for (final m in g.activeMembers) m.displayName,
     ]);
@@ -87,6 +93,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           title: S.renameTitle,
           initial: m.displayName,
           maxLength: kMemberNameMax,
+          isName: true,
         );
         final dup = name == null
             ? null
@@ -98,7 +105,13 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           showSnack(context, S.alreadyInGroup(dup));
           return;
         }
-        if (name != null && mounted) {
+        // A name left as the prompt opened with it is no rename: sending
+        // it would undo a rename another phone made meanwhile
+        // (UIFLOW-R17-01). The same once saved is the same name too: a
+        // space added is no rename (UIFLOW-R21-01).
+        if (name != null &&
+            !isNameAsOpened(name, m.displayName, kMemberNameMax) &&
+            mounted) {
           await runGuarded(
             context,
             () => ledger.renameMember(g.groupId, m.id, name),
@@ -130,6 +143,9 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
           await showDialog<void>(
             context: context,
             builder: (context) => AlertDialog(
+              // Title and body scroll, the buttons stay on screen: a long name
+              // at a large text size never pushes them off (VISUAL-R29-01).
+              scrollable: true,
               title: Text(S.cannotRemoveTitle(m.displayName)),
               content: Text(S.cannotRemoveBody(m.displayName, open)),
               actions: [
@@ -204,6 +220,7 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
                 for (final m in members)
                   KitListRow(
                     title: m.id == myId ? S.you : m.displayName,
+                    titleLines: 1,
                     subtitle: m.id == myId
                         ? S.youSub
                         : m.isPlaceholder
@@ -230,12 +247,15 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
                 hintText: S.personNameHint,
                 controller: _name,
                 maxLength: kMemberNameMax,
+                inputFormatters: nameFormatters(kMemberNameMax),
                 errorText: _nameError,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _add(g),
                 onChanged: (_) => setState(() => _nameError = null),
                 trailing: FilledButton.tonal(
-                  onPressed: _name.text.trim().isEmpty ? null : () => _add(g),
+                  onPressed: !isSavableName(_name.text, kMemberNameMax)
+                      ? null
+                      : () => _add(g),
                   style: KitButtonStyles.small(context),
                   child: const Text(S.addPerson),
                 ),

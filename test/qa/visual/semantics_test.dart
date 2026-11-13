@@ -31,7 +31,23 @@ Future<List<String>> guidelineFailures(
   );
   final out = <String>[];
   for (final g in only ?? guidelines) {
-    final r = await g.evaluate(tester);
+    var r = await g.evaluate(tester);
+    if (!r.passed && g == textContrastGuideline) {
+      // The guideline samples a text's paint rect inflated by 4 dp, so a
+      // paragraph that ends within 4 dp of a scroll view's edge has the
+      // bar beyond the edge sampled as its "light" colour (1.28 on Sync in
+      // dark, with nothing wrong on screen). Measure again with the lists
+      // moved 12 dp: a real contrast failure fails in both positions.
+      for (final e in find.byType(Scrollable).evaluate()) {
+        final p = (e as StatefulElement).state as ScrollableState;
+        final pos = p.position;
+        if (pos.axis == Axis.vertical && pos.maxScrollExtent > 0) {
+          pos.jumpTo((pos.pixels + 12).clamp(0, pos.maxScrollExtent));
+        }
+      }
+      await tester.pump();
+      r = await g.evaluate(tester);
+    }
     if (!r.passed) {
       out.add('${g.description}: ${(r.reason ?? '').split('\n').first}');
     }

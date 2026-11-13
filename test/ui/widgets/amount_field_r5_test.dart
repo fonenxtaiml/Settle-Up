@@ -220,10 +220,11 @@ void main() {
         expect(f.text, s, reason: '$c "$s" is shown as typed');
         expect(find.text(KitStrings.amountDecimals(0)), findsOneWidget);
       }
-      // Nothing more after three digits, and no second separator.
+      // More digits or a second separator never make it an amount
+      // (round 7: what is shown is what was typed, and it holds none).
       await f.pump('JPY');
       await f.keys('1200.5005.');
-      expect((f.text, f.reported), ('1200.500', null));
+      expect(f.reported, isNull);
     });
 
     testWidgets('deleting the separator gives the amount back', (t) async {
@@ -271,7 +272,9 @@ void main() {
         '(30)',
         '(Rs 30)',
       ]) {
-        expect(parseSignedMinor(s, inr), -3000, reason: s);
+        // Round 7, one strict grammar: only '-' and U+2212 write a minus,
+        // so these are no amount and their sign is never dropped.
+        expect(parseSignedMinor(s, inr), isNull, reason: s);
         expect(parseAmountInput(s, inr), isNull, reason: s);
       }
       for (final s in [
@@ -300,7 +303,9 @@ void main() {
           TextEditingValue.empty,
           TextEditingValue(text: s),
         );
-        expect(parseSignedMinor(v.text, inr), -3000, reason: s);
+        // No amount (round 7): the field says it cannot read it, and the
+        // sign is never dropped into a plus.
+        expect(parseSignedMinor(v.text, inr), isNull, reason: s);
       }
     });
   });

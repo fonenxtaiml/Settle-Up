@@ -522,6 +522,6 @@ void main() {
             'the old service (same address, same advert id) is still '
             're-emitted every rediscover round, so the row shows: $shown',
       );
-    }, skip: 'SYNC-R6-01');
+    });
   });
 }

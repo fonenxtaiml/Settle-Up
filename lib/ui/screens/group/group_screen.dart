@@ -73,60 +73,66 @@ class GroupScreen extends ConsumerWidget {
     final spent = spentIn(g, currency);
     final title = groupTitle(g, me);
 
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: const BackArrow(),
-        title: AppBarTitle(
-          title,
-          subtitle: info.isDirect
-              ? S.justYouTwo
-              : S.groupSubtitle(
-                  g.activeMembers.length,
-                  MoneyFormat.format(spent, currency),
-                ),
-          shortSubtitle: info.isDirect
-              ? null
-              : S.groupSpent(MoneyFormat.format(spent, currency)),
-        ),
-        actions: [
-          if (!info.isDirect)
-            IconButton(
-              onPressed: () => context.push(Routes.members(groupId)),
-              tooltip: S.members,
-              icon: const Icon(Icons.person_add_alt_1_outlined),
-            ),
-          PopupMenuButton<_Menu>(
-            tooltip: S.moreOptions,
-            icon: const Icon(Icons.more_vert_rounded),
-            onSelected: (m) => switch (m) {
-              _Menu.edit => context.push(Routes.editGroup(groupId)),
-              _Menu.members => context.push(Routes.members(groupId)),
-              _Menu.activity => context.push(Routes.groupActivity(groupId)),
-              _Menu.export => shareGroupCsv(context, g, title),
-            },
-            itemBuilder: (context) => [
-              if (!info.isDirect)
-                const PopupMenuItem(
-                  value: _Menu.edit,
-                  child: Text(S.editGroup),
-                ),
-              const PopupMenuItem(value: _Menu.members, child: Text(S.members)),
-              const PopupMenuItem(
-                value: _Menu.activity,
-                child: Text(S.activityTitle),
-              ),
-              const PopupMenuItem(
-                value: _Menu.export,
-                child: Text(S.exportCsv),
-              ),
-            ],
+    // A group name the app bar cuts reads in full at the top of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(),
+          title: AppBarTitle(
+            title,
+            subtitle: info.isDirect
+                ? S.justYouTwo
+                : S.groupSubtitle(
+                    g.activeMembers.length,
+                    MoneyFormat.format(spent, currency),
+                  ),
+            shortSubtitle: info.isDirect
+                ? null
+                : S.groupSpent(MoneyFormat.format(spent, currency)),
           ),
-        ],
+          actions: [
+            if (!info.isDirect)
+              IconButton(
+                onPressed: () => context.push(Routes.members(groupId)),
+                tooltip: S.members,
+                icon: const Icon(Icons.person_add_alt_1_outlined),
+              ),
+            PopupMenuButton<_Menu>(
+              tooltip: S.moreOptions,
+              icon: const Icon(Icons.more_vert_rounded),
+              onSelected: (m) => switch (m) {
+                _Menu.edit => context.push(Routes.editGroup(groupId)),
+                _Menu.members => context.push(Routes.members(groupId)),
+                _Menu.activity => context.push(Routes.groupActivity(groupId)),
+                _Menu.export => shareGroupCsv(context, g, title),
+              },
+              itemBuilder: (context) => [
+                if (!info.isDirect)
+                  const PopupMenuItem(
+                    value: _Menu.edit,
+                    child: Text(S.editGroup),
+                  ),
+                const PopupMenuItem(
+                  value: _Menu.members,
+                  child: Text(S.members),
+                ),
+                const PopupMenuItem(
+                  value: _Menu.activity,
+                  child: Text(S.activityTitle),
+                ),
+                const PopupMenuItem(
+                  value: _Menu.export,
+                  child: Text(S.exportCsv),
+                ),
+              ],
+            ),
+          ],
+        ),
+        floatingActionButton: AddExpenseFab(
+          onPressed: () => context.push(Routes.newExpense(groupId: groupId)),
+        ),
+        body: _GroupBody(group: g, me: me, myId: myId, snapshot: snap),
       ),
-      floatingActionButton: AddExpenseFab(
-        onPressed: () => context.push(Routes.newExpense(groupId: groupId)),
-      ),
-      body: _GroupBody(group: g, me: me, myId: myId, snapshot: snap),
     );
   }
 }
@@ -190,6 +196,7 @@ class _GroupBody extends ConsumerWidget {
     return ListView(
       padding: const EdgeInsets.only(bottom: 96),
       children: [
+        const CutTitleHeading(),
         if (snapshot.groupsWithoutKey.contains(g.groupId))
           gutter(const MissingKeyNotice()),
         if (myId != null)

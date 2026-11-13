@@ -48,6 +48,13 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   bool _tried = false;
   bool _saving = false;
 
+  /// The group as it was when the form was loaded. Save compares the form
+  /// with these, not with the live group, so a field the user never
+  /// touched is sent as null (left alone) even when sync brought another
+  /// phone's change to it while the form was open (UIFLOW-R17-01).
+  Group? _loadedGroup;
+  GroupType? _loadedType;
+
   bool get _isNew => widget.groupId == null;
 
   @override
@@ -61,8 +68,10 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     if (_loaded) return;
     _loaded = true;
     if (g == null) return;
+    _loadedGroup = g;
     _name.text = g.name;
     _type = g.type == GroupType.direct ? GroupType.other : g.type;
+    _loadedType = _type;
     _currency = g.currency;
     _emoji = g.emoji;
     _simplify = g.simplifyDebts;
@@ -75,6 +84,11 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   bool _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
     if (n.isEmpty) return true;
+    final notName = nameInputError(n, limit: kMemberNameMax);
+    if (notName != null) {
+      setState(() => _personError = notName);
+      return false;
+    }
     // You are a member of every new group too (Members refuses your name
     // for the same reason).
     final me = ref.read(profileProvider).value?.displayName;
@@ -95,10 +109,26 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     return true;
   }
 
-  Future<void> _save(Group? original, Map<PersonId, String> people) async {
+  /// Whether the name field still holds the name the form was loaded
+  /// with. A name this phone already holds never blocks a change to
+  /// anything else (UIFLOW-R8-02 for profile names, UIFLOW-R15-01): one an
+  /// older phone or an earlier build gave the group may have no letter or
+  /// number, or be longer than [kGroupNameMax], and is kept as it is
+  /// unless the user edits it. Only a name the user types is checked. The
+  /// loaded name, not the live one, is the reference: a rename another
+  /// phone made while the form was open is not undone (UIFLOW-R17-01).
+  bool get _nameKept {
+    final loaded = _loadedGroup;
+    return loaded != null &&
+        (_name.text.trim() == loaded.name.trim() ||
+            isNameAsOpened(_name.text, loaded.name, kGroupNameMax));
+  }
+
+  Future<void> _save(Map<PersonId, String> people) async {
     setState(() => _tried = true);
     final name = _name.text.trim();
-    if (name.isEmpty || _saving) {
+    final kept = !_isNew && _nameKept;
+    if ((!kept && !isSavableName(name, kGroupNameMax)) || _saving) {
       Haptics.invalid(context);
       return;
     }
@@ -131,12 +161,14 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
           ),
         );
       } else {
-        final o = original!;
+        // Each field is compared with the value the form was loaded with
+        // (UIFLOW-R17-01): only what the user changed is sent.
+        final o = _loadedGroup!;
         await ledger.updateGroup(
           widget.groupId!,
           GroupPatch(
-            name: name == o.name ? null : name,
-            type: _type == o.type ? null : _type,
+            name: kept ? null : name,
+            type: _type == _loadedType ? null : _type,
             currency: currency == o.currency ? null : currency,
             emoji: _emoji == o.emoji ? null : (_emoji ?? ''),
             simplifyDebts: _simplify == null || _simplify == o.simplifyDebts
@@ -147,29 +179,43 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       }
     });
     if (!mounted) return;
-    setState(() => _saving = false);
-    if (!ok) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
+    }
+    // Still locked: the form keeps showing what was saved while it closes.
     Haptics.medium(context);
     if (created != null) {
       showSnack(context, S.groupCreated);
-      context.pushReplacement(Routes.group(created!));
+      if (bringScreenToFront(context)) {
+        context.pushReplacement(Routes.group(created!));
+      }
     } else {
       showSnack(context, S.groupSaved);
-      context.pop();
+      closeScreen(context, fallback: Routes.group(widget.groupId!));
     }
   }
 
+  /// Archive (or unarchive) is saved like the form: the screen is locked
+  /// while it is written, so nothing (Members, Delete group's prompt) can
+  /// open over it and be closed in its place, and it then closes only
+  /// itself (MONEY-R28-01 class).
   Future<void> _archive(Group g) async {
+    if (_saving) return;
+    setState(() => _saving = true);
     final ok = await runGuarded(
       context,
       () => ref
           .read(ledgerRepositoryProvider)
           .updateGroup(g.id, GroupPatch(archived: !g.archived)),
     );
-    if (ok && mounted) {
-      showSnack(context, g.archived ? S.groupSaved : S.groupArchived);
-      context.pop();
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
     }
+    showSnack(context, g.archived ? S.groupSaved : S.groupArchived);
+    closeScreen(context, fallback: Routes.group(g.id));
   }
 
   Future<void> _delete(Group g, int expenses) async {
@@ -179,15 +225,19 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       body: S.deleteGroupBody(expenses),
       confirmLabel: S.delete,
     );
-    if (!yes || !mounted) return;
+    if (!yes || !mounted || _saving) return;
+    setState(() => _saving = true);
     final ok = await runGuarded(
       context,
       () => ref.read(ledgerRepositoryProvider).deleteGroup(g.id),
     );
-    if (ok && mounted) {
-      showSnack(context, S.groupDeleted);
-      context.go(Routes.home);
+    if (!mounted) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
     }
+    showSnack(context, S.groupDeleted);
+    context.go(Routes.home);
   }
 
   @override
@@ -233,201 +283,218 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
           child: FilledButton(
-            onPressed: _saving ? null : () => _save(original, people),
+            onPressed: _saving ? null : () => _save(people),
             style: KitButtonStyles.block,
             child: Text(_isNew ? S.createGroupAction : S.saveChanges),
           ),
         ),
       ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.xl),
-        children: [
-          const SizedBox(height: Space.sm),
-          gutter(
-            LabeledTextField(
-              label: S.groupName,
-              hintText: S.groupNameHint,
-              controller: _name,
-              maxLength: 60,
-              errorText: _tried && _name.text.trim().isEmpty
-                  ? S.nameNeeded
-                  : null,
-              onChanged: (_) => setState(() {}),
-            ),
-          ),
-          gutter(const SectionHeading(S.groupType)),
-          gutter(
-            _GroupTypePicker(
-              value: _type,
-              onChanged: (t) => setState(() => _type = t),
-            ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            PickerTile(
-              label: S.currency,
-              value: '${currency.name} (${currency.code})',
-              leading: Text(
-                currency.symbol,
-                style: theme.textTheme.titleMedium,
-              ),
-              onTap: () async {
-                final code = await pickCurrency(
-                  context,
-                  selected: currency.code,
-                  pinned: [profile.homeCurrency],
-                );
-                if (code != null) setState(() => _currency = code);
-              },
-            ),
-          ),
-          const SizedBox(height: Space.md),
-          gutter(
-            ListSection(
-              children: [
-                KitListRow(
-                  title: S.emoji,
-                  minHeight: Sizes.rowMinDense,
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        _emoji == null || _emoji!.isEmpty ? S.noEmoji : _emoji!,
-                        style: theme.textTheme.bodyLarge!.copyWith(color: ink2),
-                      ),
-                      const SizedBox(width: Space.xs),
-                      Icon(Icons.chevron_right_rounded, color: ink2),
-                    ],
-                  ),
-                  onTap: () async {
-                    final e = await pickOption<String>(
-                      context,
-                      title: S.emoji,
-                      selected: _emoji ?? '',
-                      options: [
-                        ('', S.noEmoji),
-                        for (final e in _emojis) (e, e),
-                      ],
-                    );
-                    if (e == null) return;
-                    setState(() => _emoji = e.isEmpty ? null : e);
-                  },
-                ),
-                MergeSemantics(
-                  child: KitListRow(
-                    title: S.simplifyDebts,
-                    subtitle: simplify ? S.simplifyHelpOn : S.simplifyHelpOff,
-                    trailing: Switch(
-                      value: simplify,
-                      onChanged: (v) => setState(() => _simplify = v),
-                    ),
-                    onTap: () => setState(() => _simplify = !simplify),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (_isNew) ...[
-            gutter(const SectionHeading(S.addPeople)),
-            textGutter(
-              Text(
-                S.youAreIncluded,
-                style: theme.textTheme.bodySmall!.copyWith(color: ink2),
-              ),
-            ),
+      body: InputLock(
+        locked: _saving,
+        child: ListView(
+          padding: const EdgeInsets.only(bottom: Space.xl),
+          children: [
             const SizedBox(height: Space.sm),
             gutter(
               LabeledTextField(
-                label: S.personName,
-                hintText: S.personNameHint,
-                controller: _person,
-                maxLength: kMemberNameMax,
-                errorText: _personError,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _addPerson(people),
-                onChanged: (_) => setState(() => _personError = null),
-                trailing: FilledButton.tonal(
-                  onPressed: _person.text.trim().isEmpty
-                      ? null
-                      : () => _addPerson(people),
-                  style: KitButtonStyles.small(context),
-                  child: const Text(S.addPerson),
-                ),
+                label: S.groupName,
+                hintText: S.groupNameHint,
+                controller: _name,
+                maxLength: kGroupNameMax,
+                inputFormatters: nameFormatters(kGroupNameMax),
+                errorText: _name.text.trim().isEmpty
+                    ? (_tried ? S.nameNeeded : null)
+                    : _nameKept
+                    ? null
+                    : nameInputError(_name.text, limit: kGroupNameMax),
+                onChanged: (_) => setState(() {}),
               ),
             ),
-            if (_newNames.isNotEmpty)
-              gutter(
-                Padding(
-                  padding: const EdgeInsets.only(top: Space.sm),
-                  child: Wrap(
-                    spacing: Space.sm,
-                    runSpacing: Space.xs,
-                    children: [
-                      for (final (i, n) in _newNames.indexed)
-                        InputChip(
-                          label: Text(n),
-                          avatar: PersonAvatar(id: 'new-$i', name: n, size: 24),
-                          onDeleted: () =>
-                              setState(() => _newNames.removeAt(i)),
-                        ),
-                    ],
-                  ),
-                ),
+            gutter(const SectionHeading(S.groupType)),
+            gutter(
+              _GroupTypePicker(
+                value: _type,
+                onChanged: (t) => setState(() => _type = t),
               ),
-            if (sortedPeople.isNotEmpty) ...[
-              gutter(const SectionHeading(S.fromYourGroups)),
-              gutter(
-                Wrap(
-                  spacing: Space.sm,
-                  runSpacing: Space.xs,
-                  children: [
-                    for (final p in sortedPeople)
-                      FilterChip(
-                        label: Text(p.value),
-                        selected: _existing.contains(p.key),
-                        onSelected: (v) => setState(() {
-                          if (v) {
-                            _existing.add(p.key);
-                          } else {
-                            _existing.remove(p.key);
-                          }
-                        }),
-                      ),
-                  ],
+            ),
+            const SizedBox(height: Space.md),
+            gutter(
+              PickerTile(
+                label: S.currency,
+                value: '${currency.name} (${currency.code})',
+                leading: SymbolText(
+                  currency.symbol,
+                  style: theme.textTheme.titleMedium,
+                  maxWidth: SymbolText.maxLeadingWidth(context),
                 ),
+                onTap: () async {
+                  final code = await pickCurrency(
+                    context,
+                    selected: currency.code,
+                    pinned: [profile.homeCurrency],
+                  );
+                  if (code != null) setState(() => _currency = code);
+                },
               ),
-            ],
-          ] else ...[
+            ),
             const SizedBox(height: Space.md),
             gutter(
               ListSection(
                 children: [
                   KitListRow(
-                    title: S.members,
+                    title: S.emoji,
                     minHeight: Sizes.rowMinDense,
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.push(Routes.members(widget.groupId!)),
-                  ),
-                  KitListRow(
-                    title: original!.archived
-                        ? S.unarchiveGroup
-                        : S.archiveGroup,
-                    minHeight: Sizes.rowMinDense,
-                    onTap: () => _archive(original),
-                  ),
-                  KitListRow(
-                    title: S.deleteGroup,
-                    minHeight: Sizes.rowMinDense,
-                    titleStyle: theme.textTheme.titleSmall!.copyWith(
-                      color: theme.colorScheme.error,
+                    trailing: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _emoji == null || _emoji!.isEmpty
+                              ? S.noEmoji
+                              : _emoji!,
+                          style: theme.textTheme.bodyLarge!.copyWith(
+                            color: ink2,
+                          ),
+                        ),
+                        const SizedBox(width: Space.xs),
+                        Icon(Icons.chevron_right_rounded, color: ink2),
+                      ],
                     ),
-                    onTap: () => _delete(original, gs!.liveExpenses.length),
+                    onTap: () async {
+                      final e = await pickOption<String>(
+                        context,
+                        title: S.emoji,
+                        selected: _emoji ?? '',
+                        options: [
+                          ('', S.noEmoji),
+                          for (final e in _emojis) (e, e),
+                        ],
+                      );
+                      if (e == null) return;
+                      setState(() => _emoji = e.isEmpty ? null : e);
+                    },
+                  ),
+                  MergeSemantics(
+                    child: KitListRow(
+                      title: S.simplifyDebts,
+                      subtitle: simplify ? S.simplifyHelpOn : S.simplifyHelpOff,
+                      trailing: Switch(
+                        value: simplify,
+                        onChanged: (v) => setState(() => _simplify = v),
+                      ),
+                      onTap: () => setState(() => _simplify = !simplify),
+                    ),
                   ),
                 ],
               ),
             ),
+            if (_isNew) ...[
+              gutter(const SectionHeading(S.addPeople)),
+              textGutter(
+                Text(
+                  S.youAreIncluded,
+                  style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+                ),
+              ),
+              const SizedBox(height: Space.sm),
+              gutter(
+                LabeledTextField(
+                  label: S.personName,
+                  hintText: S.personNameHint,
+                  controller: _person,
+                  maxLength: kMemberNameMax,
+                  inputFormatters: nameFormatters(kMemberNameMax),
+                  errorText: _personError,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _addPerson(people),
+                  onChanged: (_) => setState(() => _personError = null),
+                  trailing: FilledButton.tonal(
+                    onPressed: !isSavableName(_person.text, kMemberNameMax)
+                        ? null
+                        : () => _addPerson(people),
+                    style: KitButtonStyles.small(context),
+                    child: const Text(S.addPerson),
+                  ),
+                ),
+              ),
+              if (_newNames.isNotEmpty)
+                gutter(
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.sm),
+                    child: Wrap(
+                      spacing: Space.sm,
+                      runSpacing: Space.xs,
+                      children: [
+                        for (final (i, n) in _newNames.indexed)
+                          InputChip(
+                            label: Text(n),
+                            avatar: PersonAvatar(
+                              id: 'new-$i',
+                              name: n,
+                              size: 24,
+                            ),
+                            onDeleted: () =>
+                                setState(() => _newNames.removeAt(i)),
+                          ),
+                      ],
+                    ),
+                  ),
+                ),
+              if (sortedPeople.isNotEmpty) ...[
+                gutter(const SectionHeading(S.fromYourGroups)),
+                gutter(
+                  Wrap(
+                    spacing: Space.sm,
+                    runSpacing: Space.xs,
+                    children: [
+                      for (final p in sortedPeople)
+                        FilterChip(
+                          label: Text(p.value),
+                          selected: _existing.contains(p.key),
+                          onSelected: (v) => setState(() {
+                            if (v) {
+                              _existing.add(p.key);
+                            } else {
+                              _existing.remove(p.key);
+                            }
+                          }),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ] else ...[
+              const SizedBox(height: Space.md),
+              gutter(
+                ListSection(
+                  children: [
+                    KitListRow(
+                      title: S.members,
+                      minHeight: Sizes.rowMinDense,
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () =>
+                          context.push(Routes.members(widget.groupId!)),
+                    ),
+                    KitListRow(
+                      title: original!.archived
+                          ? S.unarchiveGroup
+                          : S.archiveGroup,
+                      minHeight: Sizes.rowMinDense,
+                      onTap: () => _archive(original),
+                    ),
+                    KitListRow(
+                      title: S.deleteGroup,
+                      minHeight: Sizes.rowMinDense,
+                      titleStyle: theme.textTheme.titleSmall!.copyWith(
+                        color: theme.colorScheme.error,
+                      ),
+                      onTap: () => _delete(original, gs!.liveExpenses.length),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

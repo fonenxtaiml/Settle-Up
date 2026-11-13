@@ -7,10 +7,13 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/hlc.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
+import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/ui/router.dart';
+import 'package:settle_up/ui/screens/csv_share.dart';
 import 'package:settle_up/ui/strings.dart';
 import 'package:settle_up/ui/widgets/kit_strings.dart';
 
@@ -18,6 +21,7 @@ import 'real_harness.dart';
 
 const _share = MethodChannel('dev.fluttercommunity.plus/share');
 const _paths = MethodChannel('plugins.flutter.io/path_provider');
+const DeviceId _peer = 'bbbbbbbb-0000-7000-8000-0000000000b2';
 
 Finder tab(String label) =>
     find.descendant(of: find.byType(NavigationBar), matching: find.text(label));
@@ -607,19 +611,38 @@ void main() {
     final shares = stubShare(tester);
     final w = await RealWorld.create(name: 'Arjun');
     await w.seedGroup(name: 'गोवा ट्रिप');
-    await w.seedGroup(name: '🏖️🌴');
+    // A group name needs a letter or a number (UIFLOW-R6-01, DATA-R6-02);
+    // one with emoji only is refused on this phone and can still come from
+    // another phone, and its file name falls back.
+    await expectLater(
+      w.seedGroup(name: '🏖️🌴'),
+      throwsA(isA<LedgerException>()),
+    );
+    expect(csvFileName('🏖️🌴'), '$kCsvFallbackName.csv');
+    final beach = await w.seedGroup(name: 'Beach');
+    await w.ledger.applyRemote(beach, [
+      Operation(
+        id: 'peer-rename-beach',
+        groupId: beach,
+        deviceId: _peer,
+        counter: 1,
+        hlc: Hlc(qaNow.millisecondsSinceEpoch + 60000, 0, _peer),
+        entityType: EntityType.group,
+        entityId: beach,
+        kind: OpKind.update,
+        payload: {GroupFields.name: '🏖️🌴'},
+      ),
+    ]);
+    expect(w.state.groups[beach]!.group!.name, '🏖️🌴');
     await pumpReal(tester, w, location: Routes.settings);
     await qaTap(tester, find.text(S.exportGroupCsv));
     await qaTap(tester, inSheet('गोवा ट्रिप'));
-    await letIoFinish(tester);
-    await qaTap(tester, find.text(S.exportGroupCsv));
-    await qaTap(tester, inSheet('🏖️🌴'));
     await letIoFinish(tester);
     final names = [
       for (final s in shares)
         (s['paths']! as List).cast<String>().single.split('/').last,
     ];
-    expect(names, ['गोवा ट्रिप.csv', 'settle-up-export.csv']);
+    expect(names, ['गोवा ट्रिप.csv']);
     await w.shutdown(tester);
   });
 

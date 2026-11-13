@@ -76,7 +76,8 @@ void main() {
         await f.keys('0');
         expect((f.text, f.reported), ('1,250', want), reason: c);
         await f.keys(',');
-        expect(f.reported, want, reason: '$c "1,250,"');
+        // On its way to "1,250,000": no amount until then (round 7).
+        expect(f.reported, isNull, reason: '$c "1,250,"');
         await f.keys('000');
         expect(f.reported, 1250000000, reason: '$c "1,250,000"');
       }
@@ -194,7 +195,8 @@ void main() {
         ('50 kr', 'SEK', 5000),
         ('500 Rs.', 'INR', 50000),
         ('500 rupees', 'INR', 50000),
-        ('Rs 500 only', 'INR', 50000),
+        // A word besides the one currency mark is no amount (round 7).
+        ('Rs 500 only', 'INR', null),
         ('1,250 DT', 'TND', 1250),
         ('20 euro', 'EUR', 2000),
         ('3000円', 'JPY', 3000),
@@ -208,19 +210,15 @@ void main() {
 
     test('every common minus is read, and refused where no minus fits', () {
       final inr = cur('INR');
-      for (final s in [
-        '-30',
-        '\u221230',
-        '\u201330',
-        '\u201430',
-        '(30)',
-        '30-',
-        '30 -',
-        'Rs -30',
-        '-Rs 30',
-        '(Rs 30)',
-      ]) {
+      for (final s in ['-30', '\u221230', 'Rs -30', '-Rs 30']) {
         expect(parseSignedMinor(s, inr), -3000, reason: s);
+        expect(parseAmountInput(s, inr), isNull, reason: s);
+      }
+      // Round 7, one strict grammar: only '-' and U+2212 write a minus.
+      // Dashes, brackets and a trailing minus are no amount, so a sign is
+      // never dropped.
+      for (final s in ['\u201330', '\u201430', '(30)', '30-', '30 -', '(Rs 30)']) {
+        expect(parseSignedMinor(s, inr), isNull, reason: s);
         expect(parseAmountInput(s, inr), isNull, reason: s);
       }
       for (final s in ['-(30)', '+30-', '--30', '-30-']) {
@@ -268,10 +266,16 @@ void main() {
         write: (v) => minorToInput(v, inr),
         signed: true,
       );
-      expect(apply(f, '', '\u201330').text, '-30');
-      expect(apply(f, '', '(30)').text, '-30');
+      // Round 7: only '-' and U+2212 write a minus; other forms stay as
+      // pasted and are no amount, so the screen says it cannot read them.
+      expect(apply(f, '', '\u201330').text, '\u201330');
+      expect(parseSignedMinor('\u201330', inr), isNull);
+      expect(apply(f, '', '(30)').text, '(30)');
+      expect(parseSignedMinor('(30)', inr), isNull);
       expect(apply(f, '', '30-').text, '30-');
-      expect(parseSignedMinor('30-', inr), -3000);
+      expect(parseSignedMinor('30-', inr), isNull);
+      expect(apply(f, '', '\u221230').text, '\u221230');
+      expect(parseSignedMinor('\u221230', inr), -3000);
       expect(apply(f, '', '-30').text, '-30');
       expect(apply(f, '3', '3-').text, '3-');
       expect(apply(f, '3', '3(').text, '3');

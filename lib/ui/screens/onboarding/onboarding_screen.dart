@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../../core/money.dart';
+import '../../../core/name_text.dart';
 import '../../../theme/tokens.dart';
 import '../../providers.dart';
 import '../../strings.dart';
@@ -52,14 +53,14 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
   }
 
   Future<void> _start() async {
-    final name = _name.text.trim();
-    if (name.isEmpty || _saving) return;
+    // The name Settings saves: a letter or number is needed (DATA-R6-02).
+    if (!isSavableName(_name.text, kMemberNameMax) || _saving) return;
     setState(() => _saving = true);
     await runGuarded(
       context,
       () => ref
           .read(settingsRepositoryProvider)
-          .completeOnboarding(displayName: name, homeCurrency: _currency),
+          .completeOnboarding(displayName: _name.text, homeCurrency: _currency),
     );
     if (mounted) setState(() => _saving = false);
   }
@@ -70,7 +71,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     final ink2 = theme.colorScheme.onSurfaceVariant;
     final c = Currencies.of(_currency);
     final helper = theme.textTheme.bodySmall!.copyWith(color: ink2);
-    final name = _name.text.trim();
+    final valid = isSavableName(_name.text, kMemberNameMax);
+    final name = NameText.isValid(_name.text, kMemberNameMax)
+        ? NameText.fit(_name.text, kMemberNameMax)
+        : '';
     return Scaffold(
       bottomNavigationBar: SafeArea(
         top: false,
@@ -81,7 +85,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               FilledButton(
-                onPressed: name.isEmpty || _saving ? null : _start,
+                onPressed: !valid || _saving ? null : _start,
                 style: KitButtonStyles.block,
                 child: const Text(S.getStarted),
               ),
@@ -136,7 +140,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 label: S.yourName,
                 hintText: S.yourNameHint,
                 controller: _name,
-                maxLength: 40,
+                maxLength: kMemberNameMax,
+                inputFormatters: nameFormatters(kMemberNameMax),
+                errorText: nameInputError(_name.text, limit: kMemberNameMax),
                 textInputAction: TextInputAction.done,
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => _start(),
@@ -153,7 +159,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               PickerTile(
                 label: S.homeCurrency,
                 value: '${c.name} (${c.code})',
-                leading: Text(c.symbol, style: theme.textTheme.titleMedium),
+                leading: SymbolText(
+                  c.symbol,
+                  style: theme.textTheme.titleMedium,
+                  maxWidth: SymbolText.maxLeadingWidth(context),
+                ),
                 onTap: () async {
                   final code = await pickCurrency(context, selected: _currency);
                   if (code != null) setState(() => _currency = code);

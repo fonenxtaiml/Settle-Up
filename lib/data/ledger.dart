@@ -22,6 +22,7 @@ import '../core/ids.dart';
 import '../core/ledger_state.dart';
 import '../core/models.dart';
 import '../core/money.dart';
+import '../core/name_text.dart';
 import '../core/ops.dart';
 import '../core/split.dart';
 import '../core/version_vector.dart';
@@ -62,7 +63,10 @@ final class Ledger implements LedgerRepository, SyncStore {
     int Function()? nowMillis,
   }) async {
     final me = settings.device.deviceId;
-    final ops = await store.loadAll();
+    // Every stored op in the form it is offered to peers (DATA-R24-01).
+    final ops = [
+      for (final op in await store.loadAll()) TextRules.canonical(op),
+    ];
     final reducer = LedgerReducer()..applyAll(ops);
 
     var last = _restoredHlc(await store.getKv(KvKeys.hlcLast), me);
@@ -73,14 +77,19 @@ final class Ledger implements LedgerRepository, SyncStore {
     }
     final now = nowMillis ?? _wallClock;
     final clock = HlcClock(deviceId: me, last: last, nowMillis: now);
+    late final Ledger ledger;
+    // A restored clock far ahead of the wall clock (an edit made while it
+    // ran ahead, or a damaged kv value) is set back by the factory before
+    // the next own op is stamped (DATA-R29-01).
     final factory = OpFactory(
       deviceId: me,
       clock: clock,
       ids: ids,
       lastHlcOf: reducer.lastHlcOf,
+      newestStamp: (maxMillis) => ledger._newestStamp(maxMillis),
+      nowMillis: now,
     );
-    final ledger =
-        Ledger._(store, keys, settings, ids, factory, reducer, now);
+    ledger = Ledger._(store, keys, settings, ids, factory, reducer, now);
     await ledger._load(ops);
     return ledger;
   }
@@ -148,9 +157,97 @@ final class Ledger implements LedgerRepository, SyncStore {
 
   DeviceId get _me => _settings.device.deviceId;
 
-  /// True once a peer's clock was seen more than an hour ahead of ours
-  /// (Settings shows "This phone's clock looks wrong").
-  bool get clockSkewDetected => _factory.clock.skewDetected;
+  /// True once a peer's clock was seen more than an hour ahead of ours,
+  /// or while this phone holds own ops stamped more than
+  /// [maxRemoteAheadMs] ahead of its clock, which peers hold back until
+  /// their clocks catch up (DATA-R29-01). Settings shows "This phone's
+  /// clock looks wrong". The same value as the
+  /// [LedgerSnapshot.clockSkewDetected] of [current] (DATA-R31-01): both
+  /// come from [_clockNotice], and [current] follows the wall clock (see
+  /// [recheckClock]).
+  bool get clockSkewDetected => _clockNotice() != ClockNotice.none;
+
+  /// The one source of the clock notice, for the getter and every snapshot.
+  ClockNotice _clockNotice() {
+    if (_newestOwnOpTooFarAhead() != null) return ClockNotice.ownChangesAhead;
+    if (_factory.clock.skewDetected) return ClockNotice.peerAhead;
+    return ClockNotice.none;
+  }
+
+  /// The newest own op stamped more than [maxRemoteAheadMs] ahead of the
+  /// wall clock, if any: peers hold it back until their clocks reach it.
+  Operation? _newestOwnOpTooFarAhead() {
+    // Read the wall clock only when there is an op to compare: snapshots
+    // are built while the ledger opens, before an injected clock is ready.
+    if (_ops.isEmpty) return null;
+    final limit = _now() + maxRemoteAheadMs;
+    final me = _me;
+    for (var i = _ops.length - 1; i >= 0; i--) {
+      final op = _ops[i];
+      if (op.hlc.millis <= limit) return null;
+      if (op.deviceId == me) return op;
+    }
+    return null;
+  }
+
+  /// Re-checks the clock notice while it depends on the wall clock.
+  Timer? _clockTimer;
+
+  /// Longest wait between re-checks while [ClockNotice.ownChangesAhead] is
+  /// shown: a timer does not follow a date change made in system settings,
+  /// so a changed date is seen within this (or when the app resumes).
+  static const Duration clockRecheckEvery = Duration(hours: 1);
+
+  /// Runs after the commands already queued, so a snapshot is never
+  /// published from the middle of one.
+  @override
+  Future<void> recheckClock() async {
+    if (_closed) return;
+    await _serial(() async {
+      if (_closed) return;
+      if (_clockNotice() != _current.clockNotice) {
+        _emit();
+      } else {
+        _scheduleClockRecheck(_current);
+      }
+    });
+  }
+
+  /// While own ops are held back by peers, the notice clears once the wall
+  /// clock comes within [maxRemoteAheadMs] of them, with no other change
+  /// to publish it: schedule a re-check for then (DATA-R31-01).
+  void _scheduleClockRecheck(LedgerSnapshot snap) {
+    _clockTimer?.cancel();
+    _clockTimer = null;
+    if (_closed || snap.clockNotice != ClockNotice.ownChangesAhead) return;
+    final ahead = _newestOwnOpTooFarAhead();
+    if (ahead == null) return;
+    final clearsInMs = ahead.hlc.millis - maxRemoteAheadMs - _now() + 1;
+    final wait = Duration(milliseconds: math.max(clearsInMs, 0));
+    _clockTimer = Timer(
+      wait < clockRecheckEvery ? wait : clockRecheckEvery,
+      () => unawaited(recheckClock()),
+    );
+  }
+
+  /// The newest stamp of a stored op whose millis are at most [maxMillis]
+  /// (of any stored op when null).
+  Hlc? _newestStamp(int? maxMillis) {
+    if (_ops.isEmpty) return null;
+    if (maxMillis == null) return _ops.last.hlc;
+    // _ops ascends by HLC, so by millis: find the first op past maxMillis.
+    var lo = 0;
+    var hi = _ops.length;
+    while (lo < hi) {
+      final mid = (lo + hi) >> 1;
+      if (_ops[mid].hlc.millis <= maxMillis) {
+        lo = mid + 1;
+      } else {
+        hi = mid;
+      }
+    }
+    return lo == 0 ? null : _ops[lo - 1].hlc;
+  }
 
   Future<void> _load(List<Operation> ops) async {
     final me = _me;
@@ -209,6 +306,7 @@ final class Ledger implements LedgerRepository, SyncStore {
     }
     _records = await _store.syncRecords(limit: _recordLimit);
     _current = _buildSnapshot();
+    _scheduleClockRecheck(_current);
   }
 
   /// A key with no op and no invite hint was written by a createGroup (or
@@ -236,6 +334,8 @@ final class Ledger implements LedgerRepository, SyncStore {
   Future<void> close() async {
     if (_closed) return;
     _closed = true;
+    _clockTimer?.cancel();
+    _clockTimer = null;
     await _tail;
     await _snapshots.close();
     await _localOps.close();
@@ -245,9 +345,24 @@ final class Ledger implements LedgerRepository, SyncStore {
   // ------------------------------------------------------------ plumbing --
 
   /// Runs [body] after every earlier command (commands are serialized).
+  ///
+  /// A command that fails publishes nothing, unless the clock notice moved
+  /// on the way: then a snapshot carrying it is published before the error
+  /// reaches the caller (SPEC 7.3: every snapshot carries the getter's
+  /// value, DATA-R32-01). Stamping a batch can set the peer-ahead flag
+  /// ([HlcClock.tickAfter] on an entity a peer stamped more than an hour
+  /// ahead) before the store refuses it; that observation is about ops
+  /// already stored, so it is kept and shown, not lost.
   Future<T> _serial<T>(Future<T> Function() body) {
     if (_closed) return Future.error(StateError('Ledger is closed'));
-    final result = _tail.then((_) => body());
+    final result = _tail.then((_) async {
+      try {
+        return await body();
+      } catch (_) {
+        if (!_closed && _clockNotice() != _current.clockNotice) _emit();
+        rethrow;
+      }
+    });
     _tail = result.then<void>((_) {}, onError: (Object _) {});
     return result;
   }
@@ -257,8 +372,10 @@ final class Ledger implements LedgerRepository, SyncStore {
     // One sort beats many mid-list inserts for a large sync batch.
     final bulk = added.length > 64;
     if (bulk) _ops.addAll(added);
+    // One rebuild per entity, not per op: a peer's batch of renames of one
+    // member normalises the name once (DATA-R15-01).
+    _reducer.applyAll(added);
     for (final op in added) {
-      _reducer.apply(op);
       if (!bulk) _insertSorted(_ops, op, _byHlc);
       if (op.deviceId == me) {
         _insertSorted(_mine[op.groupId] ??= [], op,
@@ -347,11 +464,13 @@ final class Ledger implements LedgerRepository, SyncStore {
       unsharedCounts: Map.unmodifiable(counts),
       localDeviceId: _me,
       groupsWithoutKey: Set.unmodifiable(keyless),
+      clockNotice: _clockNotice(),
     );
   }
 
   void _emit() {
     _current = _buildSnapshot();
+    _scheduleClockRecheck(_current);
     if (!_snapshots.isClosed) _snapshots.add(_current);
   }
 
@@ -477,25 +596,72 @@ final class Ledger implements LedgerRepository, SyncStore {
   }
 
   static String _groupName(String v) =>
-      _line(v, 'name', TextRules.groupName);
+      _name(v, 'name', TextRules.groupName);
 
   static String _memberName(String v, String field) =>
-      _line(v, field, TextRules.memberName);
+      _name(v, field, TextRules.memberName);
 
-  /// My profile name as it goes into a member op. Settings validate it on
-  /// their own; a name saved before the limits is cleaned and shortened
-  /// rather than blocking every new group.
-  static String _profileName(Profile profile) {
-    final t = TextRules.clean(profile.displayName);
-    if (TextRules.isBlank(t)) {
-      _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
+  /// A name (SPEC 5.16): stored as it is shown and compared, [NameText.fit]
+  /// to [limit] characters (normalised, then cut like a pasted name when
+  /// normalising made it longer than the field let through, DATA-R8-01),
+  /// with at least one letter or number.
+  static String _name(String value, String field, int limit) {
+    final t = NameText.fit(value, limit);
+    if (!NameText.hasLetterOrNumber(t)) {
+      _fail(LedgerErrorCode.invalidInput, '$field is empty');
     }
-    if (TextRules.tooLong(t, TextRules.memberName) == null) return t;
-    final short = t.characters.take(TextRules.memberName).toString();
-    return TextRules.tooLong(short, TextRules.memberName) == null
-        ? short.trim()
-        : _fail(LedgerErrorCode.invalidInput, 'Your name is too long',
-            LedgerInputIssue.tooLong);
+    final why = TextRules.nameTooLong(value, limit);
+    if (why != null) {
+      throw LedgerException(LedgerErrorCode.invalidInput, '$field is $why',
+          LedgerInputIssue.tooLong);
+    }
+    return t;
+  }
+
+  /// The name of a person this phone already holds (my profile, or a
+  /// member of another group picked for a new one) as it goes into a
+  /// member op: [NameText.fit] like a typed name. A name saved before
+  /// names needed a letter (DATA-R6-02), by an earlier build or by an
+  /// older phone, is kept when it shows something by the rule every phone
+  /// checks names from peers with ([TextRules.isBlank]), for example
+  /// "😎": it is how that person is already shown, and refusing it would
+  /// block every new group with them (UIFLOW-R8-02). Null for a name that
+  /// shows nothing.
+  static String? _knownName(String value) {
+    final t = NameText.fit(value, TextRules.memberName);
+    if (NameText.hasLetterOrNumber(t)) return t;
+    return t.isEmpty || TextRules.isBlank(t) ? null : t;
+  }
+
+  /// [_knownName] of a person picked from another group.
+  static String _knownMemberName(String value, String field) =>
+      _knownName(value) ?? _memberName(value, field);
+
+  /// My profile name as it goes into a member op ([_knownName]). Settings
+  /// validate a name when it is saved; one saved before the limits is cut
+  /// rather than blocking every new group, and one that shows nothing
+  /// (only possible in a row written by an earlier build) falls back to
+  /// this phone's name, which is always a valid name, until I change it.
+  String _profileName(Profile profile) =>
+      _knownName(profile.displayName) ??
+      _knownName(_settings.device.deviceName) ??
+      _fail(LedgerErrorCode.invalidInput, 'Your name is empty');
+
+  /// [name] as it goes into a member op for [person]. My stored profile
+  /// name, when the op adds or renames me under it (Join > "I'm not on the
+  /// list" passes it as it is), goes by [_profileName] like New group and
+  /// Add friend: a name an earlier build saved with no letter ("\u{1F60E}")
+  /// or longer than the limit is how I am shown and must not block a flow
+  /// that adds me, with nothing on the screen to change (UIFLOW-R8-02). Any
+  /// other name was typed now and goes by the rule for a typed name.
+  String _nameFor(String name, PersonId? person, String field) {
+    final profile = _settings.profile;
+    if (profile != null &&
+        person == profile.personId &&
+        NameText.normalize(name) == NameText.normalize(profile.displayName)) {
+      return _profileName(profile);
+    }
+    return _memberName(name, field);
   }
 
   static Never _groupFull() => throw const LedgerException(
@@ -613,8 +779,8 @@ final class Ledger implements LedgerRepository, SyncStore {
         for (final p in draft.existingPeople) {
           final personId = _text(p.personId, 'personId');
           if (personId == profile.personId) continue;
-          existing.putIfAbsent(
-              personId, () => _memberName(p.displayName, 'member name'));
+          existing.putIfAbsent(personId,
+              () => _knownMemberName(p.displayName, 'member name'));
         }
         if (1 + newNames.length + existing.length >
             TextRules.maxActiveMembers) {
@@ -754,8 +920,8 @@ final class Ledger implements LedgerRepository, SyncStore {
   }) =>
       _serial(() async {
         final gs = _liveGroup(groupId);
-        final name = _memberName(displayName, 'displayName');
         final person = personId == null ? null : _text(personId, 'personId');
+        final name = _nameFor(displayName, person, 'displayName');
         // A 1:1 group stays two people.
         if (gs.group?.isDirect ?? false) {
           final known = person != null && gs.memberForPerson(person) != null;
@@ -790,7 +956,7 @@ final class Ledger implements LedgerRepository, SyncStore {
   ) =>
       _serial(() async {
         final member = _member(_liveGroup(groupId), memberId);
-        final displayName = _memberName(name, 'name');
+        final displayName = _nameFor(name, member.personId, 'name');
         if (displayName == member.displayName) return;
         await _commit(_factory.batch()
           ..update(groupId, EntityType.member, memberId,
@@ -875,7 +1041,7 @@ final class Ledger implements LedgerRepository, SyncStore {
         if (friend == profile.personId) {
           _fail(LedgerErrorCode.invalidInput, 'That is you');
         }
-        final name = _memberName(displayName, 'displayName');
+        final name = _knownMemberName(displayName, 'displayName');
         final code = _currency(currency);
         final found = <GroupId>[];
         for (final gs in _reducer.state.visibleGroups) {
@@ -1088,8 +1254,16 @@ final class Ledger implements LedgerRepository, SyncStore {
       _store.versionVector(groupId);
 
   @override
-  Future<List<Operation>> opsMissingFor(GroupId groupId, VersionVector peer) =>
-      _store.missingFor(groupId, peer);
+  Future<List<Operation>> opsMissingFor(
+    GroupId groupId,
+    VersionVector peer,
+  ) async =>
+      // An op stored by an earlier build may hold text a peer on this build
+      // refuses: it is offered as this phone shows it (DATA-R24-01).
+      [
+        for (final op in await _store.missingFor(groupId, peer))
+          TextRules.canonical(op),
+      ];
 
   @override
   Future<List<Operation>> applyRemote(GroupId groupId, List<Operation> ops) =>
@@ -1113,7 +1287,11 @@ final class Ledger implements LedgerRepository, SyncStore {
             if (op.hlc.millis <= limit) op,
         ];
         if (accepted.length != ops.length) {
+          final wasSkewed = _factory.clock.skewDetected;
           _factory.clock.skewDetected = true;
+          // Nothing else may change below: publish the flag now so the
+          // Settings notice appears even when every op was held back.
+          if (!wasSkewed) _emit();
           developer.log(
             'Held back ${ops.length - accepted.length} ops stamped more than '
             '${maxRemoteAheadMs ~/ 86400000} days ahead of this phone',
@@ -1318,9 +1496,12 @@ final class Ledger implements LedgerRepository, SyncStore {
           _emit();
           return false;
         }
-        var hint = TextRules.clean(nameHint);
+        // A group name from another phone's link, in the form group names
+        // are shown in ([NameText.display]).
+        var hint = NameText.display(nameHint, TextRules.groupName);
         if (TextRules.tooLong(hint, TextRules.groupName) != null) {
-          hint = hint.characters.take(TextRules.groupName).toString();
+          // Only a hint that shows nothing once normalised gets here.
+          hint = hint.characters.take(TextRules.groupName).toString().trim();
         }
         // The hint goes first: a key without a hint and without ops is
         // taken for a createGroup that never committed and dropped on open.

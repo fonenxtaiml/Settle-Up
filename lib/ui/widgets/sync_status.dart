@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
 import '../format/dates.dart';
+import 'beside_or_below.dart';
+import 'button_semantics.dart';
 import 'kit_layout.dart';
 import 'kit_strings.dart';
 import 'list_section.dart';
@@ -73,42 +75,52 @@ class SyncStatusChip extends StatelessWidget {
     final iconColor = state == SyncChipState.failed
         ? scheme.error
         : scheme.onSurface;
-    return Semantics(
-      button: onTap != null,
-      label: label,
-      excludeSemantics: true,
-      child: Material(
-        color: scheme.surfaceContainer,
-        shape: const StadiumBorder(),
-        child: InkWell(
-          onTap: onTap,
-          customBorder: const StadiumBorder(),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(minHeight: Sizes.buttonSmall),
-            child: Padding(
-              padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 14, 6),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (state == SyncChipState.inProgress)
-                    const _Spinner()
-                  else
-                    Icon(_icon(state), size: 18, color: iconColor),
-                  const SizedBox(width: 6),
-                  Flexible(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: theme.textTheme.titleSmall!.copyWith(fontSize: 14),
-                    ),
+    final Widget pill = Material(
+      color: scheme.surfaceContainer,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        onTap: onTap,
+        customBorder: const StadiumBorder(),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: Sizes.buttonSmall),
+          child: Padding(
+            padding: const EdgeInsetsDirectional.fromSTEB(10, 6, 14, 6),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (state == SyncChipState.inProgress)
+                  const _Spinner()
+                else
+                  Icon(_icon(state), size: 18, color: iconColor),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: theme.textTheme.titleSmall!.copyWith(fontSize: 14),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
       ),
+    );
+    return ButtonSemantics(
+      alwaysButton: false,
+      label: label,
+      onTap: onTap,
+      // A tappable 36 dp pill sits in a 48 dp tap target (VISUAL-R9-01).
+      child: onTap == null
+          ? pill
+          : TapTargetPadding(
+              padding: const EdgeInsets.symmetric(
+                vertical: (Sizes.minTap - Sizes.buttonSmall) / 2,
+              ),
+              onTap: onTap,
+              child: pill,
+            ),
     );
   }
 }
@@ -184,10 +196,10 @@ class SyncBanner extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(title, style: theme.textTheme.titleSmall),
+        // The strip's status and a stopped sync's next step wrap in full
+        // in every state (VISUAL-R31-02).
         Text(
           subtitle,
-          maxLines: large ? 3 : 1,
-          overflow: TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall!.copyWith(
             color: scheme.onSurfaceVariant,
           ),
@@ -219,35 +231,19 @@ class SyncBanner extends StatelessWidget {
               12,
               action == null || large ? 12 : 6.5,
             ),
-            child: large
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          ExcludeSemantics(child: icon),
-                          const SizedBox(width: Space.md),
-                          Expanded(child: text),
-                        ],
-                      ),
-                      if (action != null)
-                        Align(
-                          alignment: AlignmentDirectional.centerEnd,
-                          child: action,
-                        ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      ExcludeSemantics(child: icon),
-                      const SizedBox(width: Space.md),
-                      Expanded(child: text),
-                      if (action != null) ...[
-                        const SizedBox(width: Space.md),
-                        action,
-                      ],
-                    ],
-                  ),
+            // The Sync button sits beside the text while the text keeps a
+            // readable column, else under it (VISUAL-R32-02).
+            child: BesideOrBelow(
+              leading: ExcludeSemantics(child: icon),
+              leadingGap: Space.md,
+              main: text,
+              trailing: action,
+              gap: Space.md,
+              spacing: 0,
+              below: large,
+              minMainWidth: kMinTextBeside,
+              minMainFraction: 0.5,
+            ),
           ),
         ),
       ),

@@ -108,13 +108,16 @@ void main() {
 
     test('the largest op this app writes is accepted by a peer', () async {
       const flag = '\u{1F1EE}\u{1F1F3}'; // one character, 4 code units
-      final a = await _Phone.create(seed: 2, name: flag * 40);
+      // A name needs a letter (NameText.isValid): an ideograph with two
+      // accents is one character of 4 code units too.
+      const letter = '\u{20000}\u0301\u0302';
+      final a = await _Phone.create(seed: 2, name: letter * 40);
       addTearDown(a.ledger.close);
       final big = await a.ledger.createGroup(NewGroup(
-        name: flag * 60,
+        name: letter * 60,
         type: GroupType.trip,
         currency: 'INR',
-        newMemberNames: [for (var i = 0; i < 49; i++) flag * 40],
+        newMemberNames: [for (var i = 0; i < 49; i++) letter * 40],
       ));
       final members = a.snap.state.groups[big]!.members.keys.toList();
       final shares = {

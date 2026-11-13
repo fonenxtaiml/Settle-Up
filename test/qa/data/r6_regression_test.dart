@@ -9,12 +9,14 @@ import 'dart:typed_data';
 
 import 'package:characters/characters.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/data/kv_settings_repository.dart';
 import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/data/text_rules.dart';
 import 'package:settle_up/sync/crypto/handshake.dart';
 import 'package:settle_up/sync/name_cut.dart';
+import 'package:settle_up/sync/peer_label.dart';
 import 'package:settle_up/sync/peer_name.dart';
 import 'package:settle_up/sync/protocol/messages.dart';
 import 'package:settle_up/sync/protocol/session.dart';
@@ -27,6 +29,7 @@ import 'package:settle_up/ui/screens/csv_share.dart';
 
 import '../../sync/support/harness.dart';
 import '../../sync/support/phone.dart';
+import '../../sync/support/renamed_store.dart';
 import 'qa_data_harness.dart';
 
 bool wellFormed(String s) => utf8.decode(utf8.encode(s)) == s;
@@ -261,7 +264,9 @@ void main() {
 
     group('session name fallback', () {
       late TestPhone alex, priya;
+      var seeded = false;
       setUp(() async {
+        seeded = false;
         alex = await TestPhone.create('a', deviceName: "Alex's Pixel");
         priya = await TestPhone.create(
           'b',
@@ -274,10 +279,17 @@ void main() {
         await priya.close();
       });
 
-      Future<String> nameSeenByAlex(String priyaName, String hint) async {
-        final s = await alex.seedGroup(expenses: 1);
-        await priya.join(alex, s.g);
-        await priya.settings.setDeviceName(priyaName);
+      Future<String> nameSeenByAlex(
+        String priyaName,
+        String hint, {
+        bool renamed = false,
+      }) async {
+        if (!seeded) {
+          final s = await alex.seedGroup(expenses: 1);
+          await priya.join(alex, s.g);
+          seeded = true;
+        }
+        if (!renamed) await priya.settings.setDeviceName(priyaName);
         final (ci, cr) = await channelPair();
         final si = SyncSession(
           channel: ci,
@@ -288,7 +300,7 @@ void main() {
         );
         final sr = SyncSession(
           channel: cr,
-          store: priya.store,
+          store: renamed ? RenamedStore(priya.store, priyaName) : priya.store,
           role: SessionRole.responder,
           timings: fastTimings,
         );
@@ -305,32 +317,60 @@ void main() {
         'the repro name reaches the peer as its base letter and marks',
         () async {
           final got = await nameSeenByAlex('a${'\u0301' * 100}', 'hint');
-          expect(got, 'a${'\u0301' * 99}');
+          // Settings stores the name in the one form names take (NFKC: "a"
+          // and its first accent are one "á", UIFLOW-R6-01): 'á' and 99
+          // marks, 100 units, which the HELLO carries whole.
+          expect(got, NameText.normalize('a${'\u0301' * 100}'));
+          expect(got, '\u00E1${'\u0301' * 99}');
+          expect(got.length, lessThanOrEqualTo(100));
         },
       );
 
       test('DATA-R6-01: a phone name that shows nothing is shown as a blank '
           'name on the other phone', () async {
-        // Settings only trims, so each of these is a 1-character phone
-        // name. The phone advertises the same name, so the scanner's hint
-        // is the same blank text (the advert carries the device name).
-        for (final blank in ['\u200B', '\u3164', '\u2800', '\u115F']) {
+        // The HELLO carries [blank] whatever this phone's Settings allow
+        // (a peer on another app version, or a forged one), and the
+        // scanner's hint is the same phone's advert name.
+        for (final blank in [
+          '\u200B',
+          '\u3164',
+          '\u2800',
+          '\u115F',
+          '\u1160',
+          '\uFFA0',
+          '\u00AD',
+          '\u2060',
+          '\u200E',
+          '\u3000',
+          '\u0301',
+          '-',
+          '',
+        ]) {
           final hint = cleanPeerName(MdnsAdvert.serviceNameFor(blank));
-          final got = await nameSeenByAlex(blank, hint);
-          // Expected: a name with something to show, such as a fallback
-          // "Phone" (the fake engine uses 'Phone' for an empty name).
-          // Actual: '' for the zero-width space, and an invisible filler
-          // for U+3164 / U+2800 / U+115F (the session falls back to the
-          // hint only when the cleaned HELLO name is empty, not blank),
-          // so the session screen, Sync screen and history read
-          // "Synced with " with no name.
+          final got = await nameSeenByAlex(blank, hint, renamed: true);
+          final what = blank.runes.map((r) => r.toRadixString(16)).join(' ');
+          expect(TextRules.isBlank(got), isFalse, reason: 'U+$what -> "$got"');
+          // mDNS advertises an empty name as "Settle Up"; any other name
+          // that shows nothing gets the fixed name.
           expect(
-            TextRules.isBlank(got),
-            isFalse,
-            reason: 'U+${blank.runes.first.toRadixString(16)} -> "$got"',
+            got,
+            blank.trim().isEmpty ? 'Settle Up' : kUnnamedPeer,
+            reason: 'U+$what',
+          );
+          // With no hint either, the fixed name.
+          expect(
+            await nameSeenByAlex(blank, '', renamed: true),
+            kUnnamedPeer,
+            reason: 'U+$what',
+          );
+          // A Bluetooth or Nearby hint that shows nothing either.
+          expect(
+            await nameSeenByAlex(blank, blank, renamed: true),
+            kUnnamedPeer,
+            reason: 'U+$what',
           );
         }
-      }, skip: 'DATA-R6-01');
+      });
     });
   });
 
@@ -439,6 +479,6 @@ void main() {
           reason: 'U+${blank.runes.first.toRadixString(16)}: $create',
         );
       }
-    }, skip: 'DATA-R6-02');
+    });
   });
 }

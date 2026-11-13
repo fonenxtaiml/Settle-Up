@@ -15,14 +15,15 @@ import 'dart:convert';
 
 import 'package:characters/characters.dart';
 
+import '../core/name_text.dart';
 import '../core/ops.dart';
 import '../core/reducer/materialize.dart' show parseMoney;
 import '../core/text_clean.dart';
 
 abstract final class TextRules {
   /// SPEC 5.16.
-  static const int groupName = 60;
-  static const int memberName = 40;
+  static const int groupName = NameText.maxGroupLength;
+  static const int memberName = NameText.maxLength;
   static const int description = 120;
   static const int notes = 1000;
   static const int maxActiveMembers = 50;
@@ -34,7 +35,7 @@ abstract final class TextRules {
   /// A character (grapheme) may span several code units: an emoji with a
   /// skin tone or a flag takes 4. Past that a field is refused, so one
   /// character cannot carry unbounded combining marks.
-  static const int unitsPerChar = 4;
+  static const int unitsPerChar = NameText.unitsPerChar;
 
   /// No op from a peer is stored above this size (encoded JSON, UTF-16
   /// units), the frame of the smallest transport (BLE). The biggest op
@@ -69,28 +70,7 @@ abstract final class TextRules {
   /// stay inside a name (emoji, Hangul and flags need some of them), but a
   /// name made only of them is refused. Code points only, no Unicode
   /// tables, so every phone decides the same.
-  static bool isBlank(String value) =>
-      value.runes.every((r) => _isSpace(r) || isHidden(r) || _isBlankMark(r));
-
-  /// The characters String.trim removes (a fixed list, so the remote check
-  /// does not depend on the Dart version).
-  static bool _isSpace(int r) =>
-      (r >= 0x09 && r <= 0x0D) ||
-      r == 0x20 ||
-      r == 0x85 ||
-      r == 0xA0 ||
-      r == 0x1680 ||
-      (r >= 0x2000 && r <= 0x200A) ||
-      r == 0x2028 ||
-      r == 0x2029 ||
-      r == 0x202F ||
-      r == 0x205F ||
-      r == 0x3000 ||
-      r == 0xFEFF;
-
-  /// Characters that render as nothing (or as blank space) by themselves;
-  /// see [TextClean.isBlankMark].
-  static bool _isBlankMark(int r) => TextClean.isBlankMark(r);
+  static bool isBlank(String value) => TextClean.isBlank(value);
 
   /// Number of user-perceived characters in [value].
   static int length(String value) => value.characters.length;
@@ -102,6 +82,17 @@ abstract final class TextRules {
       return 'longer than $limit characters';
     }
     return null;
+  }
+
+  /// Null when the name [typed] may be saved for its length, else why not.
+  /// What is saved of a name ([NameText.fit]) always fits [limit]: NFKC can
+  /// make a name longer than it was typed ("\u337F" is four characters),
+  /// and such a name is cut like a pasted one, never refused for a length
+  /// the field's counter did not show (DATA-R8-01). A name is refused only
+  /// when it was too long as typed already.
+  static String? nameTooLong(String typed, int limit) {
+    if (tooLong(NameText.normalize(typed), limit) == null) return null;
+    return tooLong(typed.trim(), limit);
   }
 
   // ------------------------------------------------------- remote checks --
@@ -170,6 +161,15 @@ abstract final class TextRules {
   /// Null if a peer's [op] payload is within the limits, else the reason.
   /// Deterministic: code units only, no Unicode segmentation.
   static String? remoteProblem(Operation op) {
+    // Every string of the op, ids, keys and the fields this version does
+    // not know included, is well-formed UTF-16: a lone surrogate (valid
+    // JSON as "\ud800") makes the text engine refuse the whole line it
+    // is in (SECURITY-R21-01).
+    for (final id in [op.id, op.groupId, op.deviceId, op.entityId]) {
+      if (!TextClean.isWellFormed(id)) return 'an id is not well-formed UTF-16';
+    }
+    final bad = _illFormedField(op.payload);
+    if (bad != null) return '$bad is not well-formed UTF-16';
     final v1 = !op.isFromNewerSchema;
     final limits = _fields[op.entityType] ?? const <String, int>{};
     final tokens = _tokens[op.entityType] ?? const <String>{};
@@ -205,6 +205,106 @@ abstract final class TextRules {
       }
     }
     return null;
+  }
+
+  /// What a group or member name that shows nothing is held as in
+  /// [canonical]: the character the text engine draws for text it cannot
+  /// read, so the name is not blank and every phone shows the same.
+  static const String unreadableName = '\uFFFD';
+
+  /// [op] in the one form this phone shows and offers it: text a peer
+  /// would refuse ([remoteProblem]) put the way an updated phone holds it.
+  ///
+  /// The remote checks grew stricter over the builds (SPEC 5.16), and an
+  /// op stored before a check (written here or relayed from another
+  /// phone) may hold text a peer on this build refuses: a lone surrogate
+  /// (SECURITY-R21-01), a control or bidi character, a text field over its
+  /// code-unit cap, a group or member name that shows nothing. Offered as
+  /// stored, it fails the whole batch on every sync, and no later op of
+  /// its group reaches that peer (DATA-R24-01). Ledger reads every stored
+  /// op through this, for the reducer, the edit history and the ops it
+  /// sends, so both phones hold and show the same text:
+  ///  * lone surrogates are dropped from every string, field names and
+  ///    nested values included ([TextClean.wellFormed], as the reducer
+  ///    showed them already);
+  ///  * control and bidi characters are dropped from every field;
+  ///  * a text field over its cap is cut, at a code point, to the cap;
+  ///  * a group or member name that is left blank becomes
+  ///    [unreadableName].
+  /// Ids and the op's own fields are not changed (the app writes UUIDs).
+  /// An op that needs none of this, every op this build writes or
+  /// accepts, is returned as it is.
+  static Operation canonical(Operation op) {
+    final payload = _canonicalPayload(op);
+    if (identical(payload, op.payload)) return op;
+    final raw = op.raw;
+    return Operation(
+      id: op.id,
+      groupId: op.groupId,
+      deviceId: op.deviceId,
+      counter: op.counter,
+      hlc: op.hlc,
+      entityType: op.entityType,
+      entityId: op.entityId,
+      kind: op.kind,
+      payload: payload,
+      schemaVersion: op.schemaVersion,
+      raw: raw == null ? null : {...raw, 'payload': payload},
+    );
+  }
+
+  static Map<String, Object?> _canonicalPayload(Operation op) {
+    Map<String, Object?>? out;
+    var source = op.payload;
+    if (_illFormedField(source) != null) {
+      source = out = _wellFormedMap(source);
+    }
+    final v1 = !op.isFromNewerSchema;
+    final limits = _fields[op.entityType] ?? const <String, int>{};
+    for (final MapEntry(:key, :value) in source.entries) {
+      if (value is! String) continue;
+      var s = value;
+      if (_hasControl(s)) s = _withoutControls(s);
+      final limit = v1 ? limits[key] : null;
+      if (limit != null) {
+        final max = limit * unitsPerChar;
+        if (s.length > max) s = _cut(s, max);
+        if (_named[op.entityType] == key && isBlank(s)) s = unreadableName;
+      }
+      if (s != value) (out ??= Map<String, Object?>.of(source))[key] = s;
+    }
+    return out ?? op.payload;
+  }
+
+  /// [m] with every string in it, keys and nested values included, well
+  /// formed ([TextClean.wellFormed]).
+  static Map<String, Object?> _wellFormedMap(Map<Object?, Object?> m) {
+    final out = <String, Object?>{};
+    for (final MapEntry(:key, :value) in m.entries) {
+      final k = key is String ? TextClean.wellFormed(key) : '$key';
+      out[k] = _wellFormedJson(value);
+    }
+    return out;
+  }
+
+  static Object? _wellFormedJson(Object? v) => switch (v) {
+    final String s => TextClean.wellFormed(s),
+    final Map<Object?, Object?> m => _wellFormedMap(m),
+    final List<Object?> l => [for (final e in l) _wellFormedJson(e)],
+    _ => v,
+  };
+
+  /// [s] without the characters [_hasControl] finds.
+  static String _withoutControls(String s) =>
+      String.fromCharCodes(s.runes.where((r) => !_isControl(r)));
+
+  /// The longest prefix of [s] within [max] code units that does not
+  /// split a surrogate pair.
+  static String _cut(String s, int max) {
+    var end = max;
+    final c = s.codeUnitAt(end - 1);
+    if (c >= 0xD800 && c <= 0xDBFF) end--;
+    return s.substring(0, end);
   }
 
   /// The JSON type of every known field at schema version 1 (docs/SPEC.md
@@ -318,16 +418,35 @@ abstract final class TextRules {
         parseMoney(value) != null;
   }
 
-  static bool _hasControl(String value) {
-    for (final r in value.runes) {
-      if (isReordering(r) ||
-          (r < 0x20 && !TextClean.isBreak(r)) ||
-          (r >= 0x7F && r <= 0x9F && r != 0x85)) {
-        return true;
-      }
+  /// The payload field whose name or value holds a string that is not
+  /// well-formed UTF-16 at any depth (map keys included), or null.
+  static String? _illFormedField(Map<String, Object?> payload) {
+    bool bad(Object? v, int depth) => switch (v) {
+      final String s => !TextClean.isWellFormed(s),
+      final Map<Object?, Object?> m =>
+        depth > 64 ||
+            m.entries.any(
+              (e) =>
+                  (e.key is String &&
+                      !TextClean.isWellFormed(e.key! as String)) ||
+                  bad(e.value, depth + 1),
+            ),
+      final List<Object?> l => depth > 64 || l.any((e) => bad(e, depth + 1)),
+      _ => false,
+    };
+    for (final MapEntry(:key, :value) in payload.entries) {
+      if (!TextClean.isWellFormed(key)) return 'a field name';
+      if (bad(value, 0)) return key;
     }
-    return false;
+    return null;
   }
+
+  static bool _hasControl(String value) => value.runes.any(_isControl);
+
+  static bool _isControl(int r) =>
+      isReordering(r) ||
+      (r < 0x20 && !TextClean.isBreak(r)) ||
+      (r >= 0x7F && r <= 0x9F && r != 0x85);
 
   /// True when a known non-text field holds a long string or map key, a
   /// control or bidi character, or nests deeper than the money block.

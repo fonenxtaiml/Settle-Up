@@ -9,7 +9,9 @@ import '../hlc.dart';
 import '../ids.dart';
 import '../models.dart';
 import '../money.dart';
+import '../name_text.dart';
 import '../ops.dart';
+import '../text_clean.dart';
 
 /// One LWW register: the value written by the op with the highest HLC.
 final class FieldValue {
@@ -38,6 +40,19 @@ final class EntityState {
   Hlc? maxHlc;
 
   Object? operator [](String field) => fields[field]?.value;
+
+  /// The name last shown for this entity and the value it was shown from,
+  /// so an op that leaves the name as it is does not normalise it again.
+  ({String raw, String shown})? name;
+}
+
+/// [raw], the name of [s], as it is shown ([NameText.display]).
+String _shown(EntityState s, String raw, int limit) {
+  final last = s.name;
+  if (last != null && last.raw == raw) return last.shown;
+  final shown = NameText.display(raw, limit);
+  s.name = (raw: raw, shown: shown);
+  return shown;
 }
 
 /// Largest |ms| a DateTime accepts.
@@ -46,6 +61,14 @@ const int _maxDateMs = 8640000000000000;
 String? _str(EntityState s, String f) {
   final v = s[f];
   return v is String ? v : null;
+}
+
+/// The text field [f] of [s] as it is shown: without lone surrogates
+/// ([TextClean.wellFormed]), which an op stored before peers' text was
+/// checked for them may hold and the text engine refuses (SECURITY-R21-01).
+String? _text(EntityState s, String f) {
+  final v = _str(s, f);
+  return v == null ? null : TextClean.wellFormed(v);
 }
 
 String? _nonEmpty(EntityState s, String f) {
@@ -80,12 +103,13 @@ Group? buildGroup(GroupId id, EntityState s) {
   }
   return Group(
     id: id,
-    name: name,
+    // Shown as names typed here are stored, whichever phone wrote it.
+    name: _shown(s, name, NameText.maxGroupLength),
     type: enumByName(GroupType.values, type, GroupType.other),
     currency: currency,
     simplifyDebts: simplify,
     createdAt: createdAt,
-    emoji: _str(s, GroupFields.emoji),
+    emoji: _text(s, GroupFields.emoji),
     archived: _bool(s, GroupFields.archived) ?? false,
     deletedAt: _date(s, GroupFields.deletedAt),
   );
@@ -102,7 +126,7 @@ Member? buildMember(GroupId groupId, MemberId id, EntityState s) {
   return Member(
     id: id,
     groupId: groupId,
-    displayName: displayName,
+    displayName: _shown(s, displayName, NameText.maxLength),
     personId: personId,
     createdAt: createdAt,
     deviceId: _nonEmpty(s, MemberFields.deviceId),
@@ -135,7 +159,7 @@ MoneyBlock? parseMoney(Object? value) {
 Expense? buildExpense(GroupId groupId, ExpenseId id, EntityState s) {
   if (!s.created) return null;
   final kind = _str(s, ExpenseFields.kind);
-  final description = _str(s, ExpenseFields.description);
+  final description = _text(s, ExpenseFields.description);
   final category = _str(s, ExpenseFields.category);
   final date = _date(s, ExpenseFields.date);
   final money = parseMoney(s[ExpenseFields.money]);
@@ -164,7 +188,7 @@ Expense? buildExpense(GroupId groupId, ExpenseId id, EntityState s) {
     description: description,
     category: category,
     date: date,
-    notes: _str(s, ExpenseFields.notes) ?? '',
+    notes: _text(s, ExpenseFields.notes) ?? '',
     money: money,
     createdBy: createdBy,
     createdAt: createdAt,

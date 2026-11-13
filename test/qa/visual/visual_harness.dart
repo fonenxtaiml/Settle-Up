@@ -48,11 +48,12 @@ final class QaIds implements IdGenerator {
 
 /// One phone on the real data layer.
 final class VisualPhone {
-  VisualPhone._(this.store, this.settings, this.ledger);
+  VisualPhone._(this.store, this.settings, this.ledger, this.keys);
 
   final MemoryOpStore store;
   final KvSettingsRepository settings;
   final Ledger ledger;
+  final MemoryGroupKeyStore keys;
   late final FakeSyncEngine engine = FakeSyncEngine(step: Duration.zero);
   int _clock = kNow.millisecondsSinceEpoch - 3600 * 1000;
 
@@ -74,15 +75,37 @@ final class VisualPhone {
       await settings.completeOnboarding(displayName: name, homeCurrency: home);
     }
     late VisualPhone phone;
+    final keys = MemoryGroupKeyStore();
     final ledger = await Ledger.open(
       store: store,
-      keys: MemoryGroupKeyStore(),
+      keys: keys,
       settings: settings,
       ids: QaIds('aaaa0000'),
       nowMillis: () => phone._clock += 1000,
     );
-    phone = VisualPhone._(store, settings, ledger);
+    phone = VisualPhone._(store, settings, ledger, keys);
     return phone;
+  }
+
+  /// This phone after a restart: its ledger closed and opened again on the
+  /// same store, settings and keys (ops written to [store] directly in the
+  /// meantime are loaded as stored). Call inside `tester.runAsync`.
+  Future<VisualPhone> reopen() async {
+    await ledger.close();
+    VisualPhone? phone;
+    // The ledger reads its clock while it opens, before [phone] exists.
+    var clock = _clock;
+    final next = await Ledger.open(
+      store: store,
+      keys: keys,
+      settings: settings,
+      ids: QaIds('bbbb0000'),
+      nowMillis: () {
+        final p = phone;
+        return p == null ? clock += 1000 : p._clock += 1000;
+      },
+    );
+    return phone = VisualPhone._(store, settings, next, keys).._clock = clock;
   }
 
   PersonId get me => settings.profile!.personId;

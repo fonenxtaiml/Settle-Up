@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import '../../core/categories.dart';
 import '../../core/money.dart';
 import '../../theme/tokens.dart';
+import '../format/well_formed_formatter.dart';
 import '../strings.dart';
 import '../widgets/widgets.dart';
 import 'common.dart';
@@ -50,9 +51,34 @@ class _CurrencySheet extends StatefulWidget {
 class _CurrencySheetState extends State<_CurrencySheet> {
   String _query = '';
 
+  /// The symbol column, measured once per text size and style: wide
+  /// enough for every symbol in [Currencies.all] (so it does not move
+  /// while the list is searched), capped at
+  /// [SymbolText.maxLeadingWidth], past which a symbol scales down.
+  double? _symbolWidth;
+  Object? _symbolKey;
+
+  double _symbolColumn(BuildContext context, TextStyle style) {
+    final key = (
+      MediaQuery.textScalerOf(context),
+      MediaQuery.sizeOf(context).width,
+      style,
+      Directionality.of(context),
+    );
+    if (key != _symbolKey || _symbolWidth == null) {
+      _symbolKey = key;
+      _symbolWidth = SymbolText.columnWidth(context, [
+        for (final c in Currencies.all) c.symbol,
+      ], style);
+    }
+    return _symbolWidth!;
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final symbolStyle = theme.textTheme.titleMedium!;
+    final symbolWidth = _symbolColumn(context, symbolStyle);
     final q = _query.trim().toLowerCase();
     final pinned = {widget.selected, ...widget.pinned};
     bool match(Currency c) =>
@@ -83,8 +109,13 @@ class _CurrencySheetState extends State<_CurrencySheet> {
           ),
           child: TextField(
             autofocus: false,
+            inputFormatters: const [WellFormedTextFormatter()],
             decoration: const InputDecoration(
               hintText: S.searchCurrencies,
+              // The hint wraps in full at a large text size (the theme's
+              // hintMaxLines, VISUAL-R33-03); once the user types, the
+              // field gives that room back to the list.
+              maintainHintSize: false,
               prefixIcon: Icon(Icons.search_rounded),
             ),
             onChanged: (v) => setState(() => _query = v),
@@ -103,11 +134,11 @@ class _CurrencySheetState extends State<_CurrencySheet> {
                   horizontal: Space.text,
                 ),
                 leading: SizedBox(
-                  width: 40,
-                  child: Text(
+                  width: symbolWidth,
+                  child: SymbolText(
                     c.symbol,
-                    style: theme.textTheme.titleMedium,
-                    overflow: TextOverflow.ellipsis,
+                    style: symbolStyle,
+                    maxWidth: symbolWidth,
                   ),
                 ),
                 title: Text(c.name),

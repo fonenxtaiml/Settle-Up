@@ -3,6 +3,7 @@ import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../theme/app_theme.dart';
 import '../../theme/tokens.dart';
+import 'button_semantics.dart';
 import 'kit_layout.dart';
 import 'kit_strings.dart';
 import 'list_row.dart';
@@ -51,20 +52,18 @@ class NearbyPhoneRow extends StatelessWidget {
       NearbyPhoneKind.unknown => Icons.device_unknown_rounded,
     };
     final Widget? trailing = switch (action) {
-      NearbyPhoneAction.sync => Semantics(
+      NearbyPhoneAction.sync => ButtonSemantics(
         label: KitStrings.syncWith(name),
-        button: true,
-        excludeSemantics: true,
+        onTap: onAction,
         child: FilledButton.tonal(
           onPressed: onAction,
           style: KitButtonStyles.small(context),
           child: const Text(KitStrings.sync),
         ),
       ),
-      NearbyPhoneAction.pair => Semantics(
+      NearbyPhoneAction.pair => ButtonSemantics(
         label: KitStrings.pairWith(name),
-        button: true,
-        excludeSemantics: true,
+        onTap: onAction,
         child: OutlinedButton(
           onPressed: onAction,
           style: KitButtonStyles.small(context),
@@ -80,6 +79,10 @@ class NearbyPhoneRow extends StatelessWidget {
     return MergeSemantics(
       child: KitListRow(
         title: name,
+        titleLines: 1,
+        // The status line is the app's words ("Wi-Fi, may share a group",
+        // "and 2 more") around at most one group name: it wraps in full
+        // (VISUAL-R31-02). Only the phone's name, user data, is capped.
         subtitle: subtitle,
         leading: ExcludeSemantics(
           child: SizedBox(

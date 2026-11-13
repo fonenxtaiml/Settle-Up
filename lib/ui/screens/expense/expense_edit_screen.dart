@@ -62,6 +62,12 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   bool _ready = false;
   Expense? _editing;
 
+  /// What the form held right after it loaded the expense being edited.
+  /// Save sends the live value of every field still holding it, so a
+  /// change another phone made to a field the user never touched while
+  /// the form was open is not undone (UIFLOW-R17-01).
+  _FormValues? _loaded;
+
   GroupId? _groupId;
   // A 1:1 group to create on save: (personId, name).
   (PersonId, String)? _direct;
@@ -154,6 +160,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       _split.load(e.money.owedBy, currency);
       _order = _orderFor(g, profile.personId);
       _syncInputs();
+      _loaded = _formValues();
       return;
     }
 
@@ -285,6 +292,18 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
   // ------------------------------------------------------------ derived --
 
+  /// The values Save would send, as the form holds them now.
+  _FormValues _formValues() => (
+    description: _description.text.trim(),
+    notes: _notes.text.trim(),
+    category: _category,
+    date: _date,
+    currency: _currency,
+    total: _amount,
+    paid: _paidSpec,
+    owed: _split.spec(_cur),
+  );
+
   SplitSpec get _paidSpec {
     final multi = _multiPaid;
     if (multi != null) {
@@ -318,6 +337,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   // ------------------------------------------------------------ actions --
 
   Future<void> _pickGroup() async {
+    if (_saving) return;
     final profile = ref.read(profileProvider).value;
     final snap = ref.read(ledgerProvider).value;
     if (profile == null || snap == null) return;
@@ -454,7 +474,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final description = _description.text.trim();
     final check = _split.check(amount, _cur);
     if (amount <= 0 ||
-        description.isEmpty ||
+        isBlankDescription(description) ||
         !check.isValid ||
         _split.badInput(_cur).isNotEmpty ||
         !_paidValid ||
@@ -487,7 +507,8 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         paid = remap(paid);
         owed = remap(owed);
       }
-      final draft = ExpenseDraft(
+      final notes = _notes.text.trim();
+      var draft = ExpenseDraft(
         groupId: groupId!,
         description: description,
         total: amount,
@@ -496,10 +517,38 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         owedBy: owed,
         category: _category,
         date: _date.toUtc(),
-        notes: _notes.text.trim(),
+        notes: notes,
       );
-      if (_editing != null) {
-        await ledger.updateExpense(_editing!.id, draft);
+      final editing = _editing;
+      final base = _loaded;
+      if (editing != null && base != null) {
+        // A field still holding what the form loaded takes the live
+        // value, so another phone's change to it stays (UIFLOW-R17-01).
+        // The money (total, currency, who paid, the split) is one field.
+        final live =
+            ledger.current.state.expenseIn(editing.groupId, editing.id) ??
+            editing;
+        final moneyKept =
+            amount == base.total &&
+            _currency == base.currency &&
+            paid == base.paid &&
+            owed == base.owed;
+        draft = ExpenseDraft(
+          groupId: draft.groupId,
+          description: description == base.description
+              ? live.description
+              : description,
+          total: moneyKept ? live.money.total : amount,
+          currency: moneyKept ? live.money.currency : _currency,
+          paidBy: moneyKept ? live.money.paidBy : paid,
+          owedBy: moneyKept ? live.money.owedBy : owed,
+          category: _category == base.category ? live.category : _category,
+          date: _date == base.date ? live.date : _date.toUtc(),
+          notes: notes == base.notes ? live.notes : notes,
+        );
+      }
+      if (editing != null) {
+        await ledger.updateExpense(editing.id, draft);
       } else {
         final id = await ledger.addExpense(draft);
         if (!mounted) return;
@@ -513,18 +562,20 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
       }
     });
     if (!mounted) return;
-    setState(() => _saving = false);
-    if (!ok) return;
+    if (!ok) {
+      setState(() => _saving = false);
+      return;
+    }
+    // Still locked: the form keeps showing what was saved while it closes.
     _saved = true;
     if (_editing != null) {
       Haptics.medium(context);
       showSnack(context, S.expenseSaved);
     }
-    if (context.canPop()) {
-      context.pop();
-    } else {
-      context.go(groupId == null ? Routes.home : Routes.group(groupId!));
-    }
+    closeScreen(
+      context,
+      fallback: groupId == null ? Routes.home : Routes.group(groupId!),
+    );
   }
 
   // -------------------------------------------------------------- build --
@@ -566,6 +617,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final groupName = _direct != null
         ? _direct!.$2
         : groupTitle(snap.state.groups[_groupId]!, me);
+    final dateLabel = DateLabels.pickerDate(
+      _date,
+      now: ref.watch(clockProvider)(),
+    );
     final amount = _amount ?? 0;
     final check = _split.check(amount, _cur);
     final shares = check.shares ?? const <MemberId, int>{};
@@ -574,7 +629,7 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         ? _category
         : (suggestCategory(_description.text) ?? Categories.general);
     _category = suggested;
-    final descriptionError = _triedSave && _description.text.trim().isEmpty
+    final descriptionError = _triedSave && isBlankDescription(_description.text)
         ? S.descriptionNeeded
         : null;
     final amountError = _triedSave && amount <= 0
@@ -660,163 +715,152 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
           canSave: canSave,
           onSave: _save,
         ),
-        body: ListView(
-          padding: const EdgeInsets.only(bottom: Space.lg),
-          children: [
-            if (!groupInBar)
+        body: InputLock(
+          locked: _saving,
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: Space.lg),
+            children: [
+              if (!groupInBar)
+                textGutter(
+                  Align(
+                    alignment: AlignmentDirectional.centerStart,
+                    child: groupLabel,
+                  ),
+                ),
+              const SizedBox(height: 6),
               textGutter(
-                Align(
-                  alignment: AlignmentDirectional.centerStart,
-                  child: groupLabel,
+                AmountField(
+                  key: ValueKey('amount-$_amountKey-$_currency'),
+                  currency: _currency,
+                  initialMinor: _amount,
+                  autofocus: editing == null,
+                  currencyName: _cur.name,
+                  errorText: amountError,
+                  onCurrencyTap: _pickCurrency,
+                  onChanged: (v) => setState(() {
+                    _amount = v;
+                    _touch();
+                  }),
                 ),
               ),
-            const SizedBox(height: 6),
-            textGutter(
-              AmountField(
-                key: ValueKey('amount-$_amountKey-$_currency'),
-                currency: _currency,
-                initialMinor: _amount,
-                autofocus: editing == null,
-                currencyName: _cur.name,
-                errorText: amountError,
-                onCurrencyTap: _pickCurrency,
-                onChanged: (v) => setState(() {
-                  _amount = v;
-                  _touch();
-                }),
-              ),
-            ),
-            const SizedBox(height: 14),
-            gutter(
-              LabeledTextField(
-                label: S.description,
-                hintText: S.descriptionHint,
-                controller: _description,
-                errorText: descriptionError,
-                textInputAction: TextInputAction.done,
-                maxLength: 120,
-                onChanged: (_) => setState(_touch),
-                trailing: CategoryChip(
-                  categoryId: _category,
-                  label: categoryLabel(_category),
-                  onTap: _pickCategory,
+              const SizedBox(height: 14),
+              gutter(
+                LabeledTextField(
+                  label: S.description,
+                  hintText: S.descriptionHint,
+                  controller: _description,
+                  errorText:
+                      descriptionError ??
+                      descriptionInputError(_description.text),
+                  textInputAction: TextInputAction.done,
+                  multiline: true,
+                  inputFormatters: descriptionFormatters(),
+                  onChanged: (_) => setState(_touch),
+                  trailing: CategoryChip(
+                    categoryId: _category,
+                    label: categoryLabel(_category),
+                    onTap: _pickCategory,
+                  ),
                 ),
               ),
-            ),
-            const SizedBox(height: 10),
-            gutter(
-              Flex(
-                direction: isLargeText(context)
-                    ? Axis.vertical
-                    : Axis.horizontal,
-                crossAxisAlignment: isLargeText(context)
-                    ? CrossAxisAlignment.stretch
-                    : CrossAxisAlignment.center,
-                children: [
-                  _flexible(
-                    context,
-                    PickerTile(
-                      label: S.paidBy,
-                      value: _payerLabel,
-                      leading: _multiPaid == null && _payer != null
-                          ? PersonAvatar(
-                              id: _payer!,
-                              name: _fullNames[_payer] ?? '',
-                              size: Sizes.avatarTiny,
-                              isMe: _payer == _me,
-                            )
-                          : const Icon(Icons.group_outlined, size: 20),
-                      onTap: _pickPayer,
-                    ),
+              const SizedBox(height: 10),
+              gutter(
+                PickerTilePair(
+                  first: PickerTile(
+                    label: S.paidBy,
+                    value: _payerLabel,
+                    leading: _multiPaid == null && _payer != null
+                        ? PersonAvatar(
+                            id: _payer!,
+                            name: _fullNames[_payer] ?? '',
+                            size: Sizes.avatarTiny,
+                            isMe: _payer == _me,
+                          )
+                        : const Icon(Icons.group_outlined, size: 20),
+                    onTap: _pickPayer,
                   ),
-                  const SizedBox(width: Space.sm, height: Space.sm),
-                  _flexible(
-                    context,
-                    PickerTile(
-                      label: S.date,
-                      value: DateLabels.pickerDate(
-                        _date,
-                        now: ref.watch(clockProvider)(),
-                      ),
-                      leading: const Icon(
-                        Icons.calendar_today_rounded,
-                        size: 20,
-                      ),
-                      onTap: _pickDate,
-                    ),
+                  second: PickerTile(
+                    label: S.date,
+                    value: dateLabel,
+                    leading: const Icon(Icons.calendar_today_rounded, size: 20),
+                    onTap: _pickDate,
                   ),
-                ],
+                ),
               ),
-            ),
-            if (payersOff)
-              textGutter(
-                Padding(
-                  padding: const EdgeInsets.only(top: Space.xs),
-                  child: Semantics(
-                    liveRegion: true,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          S.splitNotDone,
-                          style: Theme.of(context).textTheme.bodySmall!
-                              .copyWith(
-                                color: Theme.of(context).colorScheme.error,
-                              ),
-                        ),
-                        if (_multiPaid != null)
+              if (payersOff)
+                textGutter(
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.xs),
+                    child: Semantics(
+                      liveRegion: true,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            S.payersAddUp(
-                              MoneyFormat.format(_multiPaidSum, _currency),
-                              MoneyFormat.format(amount, _currency),
-                            ),
+                            S.splitNotDone,
                             style: Theme.of(context).textTheme.bodySmall!
                                 .copyWith(
                                   color: Theme.of(context).colorScheme.error,
                                 ),
                           ),
-                      ],
+                          if (_multiPaid != null)
+                            // Two amounts in a sentence: neither is ever
+                            // split across lines (VISUAL-R34-01).
+                            FitWordsText(
+                              S.payersAddUp(
+                                MoneyFormat.format(_multiPaidSum, _currency),
+                                MoneyFormat.format(amount, _currency),
+                              ),
+                              style: Theme.of(context).textTheme.bodySmall!
+                                  .copyWith(
+                                    color: Theme.of(context).colorScheme.error,
+                                  ),
+                            ),
+                        ],
+                      ),
                     ),
                   ),
                 ),
-              ),
-            gutter(
-              SectionHeading(
-                S.splitHeading(
-                  _split.method.name,
-                  _split.participants.length,
-                  _order.length,
+              gutter(
+                SectionHeading(
+                  S.splitHeading(
+                    _split.method.name,
+                    _split.participants.length,
+                    _order.length,
+                  ),
                 ),
               ),
-            ),
-            gutter(
-              SplitMethodSelector(value: _split.method, onChanged: _setMethod),
-            ),
-            const SizedBox(height: 5),
-            gutter(
-              ListSection(
-                dividerIndent: 64,
-                children: [for (final m in _order) _memberRow(m, shares)],
+              gutter(
+                SplitMethodSelector(
+                  value: _split.method,
+                  onChanged: _setMethod,
+                ),
               ),
-            ),
-            const SizedBox(height: Space.md),
-            gutter(
-              LabeledTextField(
-                label: S.notes,
-                hintText: S.notesHint,
-                controller: _notes,
-                maxLength: 500,
-                onChanged: (_) => setState(_touch),
+              const SizedBox(height: 5),
+              gutter(
+                ListSection(
+                  dividerIndent: 64,
+                  children: [for (final m in _order) _memberRow(m, shares)],
+                ),
               ),
-            ),
-          ],
+              const SizedBox(height: Space.md),
+              gutter(
+                LabeledTextField(
+                  label: S.notes,
+                  hintText: S.notesHint,
+                  controller: _notes,
+                  multiline: true,
+                  inputFormatters: notesFormatters(),
+                  errorText: notesInputError(_notes.text),
+                  onChanged: (_) => setState(_touch),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
-
-  Widget _flexible(BuildContext context, Widget child) =>
-      isLargeText(context) ? child : Expanded(child: child);
 
   String _summary(SplitCheck check, int amount) {
     final n = _split.participants.length;
@@ -1262,6 +1306,7 @@ class _UnitField extends StatelessWidget {
       // UnitInputFormatter keeps the text on one line.
       minLines: 1,
       maxLines: 2,
+      textAlignVertical: TextAlignVertical.center,
       inputFormatters: [
         UnitInputFormatter(read: read, write: write, signed: signed),
       ],
@@ -1270,6 +1315,9 @@ class _UnitField extends StatelessWidget {
           : style.copyWith(fontSize: style.fontSize! * shrink),
       decoration: InputDecoration(
         isDense: true,
+        // A 48 dp tap target at every text scale: the dense padding alone
+        // is 42.8 dp tall at 1.0x (VISUAL-R8-01).
+        constraints: const BoxConstraints(minHeight: Sizes.minTap),
         hintText: hint ?? '0',
         labelText: null,
         semanticCounterText: label,
@@ -1304,8 +1352,11 @@ class _SharesStepper extends StatelessWidget {
 
   static const max = 1000;
 
-  /// Two 48 dp buttons around the 36 dp number.
-  static const double width = 48 + 36 + 48;
+  /// The Android minimum tap target, for the number as for the buttons.
+  static const double minTarget = 48;
+
+  /// Two 48 dp buttons around the 48 dp number (VISUAL-R9-01).
+  static const double width = minTarget * 3;
 
   final int value;
   final bool enabled;
@@ -1331,17 +1382,16 @@ class _SharesStepper extends StatelessWidget {
           onPressed: enabled && value > 1 ? () => onChanged(value - 1) : null,
           icon: const Icon(Icons.remove_rounded),
         ),
-        Semantics(
-          button: enabled,
+        ButtonSemantics(
           label: label,
           value: '$value',
-          excludeSemantics: true,
+          onTap: enabled ? () => _type(context) : null,
           child: InkWell(
             onTap: enabled ? () => _type(context) : null,
             borderRadius: BorderRadius.circular(Radii.sm),
             child: SizedBox(
-              width: 36,
-              height: 48,
+              width: minTarget,
+              height: minTarget,
               child: Center(
                 child: FittedBox(
                   fit: BoxFit.scaleDown,
@@ -1399,13 +1449,21 @@ class _WeightPromptState extends State<_WeightPrompt> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
+    // Title and body scroll, the buttons stay on screen: a long name
+    // at a large text size never pushes them off (VISUAL-R29-01).
+    scrollable: true,
     title: const Text(S.sharesTitle),
     content: TextField(
       controller: _c,
       autofocus: true,
       keyboardType: TextInputType.number,
       inputFormatters: [
-        FilteringTextInputFormatter.digitsOnly,
+        // Digits only, and an edit that brings anything else is refused
+        // whole: a paste of "1 2" or "1e3" is never joined into 12 or 13
+        // (the digits-only filter dropped the rest and joined them).
+        TextInputFormatter.withFunction(
+          (old, next) => RegExp(r'^[0-9]*$').hasMatch(next.text) ? next : old,
+        ),
         LengthLimitingTextInputFormatter(4),
       ],
       decoration: InputDecoration(
@@ -1549,24 +1607,20 @@ class _MultiPayerSheetState extends State<MultiPayerSheet> {
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, Space.sm, 16, Space.lg),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: FilledButton.tonal(
-                      onPressed: widget.total > 0 ? _splitEvenly : null,
-                      child: const Text(S.splitRestEqually),
-                    ),
-                  ),
-                  const SizedBox(width: Space.sm),
-                  Expanded(
-                    child: FilledButton(
-                      onPressed: left == 0 && sum > 0 && !_unreadable
-                          ? () => Navigator.of(context).pop(_values)
-                          : null,
-                      child: const Text(S.done),
-                    ),
-                  ),
-                ],
+              // Side by side only when both labels fit their half on one
+              // line; stacked full width otherwise (VISUAL-R6-01).
+              child: ButtonPair(
+                labels: const [S.splitRestEqually, S.done],
+                first: FilledButton.tonal(
+                  onPressed: widget.total > 0 ? _splitEvenly : null,
+                  child: const Text(S.splitRestEqually),
+                ),
+                second: FilledButton(
+                  onPressed: left == 0 && sum > 0 && !_unreadable
+                      ? () => Navigator.of(context).pop(_values)
+                      : null,
+                  child: const Text(S.done),
+                ),
               ),
             ),
           ],
@@ -1584,3 +1638,15 @@ abstract final class Summaries2 {
         if (m.personId != me) m.personId: m.displayName,
   };
 }
+
+/// The values of the expense form that Save sends.
+typedef _FormValues = ({
+  String description,
+  String notes,
+  String category,
+  DateTime date,
+  String currency,
+  int? total,
+  SplitSpec paid,
+  SplitSpec owed,
+});

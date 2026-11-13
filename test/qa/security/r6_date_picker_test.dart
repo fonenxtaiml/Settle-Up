@@ -177,7 +177,6 @@ void main() {
           reason: 'lastDate ${d.lastDate}',
         );
       },
-      skip: true, // SECURITY-R6-01
     );
 
     testWidgets(
@@ -200,8 +199,25 @@ void main() {
           reason: 'lastDate ${d.lastDate}',
         );
       },
-      skip: true, // SECURITY-R6-01
     );
+  });
+
+  group('SECURITY-R6-01 regression: the end of the range', () {
+    for (final (clock, last) in [
+      (DateTime(1970, 1, 1, 9), DateTime(entryDateFloorYear + 1, 12, 31)),
+      (DateTime(1999, 12, 31), DateTime(entryDateFloorYear + 1, 12, 31)),
+      (DateTime(2025, 6, 1), DateTime(entryDateFloorYear + 1, 12, 31)),
+      (DateTime(2026, 11, 10), DateTime(2027, 12, 31)),
+      (DateTime(2031, 3, 4), DateTime(2032, 12, 31)),
+    ]) {
+      testWidgets('a clock at ${clock.year} ends the range at ${last.year}', (
+        t,
+      ) async {
+        final (d, _) = await _open(t, clock, clock);
+        expect(d.lastDate, last);
+        expect(d.initialDate, DateTime(clock.year, clock.month, clock.day));
+      });
+    }
   });
 
   testWidgets('the settle-up screen picker opens on a 1970 clock', (
