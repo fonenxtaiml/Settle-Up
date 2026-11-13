@@ -80,8 +80,10 @@ class NearbyPhoneRow extends StatelessWidget {
       child: KitListRow(
         title: name,
         titleLines: 1,
+        // The status line is the app's words ("Wi-Fi, may share a group",
+        // "and 2 more") around at most one group name: it wraps in full
+        // (VISUAL-R31-02). Only the phone's name, user data, is capped.
         subtitle: subtitle,
-        subtitleLines: 1,
         leading: ExcludeSemantics(
           child: SizedBox(
             width: 24,

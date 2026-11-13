@@ -132,7 +132,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R31-02: the nearby phone row cuts its status line ("Wi-Fi, '
     'may share a group", "... and 2 more") with an ellipsis',
-    skip: true, // QA VISUAL-R31-02: nearby phone status line cut
     (t) async {
       final problems = <String>[];
       for (final v in kVariants) {
