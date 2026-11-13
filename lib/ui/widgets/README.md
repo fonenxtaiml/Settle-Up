@@ -89,7 +89,7 @@ reference screens. Copy its layouts when you build the real screens.
 - **SyncStatusChip**: a compact stone pill for app bars. It never says "offline". `SyncStatusChip({required SyncChipState state, int pendingCount = 0, DateTime? lastSyncedAt, String? peerName, VoidCallback? onTap})`
 - **SyncBanner**: the Home strip ("3 changes to share", "Last synced with …", Sync). `SyncBanner({required SyncChipState state, int pendingCount = 0, DateTime? lastSyncedAt, String? peerName, VoidCallback? onTap, VoidCallback? onSync, DateTime? now})`
 - **HostQrCard**: "Make this phone visible" with the switch, the QR code (always dark on white), the address and the hotspot. `HostQrCard({required bool visible, required ValueChanged<bool>? onVisibleChanged, required String subtitle, String? qrData, String? address, String? hotspotName, String title = 'Make this phone visible', String caption = 'Friends scan this to sync with you'})`
-- **NearbyPhoneRow**: a phone icon, the name and "Wi-Fi, shares Goa trip", plus a Sync, Pair or busy action. `NearbyPhoneRow({required String name, required String subtitle, NearbyPhoneKind kind = NearbyPhoneKind.android, NearbyPhoneAction action = NearbyPhoneAction.sync, VoidCallback? onAction})`
+- **NearbyPhoneRow**: a phone icon, the name and "Wi-Fi, shares Goa trip", plus a Sync, Pair or busy action. `NearbyPhoneRow({required String name, required String subtitle, NearbyPhoneKind kind = NearbyPhoneKind.android, NearbyPhoneAction action = NearbyPhoneAction.sync, VoidCallback? onAction})` The name is capped to one line; the status line wraps in full.
 - **LookingIndicator**: a spinner with "Looking", for the Nearby phones heading. `LookingIndicator({String label = 'Looking'})`
 
 ### Chrome
