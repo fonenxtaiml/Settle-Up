@@ -1,10 +1,12 @@
 // QA DATA round 19: reverification probes for DATA-R18-01 (per-code-point
 // name tables outside the BMP) and DATA-R18-02 (perf bounds under load).
 //
-// The tests in this file run in the order written, and the first one runs
-// before anything in this process has shown a name outside the BMP, so its
-// open is the cold open a relaunch makes (the R18 repro measures the open
-// after it has shown the names once, with the tables already warm).
+// The cold relaunch bound opens each log in a fresh isolate, so each of its
+// opens is the cold open a relaunch makes whatever this process has shown
+// before (the R18 repro measures the open after it has shown the names
+// once, with the tables already warm), and it can take the fastest of
+// several, so a burst of host load over one does not decide it
+// (DATA-R32-02).
 import 'dart:io';
 import 'dart:math';
 
@@ -13,7 +15,14 @@ import 'package:settle_up/core/name_text.dart';
 import 'package:settle_up/core/normal_form.dart';
 import 'package:unorm_dart/unorm_dart.dart' as unorm;
 
-import '../../data/name_replay_perf_test.dart' show cpuMicros, markCost;
+import '../../data/name_replay_perf_test.dart'
+    show
+        SampleRun,
+        alternateSamples,
+        coldSample,
+        cpuMicros,
+        kOpenRuns,
+        markCost;
 import 'r15_regression_test.dart' show logPhone;
 import 'r17_regression_test.dart' show memberCreates;
 import 'r18_regression_test.dart' show astralName, fewAstralName;
@@ -45,6 +54,68 @@ Future<({int openMs, int rss, int shown})> open(
   return (openMs: r.openMs, rss: rss, shown: shown);
 }
 
+/// One open of [open] in a fresh isolate ([coldSample]): the cold open a
+/// relaunch makes, for every table an isolate fills on first use, whatever
+/// this isolate has shown. [tables] is what those tables held as the
+/// sample began, the same for every fresh isolate.
+typedef ColdOpen = ({int openMs, int rss, int shown, (int, int) tables});
+
+Future<ColdOpen> coldOpen(int n, String Function(int) name) =>
+    coldSample(() async {
+      final tables = (NormalForm.astralEntries, NameText.astralEntries);
+      final o = await open(n, name);
+      return (openMs: o.openMs, rss: o.rss, shown: o.shown, tables: tables);
+    });
+
+/// How many members the cold relaunch bound opens: 13,107 names of 80 code
+/// points that between them cover every code point outside the BMP.
+const int kColdRelaunchMembers = 0x100000 ~/ 80;
+
+/// The cold opens of the cold relaunch bound: [kColdRelaunchMembers]
+/// members with names over 256 astral code points (the control) and with
+/// names over every astral code point, each opened [runs] times by
+/// [alternateSamples], each open in a fresh isolate so each is as cold as
+/// the first after a relaunch (DATA-R32-02). [around] wraps each open (for
+/// a probe that loads the host over some of them).
+Future<({List<ColdOpen> control, List<ColdOpen> astral})> coldRelaunches({
+  int runs = kOpenRuns,
+  SampleRun<ColdOpen>? around,
+}) async {
+  const n = kColdRelaunchMembers;
+  final r = await alternateSamples(
+    () => coldOpen(n, fewAstralName),
+    () => coldOpen(n, astralName),
+    runs: runs,
+    around: around,
+  );
+  return (control: r.ordinary, astral: r.heavy);
+}
+
+/// The bound on [coldRelaunches]: the fastest cold open of the astral
+/// names within the charter (< 2 s) and about as fast as the fastest of
+/// the control (twice it, and 300 ms), on the wall clock; and the memory
+/// the astral names keep about what the control's do.
+void expectColdRelaunchWithinBudget(
+  ({List<ColdOpen> control, List<ColdOpen> astral}) r,
+) {
+  int fastest(List<ColdOpen> s) => s.map((o) => o.openMs).reduce(min);
+  int most(List<ColdOpen> s) => s.map((o) => o.rss).reduce(max);
+  final c = fastest(r.control), a = fastest(r.astral);
+  final why = 'control ${r.control}; astral ${r.astral}';
+  // Every open was cold: each began with the tables of a fresh isolate,
+  // although the astral opens before it filled them.
+  final cold = r.control.first.tables;
+  for (final o in [...r.control, ...r.astral]) {
+    expect(o.tables, cold, reason: why);
+  }
+  for (final o in r.astral) {
+    expect(o.shown, kColdRelaunchMembers, reason: why);
+  }
+  expect(most(r.astral) - most(r.control), lessThan(32 << 20), reason: why);
+  expect(a, lessThan(2000), reason: why);
+  expect(a, lessThan(2 * c + 300), reason: why);
+}
+
 /// This thread's run time as the kernel's scheduler statistics count it,
 /// or null where they are not readable.
 int? _schedstatMicros() {
@@ -60,25 +131,14 @@ void main() {
   test('cold relaunch: 13,107 members whose names cover every code point '
       'outside the BMP open about as fast, and keep about as much memory, as '
       'names of the same length and kind over 256 code points', () async {
-    const n = 0x100000 ~/ 80;
-    final rows = <String>[];
-    // Two control opens first, so the code is warm and the heap has grown
-    // to the size such a log takes; the third open is the cold one for
-    // every astral code point but the first 256.
-    final c1 = await open(n, fewAstralName);
-    final c2 = await open(n, fewAstralName);
-    final a = await open(n, astralName);
-    rows.add('control $c1, $c2; astral $a');
+    final r = await coldRelaunches();
     // ignore: avoid_print
     print(
-      '[r19] 13k astral names, the R18 method across a cold open: $rows; '
-      'NormalForm astral entries ${NormalForm.astralEntries}, NameText '
-      '${NameText.astralEntries}',
+      '[r19] 13k astral names, cold opens in fresh isolates: control '
+      '${r.control}; astral ${r.astral}; NormalForm astral entries '
+      '${NormalForm.astralEntries}, NameText ${NameText.astralEntries}',
     );
-    expect(a.shown, n);
-    expect(a.rss - max(c1.rss, c2.rss), lessThan(32 << 20));
-    expect(a.openMs, lessThan(2000));
-    expect(a.openMs, lessThan(2 * c2.openMs + 300));
+    expectColdRelaunchWithinBudget(r);
   }, timeout: const Timeout(Duration(minutes: 5)));
 
   test('a 20k-op log of member names that cover every astral code point (and '

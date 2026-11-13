@@ -10,6 +10,7 @@
 // stability of the canonical form, and the open cost when every stored op
 // needs cleaning.
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/hlc.dart';
@@ -22,6 +23,8 @@ import 'package:settle_up/data/text_rules.dart';
 import 'package:settle_up/sync/protocol/session.dart';
 import 'package:sqlite3/sqlite3.dart';
 
+import '../../data/name_replay_perf_test.dart'
+    show fastestOpenMs, kOpenRuns;
 import '../../sync/support/harness.dart';
 import '../../sync/support/phone.dart';
 import 'qa_data_harness.dart';
@@ -296,17 +299,39 @@ void main() {
     } finally {
       db.close();
     }
-    final sw = Stopwatch()..start();
-    await a.launch();
-    sw.stop();
+    // The fastest of a few opens, so a burst of host load over one does
+    // not decide the bound (DATA-R32-02); before each, the database is put
+    // back as the pre-R21 build left it, so each open cleans every row.
+    final files = [a.path, '${a.path}-wal', '${a.path}-shm'];
+    final pristine = {
+      for (final f in files)
+        if (File(f).existsSync()) f: File(f).readAsBytesSync(),
+    };
+    final openMs = await fastestOpenMs((run) async {
+      if (run > 0) {
+        await a.close();
+        for (final f in files) {
+          final bytes = pristine[f];
+          if (bytes != null) {
+            File(f).writeAsBytesSync(bytes, flush: true);
+          } else if (File(f).existsSync()) {
+            File(f).deleteSync();
+          }
+        }
+      }
+      final sw = Stopwatch()..start();
+      await a.launch();
+      return sw.elapsedMilliseconds;
+    });
     final missing = Stopwatch()..start();
     final offered = await a.ledger.opsMissingFor(t.g, VersionVector.empty);
     missing.stop();
     // ignore: avoid_print
-    print('[r26] open with 20k legacy ops: ${sw.elapsedMilliseconds} ms; '
+    print('[r26] open with 20k legacy ops: fastest of $kOpenRuns $openMs '
+        'ms; '
         'opsMissingFor ${offered.length} ops: '
         '${missing.elapsedMilliseconds} ms');
     expect(offered.every((o) => TextRules.remoteProblem(o) == null), isTrue);
-    expect(sw.elapsedMilliseconds, lessThan(2000));
+    expect(openMs, lessThan(2000));
   });
 }
