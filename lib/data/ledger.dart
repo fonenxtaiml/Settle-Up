@@ -345,9 +345,24 @@ final class Ledger implements LedgerRepository, SyncStore {
   // ------------------------------------------------------------ plumbing --
 
   /// Runs [body] after every earlier command (commands are serialized).
+  ///
+  /// A command that fails publishes nothing, unless the clock notice moved
+  /// on the way: then a snapshot carrying it is published before the error
+  /// reaches the caller (SPEC 7.3: every snapshot carries the getter's
+  /// value, DATA-R32-01). Stamping a batch can set the peer-ahead flag
+  /// ([HlcClock.tickAfter] on an entity a peer stamped more than an hour
+  /// ahead) before the store refuses it; that observation is about ops
+  /// already stored, so it is kept and shown, not lost.
   Future<T> _serial<T>(Future<T> Function() body) {
     if (_closed) return Future.error(StateError('Ledger is closed'));
-    final result = _tail.then((_) => body());
+    final result = _tail.then((_) async {
+      try {
+        return await body();
+      } catch (_) {
+        if (!_closed && _clockNotice() != _current.clockNotice) _emit();
+        rethrow;
+      }
+    });
     _tail = result.then<void>((_) {}, onError: (Object _) {});
     return result;
   }
