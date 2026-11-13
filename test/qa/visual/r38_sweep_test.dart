@@ -223,6 +223,5 @@ void main() {
       await t.runAsync(() => p.dispose());
       expect(problems, isEmpty, reason: problems.join('\n'));
     },
-    skip: true, // QA VISUAL-R38-01: your own 40-character name and phone name are cut on Settings and read in full nowhere
   );
 }
