@@ -338,6 +338,10 @@ class ActivityRow extends ConsumerWidget {
     };
     Widget rowFor(bool stack) => KitListRow(
       title: sentence,
+      // The sentence names people and expenses (data, in full one tap
+      // away); the subline's notes ("Not yet shared", "Possible
+      // duplicate") wrap in full.
+      titleLines: 1,
       subtitle: subtitle,
       leading: leading,
       trailing: trailing,
@@ -391,6 +395,7 @@ class SyncRecordRow extends StatelessWidget {
       title: ok
           ? S.syncedWith(record.peerName)
           : S.syncStoppedWith(record.peerName),
+      titleLines: 1,
       subtitle:
           '${S.sentGot(record.sentOps, record.receivedOps)}, '
           '${transportWord(record.transport)}, '

@@ -142,6 +142,7 @@ class ClaimScreen extends ConsumerWidget {
                   for (final m in candidates)
                     KitListRow(
                       title: m.displayName,
+                      titleLines: 1,
                       subtitle: S.placeholderSub,
                       leading: PersonAvatar(
                         id: m.id,

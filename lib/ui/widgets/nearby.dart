@@ -79,7 +79,9 @@ class NearbyPhoneRow extends StatelessWidget {
     return MergeSemantics(
       child: KitListRow(
         title: name,
+        titleLines: 1,
         subtitle: subtitle,
+        subtitleLines: 1,
         leading: ExcludeSemantics(
           child: SizedBox(
             width: 24,

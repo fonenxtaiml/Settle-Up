@@ -122,7 +122,11 @@ class BalanceRow extends StatelessWidget {
       onLongPress: onLongPress,
       child: KitListRow(
         title: title,
+        titleLines: 1,
         subtitle: subtitle,
+        // A person's line lists their groups (data); the other lines are
+        // the app's ("3 people", "Not on Settle Up yet") and wrap in full.
+        subtitleLines: kind == BalanceRowKind.person ? 1 : null,
         leading: leading,
         trailing: trailing,
         // Stack the balance under the name before the name loses its

@@ -10,8 +10,11 @@ import 'kit_layout.dart';
 /// 16 dp side padding, 14 dp gaps, a 16/22 semibold title, a 13/18
 /// secondary subline and a trailing block. No fixed height.
 ///
-/// Text: the title and subline are one line each with an ellipsis (three
-/// at large text), except for a notice ([fullText]).
+/// Text: the app's own words (a setting, a notice, a help line, an empty
+/// state, "Not on Settle Up yet") always wrap in full and are never cut
+/// with an ellipsis (VISUAL-R31-02, VISUAL-R32-01). Only list entries
+/// whose line is the user's data (a name, an expense, a phone) cap it, with
+/// [titleLines] or [subtitleLines], and show it in full one tap away.
 ///
 /// Trailing: beside the text while the text keeps room for its widest
 /// word (and, when the text wraps in full, [kMinTextBeside] and half the
@@ -32,8 +35,8 @@ class KitListRow extends StatelessWidget {
     this.subtitleStyle,
     this.subtitleTrailing,
     this.keepTrailingBeside = false,
-    this.subtitleLines = 1,
-    this.fullText = false,
+    this.titleLines,
+    this.subtitleLines,
     this.stackTrailing = false,
     this.trailingWidth,
   });
@@ -56,16 +59,15 @@ class KitListRow extends StatelessWidget {
   /// still only while the text keeps room for its widest word.
   final bool keepTrailingBeside;
 
-  /// Lines the subline may take below the large-text threshold (it always
-  /// may wrap to three at large text). Rows whose subline carries an amount
-  /// ("Sam paid ¥5,000") take two, so the amount is never cut off.
-  final int subtitleLines;
+  /// The most lines the title takes below the large-text threshold (three
+  /// at large text), ending in an ellipsis; null, the default, wraps it in
+  /// full. Set only for a title that is the user's data (a name), never
+  /// for the app's own words.
+  final int? titleLines;
 
-  /// A notice rather than a list entry: the title and the subline carry
-  /// what happened and what to do, so both wrap in full at every text
-  /// scale and are never cut with an ellipsis ([subtitleLines] is then
-  /// ignored). List entries keep their caps (VISUAL-R31-02).
-  final bool fullText;
+  /// As [titleLines], for the subline. Rows whose subline carries an
+  /// amount ("Sam paid ¥5,000") take two, so the amount is never cut off.
+  final int? subtitleLines;
 
   /// Put [trailing] under the text, end-aligned, below the large-text
   /// threshold too: rows that measured that their text has no room beside
@@ -84,8 +86,8 @@ class KitListRow extends StatelessWidget {
     final large = isLargeText(context);
     int? cap(int? lines) =>
         lines == null ? null : (large ? math.max(lines, 3) : lines);
-    final titleCap = fullText ? null : cap(1);
-    final subtitleCap = fullText ? null : cap(subtitleLines);
+    final titleCap = cap(titleLines);
+    final subtitleCap = cap(subtitleLines);
     final wraps = titleCap == null || (subtitle != null && subtitleCap == null);
     final text = Column(
       crossAxisAlignment: CrossAxisAlignment.start,
