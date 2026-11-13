@@ -11,6 +11,7 @@ import '../format/amount_input.dart';
 import '../format/money_format.dart';
 import 'button_semantics.dart';
 import 'kit_strings.dart';
+import 'kit_layout.dart';
 
 /// The large amount field on Add expense (render 3): a small "Amount"
 /// label, the currency symbol in secondary ink, the amount at 54 dp with
@@ -375,7 +376,9 @@ class _AmountFieldState extends State<AmountField> {
             padding: const EdgeInsets.only(top: Space.xs),
             child: Semantics(
               liveRegion: true,
-              child: Text(
+              // "Enter an amount up to KD99,999,999.999": the amount is
+              // never split across lines (VISUAL-R34-01).
+              child: FitWordsText(
                 error,
                 style: theme.textTheme.bodySmall!.copyWith(color: scheme.error),
               ),
