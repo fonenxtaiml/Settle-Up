@@ -188,83 +188,89 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
     final myId = myMemberIn(g, profile.personId);
     final members = [...g.activeMembers]
       ..sort((a, b) => (a.id == myId ? 0 : 1).compareTo(b.id == myId ? 0 : 1));
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: const BackArrow(),
-        title: AppBarTitle(S.membersTitle, subtitle: g.group!.name),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.only(bottom: Space.xl),
-        children: [
-          const SizedBox(height: Space.sm),
-          if (!g.group!.isDirect)
+    // A group name the app bar cuts reads in full at the top of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(),
+          title: AppBarTitle(S.membersTitle, subtitle: g.group!.name),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.only(bottom: Space.xl),
+          children: [
+            const SizedBox(height: Space.sm),
+            const CutTitleHeading(),
+            if (!g.group!.isDirect)
+              gutter(
+                ListSection(
+                  children: [
+                    KitListRow(
+                      title: S.inviteByQr,
+                      subtitle: S.inviteByQrBody,
+                      leading: const SizedBox.square(
+                        dimension: Sizes.avatar,
+                        child: Icon(Icons.qr_code_2_rounded),
+                      ),
+                      trailing: const Icon(Icons.chevron_right_rounded),
+                      onTap: () => context.push(Routes.invite(widget.groupId)),
+                    ),
+                  ],
+                ),
+              ),
             gutter(
               ListSection(
+                title: S.people(members.length),
+                dividerIndent: Space.avatarRowInset,
                 children: [
-                  KitListRow(
-                    title: S.inviteByQr,
-                    subtitle: S.inviteByQrBody,
-                    leading: const SizedBox.square(
-                      dimension: Sizes.avatar,
-                      child: Icon(Icons.qr_code_2_rounded),
+                  for (final m in members)
+                    KitListRow(
+                      title: m.id == myId ? S.you : m.displayName,
+                      titleLines: 1,
+                      subtitle: m.id == myId
+                          ? S.youSub
+                          : m.isPlaceholder
+                          ? S.placeholderSub
+                          : S.onSettleUp,
+                      leading: PersonAvatar(
+                        id: m.id,
+                        name: m.id == myId
+                            ? profile.displayName
+                            : m.displayName,
+                        isMe: m.id == myId,
+                        isPlaceholder: m.isPlaceholder && m.id != myId,
+                      ),
+                      trailing: const Icon(Icons.more_horiz_rounded),
+                      onTap: () => _actions(g, m, myId),
                     ),
-                    trailing: const Icon(Icons.chevron_right_rounded),
-                    onTap: () => context.push(Routes.invite(widget.groupId)),
-                  ),
                 ],
               ),
             ),
-          gutter(
-            ListSection(
-              title: S.people(members.length),
-              dividerIndent: Space.avatarRowInset,
-              children: [
-                for (final m in members)
-                  KitListRow(
-                    title: m.id == myId ? S.you : m.displayName,
-                    titleLines: 1,
-                    subtitle: m.id == myId
-                        ? S.youSub
-                        : m.isPlaceholder
-                        ? S.placeholderSub
-                        : S.onSettleUp,
-                    leading: PersonAvatar(
-                      id: m.id,
-                      name: m.id == myId ? profile.displayName : m.displayName,
-                      isMe: m.id == myId,
-                      isPlaceholder: m.isPlaceholder && m.id != myId,
-                    ),
-                    trailing: const Icon(Icons.more_horiz_rounded),
-                    onTap: () => _actions(g, m, myId),
+            // A 1:1 group stays two people: no one to add.
+            if (!g.group!.isDirect) ...[
+              gutter(const SectionHeading(S.addMember)),
+              gutter(
+                LabeledTextField(
+                  label: S.personName,
+                  hintText: S.personNameHint,
+                  controller: _name,
+                  maxLength: kMemberNameMax,
+                  inputFormatters: nameFormatters(kMemberNameMax),
+                  errorText: _nameError,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _add(g),
+                  onChanged: (_) => setState(() => _nameError = null),
+                  trailing: FilledButton.tonal(
+                    onPressed: !isSavableName(_name.text, kMemberNameMax)
+                        ? null
+                        : () => _add(g),
+                    style: KitButtonStyles.small(context),
+                    child: const Text(S.addPerson),
                   ),
-              ],
-            ),
-          ),
-          // A 1:1 group stays two people: no one to add.
-          if (!g.group!.isDirect) ...[
-            gutter(const SectionHeading(S.addMember)),
-            gutter(
-              LabeledTextField(
-                label: S.personName,
-                hintText: S.personNameHint,
-                controller: _name,
-                maxLength: kMemberNameMax,
-                inputFormatters: nameFormatters(kMemberNameMax),
-                errorText: _nameError,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _add(g),
-                onChanged: (_) => setState(() => _nameError = null),
-                trailing: FilledButton.tonal(
-                  onPressed: !isSavableName(_name.text, kMemberNameMax)
-                      ? null
-                      : () => _add(g),
-                  style: KitButtonStyles.small(context),
-                  child: const Text(S.addPerson),
                 ),
               ),
-            ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

@@ -76,81 +76,87 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     final now = ref.watch(clockProvider)();
     final group = groupId == null ? null : snap?.state.groups[groupId];
 
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: groupId == null ? null : const BackArrow(),
-        title: group == null || me == null
-            ? const Text(S.activityTitle)
-            : AppBarTitle(S.activityTitle, subtitle: groupTitle(group, me)),
-        actions: [
-          IconButton(
-            onPressed: () => context.push(Routes.search),
-            tooltip: S.searchExpenses,
-            icon: const Icon(Icons.search_rounded),
-          ),
-        ],
-      ),
-      body: AsyncBody(
-        value: activity,
-        builder: (entries) {
-          if (snap == null || me == null) return const SizedBox.shrink();
-          final items = <_Item>[
-            if (_filter != ActivityFilter.syncs)
-              for (final e in entries)
-                if (_filter == ActivityFilter.all ||
-                    (_filter == ActivityFilter.expenses &&
-                        _isExpense(e.kind)) ||
-                    (_filter == ActivityFilter.payments && _isPayment(e.kind)))
-                  _OpItem(e),
-            if (_filter == ActivityFilter.all ||
-                _filter == ActivityFilter.syncs)
-              for (final r in history) _SyncItem(r),
-          ]..sort((a, b) => b.at.compareTo(a.at));
-          final byDay = <String, List<_Item>>{};
-          for (final i in items) {
-            byDay
-                .putIfAbsent(DateLabels.dayHeader(i.at, now: now), () => [])
-                .add(i);
-          }
-          return ListView(
-            padding: const EdgeInsets.only(bottom: Space.xl),
-            children: [
-              _Filters(
-                value: _filter,
-                withSyncs: groupId == null,
-                onChanged: (f) => setState(() => _filter = f),
-              ),
-              if (items.isEmpty)
-                const Padding(
-                  padding: EdgeInsets.all(Space.xl),
-                  child: EmptyState(
-                    headline: S.activityEmptyHeadline,
-                    body: S.activityEmptyBody,
-                  ),
+    // A group name the app bar cuts reads in full at the top of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: groupId == null ? null : const BackArrow(),
+          title: group == null || me == null
+              ? const Text(S.activityTitle)
+              : AppBarTitle(S.activityTitle, subtitle: groupTitle(group, me)),
+          actions: [
+            IconButton(
+              onPressed: () => context.push(Routes.search),
+              tooltip: S.searchExpenses,
+              icon: const Icon(Icons.search_rounded),
+            ),
+          ],
+        ),
+        body: AsyncBody(
+          value: activity,
+          header: const CutTitleHeading(),
+          builder: (entries) {
+            if (snap == null || me == null) return const CutTitleHeading();
+            final items = <_Item>[
+              if (_filter != ActivityFilter.syncs)
+                for (final e in entries)
+                  if (_filter == ActivityFilter.all ||
+                      (_filter == ActivityFilter.expenses &&
+                          _isExpense(e.kind)) ||
+                      (_filter == ActivityFilter.payments &&
+                          _isPayment(e.kind)))
+                    _OpItem(e),
+              if (_filter == ActivityFilter.all ||
+                  _filter == ActivityFilter.syncs)
+                for (final r in history) _SyncItem(r),
+            ]..sort((a, b) => b.at.compareTo(a.at));
+            final byDay = <String, List<_Item>>{};
+            for (final i in items) {
+              byDay
+                  .putIfAbsent(DateLabels.dayHeader(i.at, now: now), () => [])
+                  .add(i);
+            }
+            return ListView(
+              padding: const EdgeInsets.only(bottom: Space.xl),
+              children: [
+                const CutTitleHeading(),
+                _Filters(
+                  value: _filter,
+                  withSyncs: groupId == null,
+                  onChanged: (f) => setState(() => _filter = f),
                 ),
-              for (final day in byDay.entries)
-                gutter(
-                  ListSection(
-                    title: day.key,
-                    dividerIndent: Space.avatarRowInset,
-                    children: [
-                      for (final i in day.value)
-                        switch (i) {
-                          _OpItem(:final entry) => ActivityRow(
-                            entry: entry,
-                            state: snap.state,
-                            me: me,
-                          ),
-                          _SyncItem(:final record) => SyncRecordRow(
-                            record: record,
-                          ),
-                        },
-                    ],
+                if (items.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(Space.xl),
+                    child: EmptyState(
+                      headline: S.activityEmptyHeadline,
+                      body: S.activityEmptyBody,
+                    ),
                   ),
-                ),
-            ],
-          );
-        },
+                for (final day in byDay.entries)
+                  gutter(
+                    ListSection(
+                      title: day.key,
+                      dividerIndent: Space.avatarRowInset,
+                      children: [
+                        for (final i in day.value)
+                          switch (i) {
+                            _OpItem(:final entry) => ActivityRow(
+                              entry: entry,
+                              state: snap.state,
+                              me: me,
+                            ),
+                            _SyncItem(:final record) => SyncRecordRow(
+                              record: record,
+                            ),
+                          },
+                      ],
+                    ),
+                  ),
+              ],
+            );
+          },
+        ),
       ),
     );
   }

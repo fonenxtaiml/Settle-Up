@@ -670,23 +670,38 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
         Space.sm - // the actions' end padding
         Space.xs - // the gap after the group
         Space.md; // breathing room between title and group
-    final groupInBar = groupRoom >= _minGroupInBar;
-    final Widget groupLabel = editing == null && widget.personId == null
+    final chip = editing == null && widget.personId == null;
+    final groupStyle = chip
+        ? DropdownChip.labelStyle(context)
+        : theme.textTheme.titleSmall!.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          );
+    // The group name stays in the bar only while it fits there whole; else
+    // it has a line of its own at the top of the form and wraps in full, so
+    // it is never cut (VISUAL-R34-02).
+    final groupInBar =
+        groupRoom >= _minGroupInBar &&
+        measureTextWidth(context, groupName, groupStyle) +
+                (chip ? DropdownChip.chrome : Space.sm) +
+                1 <= // rounding
+            groupRoom;
+    final Widget groupLabel = chip
         ? DropdownChip(
             label: groupName,
             onTap: _pickGroup,
             semanticLabel: S.groupChip(groupName),
+            wrap: !groupInBar,
           )
         : Padding(
             padding: const EdgeInsets.only(right: Space.sm),
-            child: Text(
-              groupName,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.titleSmall!.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
+            child: groupInBar
+                ? Text(
+                    groupName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: groupStyle,
+                  )
+                : FitWordsText(groupName, style: groupStyle),
           );
     return PopScope(
       canPop: !_dirty || _saved || _saving,

@@ -376,182 +376,186 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                   toName: toIsMe ? null : firstName(toName),
                 )
               : null);
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: BackArrow(close: true, onPressed: _recorded ? _close : null),
-        title: AppBarTitle(S.settleTitle, subtitle: groupName),
-      ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
-          child: FilledButton(
-            onPressed: amount > 0 && !_saving && !_recorded
-                ? () => _record(
-                    g,
-                    currency,
-                    amount,
-                    method,
-                    date,
-                    amount == owed,
-                    owed,
-                    entries,
-                    overText,
-                  )
-                : null,
-            style: KitButtonStyles.block,
-            // The amount in the label is never split across lines: a word
-            // wider than the label sets it smaller (VISUAL-R34-01).
-            child: FitWordsText(
-              S.recordPayment(amountText),
-              textAlign: TextAlign.center,
+    // A group name the app bar cuts reads in full at the top of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: BackArrow(close: true, onPressed: _recorded ? _close : null),
+          title: AppBarTitle(S.settleTitle, subtitle: groupName),
+        ),
+        bottomNavigationBar: SafeArea(
+          top: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+            child: FilledButton(
+              onPressed: amount > 0 && !_saving && !_recorded
+                  ? () => _record(
+                      g,
+                      currency,
+                      amount,
+                      method,
+                      date,
+                      amount == owed,
+                      owed,
+                      entries,
+                      overText,
+                    )
+                  : null,
+              style: KitButtonStyles.block,
+              // The amount in the label is never split across lines: a word
+              // wider than the label sets it smaller (VISUAL-R34-01).
+              child: FitWordsText(
+                S.recordPayment(amountText),
+                textAlign: TextAlign.center,
+              ),
             ),
           ),
         ),
-      ),
-      body: InputLock(
-        locked: locked,
-        child: ListView(
-          padding: const EdgeInsets.only(bottom: Space.lg),
-          children: [
-            const SizedBox(height: Space.sm),
-            textGutter(
-              SettleTether(
-                fromId: from,
-                fromName: fromName,
-                toId: to,
-                toName: toName,
-                fromLabel: fromIsMe ? S.you : fromName,
-                toLabel: toIsMe ? S.you : toName,
-                amountMinor: amount,
-                currency: currency,
-                fromIsMe: fromIsMe,
-                toIsMe: toIsMe,
-                question: question,
-                recorded: _recorded,
-                onRecordedAnimationEnd: _close,
-                action: TextLink(
-                  owed > 0 && amount == owed ? S.payPartOfIt : S.changeAmount,
-                  onPressed: locked ? null : () => _payPart(currency, owed),
+        body: InputLock(
+          locked: locked,
+          child: ListView(
+            padding: const EdgeInsets.only(bottom: Space.lg),
+            children: [
+              const SizedBox(height: Space.sm),
+              const CutTitleHeading(),
+              textGutter(
+                SettleTether(
+                  fromId: from,
+                  fromName: fromName,
+                  toId: to,
+                  toName: toName,
+                  fromLabel: fromIsMe ? S.you : fromName,
+                  toLabel: toIsMe ? S.you : toName,
+                  amountMinor: amount,
+                  currency: currency,
+                  fromIsMe: fromIsMe,
+                  toIsMe: toIsMe,
+                  question: question,
+                  recorded: _recorded,
+                  onRecordedAnimationEnd: _close,
+                  action: TextLink(
+                    owed > 0 && amount == owed ? S.payPartOfIt : S.changeAmount,
+                    onPressed: locked ? null : () => _payPart(currency, owed),
+                  ),
                 ),
               ),
-            ),
-            if (overText != null)
+              if (overText != null)
+                textGutter(
+                  Padding(
+                    padding: const EdgeInsets.only(top: Space.sm),
+                    // An amount in a sentence is never split (VISUAL-R34-01).
+                    child: FitWordsText(
+                      overText,
+                      textAlign: TextAlign.center,
+                      style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+                    ),
+                  ),
+                ),
+              gutter(
+                SectionHeading(
+                  fromIsMe || !toIsMe ? S.howYouPaid : S.howTheyPaid,
+                  padding: const EdgeInsets.fromLTRB(
+                    4,
+                    16,
+                    4,
+                    Space.sectionBottom,
+                  ),
+                ),
+              ),
+              gutter(
+                PaymentMethodSelector(
+                  value: method,
+                  onChanged: locked ? null : (m) => setState(() => _method = m),
+                ),
+              ),
               textGutter(
                 Padding(
                   padding: const EdgeInsets.only(top: Space.sm),
-                  // An amount in a sentence is never split (VISUAL-R34-01).
-                  child: FitWordsText(
-                    overText,
-                    textAlign: TextAlign.center,
+                  child: Text(
+                    S.methodNote(method.name),
                     style: theme.textTheme.bodySmall!.copyWith(color: ink2),
                   ),
                 ),
               ),
-            gutter(
-              SectionHeading(
-                fromIsMe || !toIsMe ? S.howYouPaid : S.howTheyPaid,
-                padding: const EdgeInsets.fromLTRB(
-                  4,
-                  16,
-                  4,
-                  Space.sectionBottom,
+              gutter(
+                const SectionHeading(
+                  S.whatChanges,
+                  padding: EdgeInsets.fromLTRB(4, 20, 4, Space.sectionBottom),
                 ),
               ),
-            ),
-            gutter(
-              PaymentMethodSelector(
-                value: method,
-                onChanged: locked ? null : (m) => setState(() => _method = m),
-              ),
-            ),
-            textGutter(
-              Padding(
-                padding: const EdgeInsets.only(top: Space.sm),
-                child: Text(
-                  S.methodNote(method.name),
-                  style: theme.textTheme.bodySmall!.copyWith(color: ink2),
+              gutter(
+                AnimatedSwitcher(
+                  duration: Motion.crossfade,
+                  child: BeforeAfterTable(
+                    key: ValueKey(_recorded),
+                    currency: currency,
+                    entries: _recorded
+                        ? [
+                            for (final e in frozen?.entries ?? entries)
+                              BeforeAfterEntry(
+                                title: e.title,
+                                subtitle: e.subtitle,
+                                now: e.after,
+                                after: e.after,
+                              ),
+                          ]
+                        : frozen?.entries ?? entries,
+                  ),
                 ),
               ),
-            ),
-            gutter(
-              const SectionHeading(
-                S.whatChanges,
-                padding: EdgeInsets.fromLTRB(4, 20, 4, Space.sectionBottom),
-              ),
-            ),
-            gutter(
-              AnimatedSwitcher(
-                duration: Motion.crossfade,
-                child: BeforeAfterTable(
-                  key: ValueKey(_recorded),
-                  currency: currency,
-                  entries: _recorded
-                      ? [
-                          for (final e in frozen?.entries ?? entries)
-                            BeforeAfterEntry(
-                              title: e.title,
-                              subtitle: e.subtitle,
-                              now: e.after,
-                              after: e.after,
-                            ),
-                        ]
-                      : frozen?.entries ?? entries,
-                ),
-              ),
-            ),
-            const SizedBox(height: Space.md),
-            gutter(
-              ListSection(
-                children: [
-                  KeyValueRow(
-                    label: S.date,
-                    value: DateLabels.pickerDate(date, now: now),
-                    onTap: locked
-                        ? null
-                        : () async {
-                            final d = await pickEntryDate(
-                              context,
-                              initial: date,
-                              now: now,
-                            );
-                            if (d != null && mounted && !_locked) {
-                              setState(
-                                () => _date = DateTime(
-                                  d.year,
-                                  d.month,
-                                  d.day,
-                                  now.hour,
-                                  now.minute,
-                                ),
+              const SizedBox(height: Space.md),
+              gutter(
+                ListSection(
+                  children: [
+                    KeyValueRow(
+                      label: S.date,
+                      value: DateLabels.pickerDate(date, now: now),
+                      onTap: locked
+                          ? null
+                          : () async {
+                              final d = await pickEntryDate(
+                                context,
+                                initial: date,
+                                now: now,
                               );
-                            }
-                          },
-                  ),
-                  KeyValueRow(
-                    label: S.notes,
-                    value: note.isEmpty ? null : note,
-                    placeholder: S.optional,
-                    onTap: locked
-                        ? null
-                        : () async {
-                            final t = await promptText(
-                              context,
-                              title: S.notes,
-                              initial: _note,
-                              maxLength: kNotesMax,
-                              optional: true,
-                              multiline: true,
-                            );
-                            if (t != null && mounted && !_locked) {
-                              setState(() => _note = t);
-                            }
-                          },
-                  ),
-                ],
+                              if (d != null && mounted && !_locked) {
+                                setState(
+                                  () => _date = DateTime(
+                                    d.year,
+                                    d.month,
+                                    d.day,
+                                    now.hour,
+                                    now.minute,
+                                  ),
+                                );
+                              }
+                            },
+                    ),
+                    KeyValueRow(
+                      label: S.notes,
+                      value: note.isEmpty ? null : note,
+                      placeholder: S.optional,
+                      onTap: locked
+                          ? null
+                          : () async {
+                              final t = await promptText(
+                                context,
+                                title: S.notes,
+                                initial: _note,
+                                maxLength: kNotesMax,
+                                optional: true,
+                                multiline: true,
+                              );
+                              if (t != null && mounted && !_locked) {
+                                setState(() => _note = t);
+                              }
+                            },
+                    ),
+                  ],
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
@@ -633,44 +637,56 @@ class _PickPayment extends StatelessWidget {
   final ValueChanged<Transfer> onPick;
 
   @override
-  Widget build(BuildContext context) => Scaffold(
-    appBar: screenAppBar(
-      leading: const BackArrow(close: true),
-      title: AppBarTitle(S.settleTitle, subtitle: groupName),
-    ),
-    body: transfers.isEmpty
-        ? const Center(
-            child: Padding(
-              padding: EdgeInsets.all(Space.xl),
-              child: EmptyState(
-                headline: S.nothingToSettle,
-                body: S.nothingToSettleBody,
-              ),
-            ),
-          )
-        : ListView(
-            children: [
-              gutter(
-                ListSection(
-                  title: S.whoIsPaying,
-                  children: [
-                    for (final t in transfers)
-                      TransferRow(
-                        fromId: t.from,
-                        fromName: full[t.from] ?? S.someone,
-                        toId: t.to,
-                        toName: full[t.to] ?? S.someone,
-                        amountMinor: t.amount,
-                        currency: t.currency,
-                        fromIsMe: t.from == myId,
-                        toIsMe: t.to == myId,
-                        onTap: () => onPick(t),
+  // A group name the app bar cuts reads in full at the top of the body.
+  Widget build(BuildContext context) => TitleCutScope(
+    child: Scaffold(
+      appBar: screenAppBar(
+        leading: const BackArrow(close: true),
+        title: AppBarTitle(S.settleTitle, subtitle: groupName),
+      ),
+      body: transfers.isEmpty
+          ? const CustomScrollView(
+              slivers: [
+                SliverToBoxAdapter(child: CutTitleHeading()),
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(Space.xl),
+                      child: EmptyState(
+                        headline: S.nothingToSettle,
+                        body: S.nothingToSettleBody,
                       ),
-                  ],
+                    ),
+                  ),
                 ),
-              ),
-            ],
-          ),
+              ],
+            )
+          : ListView(
+              children: [
+                const CutTitleHeading(),
+                gutter(
+                  ListSection(
+                    title: S.whoIsPaying,
+                    children: [
+                      for (final t in transfers)
+                        TransferRow(
+                          fromId: t.from,
+                          fromName: full[t.from] ?? S.someone,
+                          toId: t.to,
+                          toName: full[t.to] ?? S.someone,
+                          amountMinor: t.amount,
+                          currency: t.currency,
+                          fromIsMe: t.from == myId,
+                          toIsMe: t.to == myId,
+                          onTap: () => onPick(t),
+                        ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+    ),
   );
 }
 

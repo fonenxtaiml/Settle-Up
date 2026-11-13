@@ -89,18 +89,39 @@ class BackArrow extends StatelessWidget {
 
 /// Loading and error states for an [AsyncValue] body.
 class AsyncBody<T> extends StatelessWidget {
-  const AsyncBody({super.key, required this.value, required this.builder});
+  const AsyncBody({
+    super.key,
+    required this.value,
+    required this.builder,
+    this.header,
+  });
 
   final AsyncValue<T> value;
   final Widget Function(T data) builder;
 
+  /// Shown above the loading and error states, for example the screen's
+  /// [CutTitleHeading]; the data's [builder] places it itself.
+  final Widget? header;
+
   @override
-  Widget build(BuildContext context) => switch (value) {
+  Widget build(BuildContext context) {
+    final header = this.header;
+    final state = _state(context);
+    if (header == null || value is AsyncData<T>) return state;
+    return CustomScrollView(
+      slivers: [
+        SliverToBoxAdapter(child: header),
+        SliverFillRemaining(hasScrollBody: false, child: state),
+      ],
+    );
+  }
+
+  Widget _state(BuildContext context) => switch (value) {
     AsyncData(:final value) => builder(value),
     AsyncError(:final error) => Center(
       child: Padding(
         padding: const EdgeInsets.all(Space.xl),
-        child: Text(errorMessage(error), textAlign: TextAlign.center),
+        child: FitWordsText(errorMessage(error), textAlign: TextAlign.center),
       ),
     ),
     _ => const Center(

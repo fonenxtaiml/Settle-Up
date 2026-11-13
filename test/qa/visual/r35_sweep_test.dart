@@ -165,7 +165,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R34-02: a group waiting for its first sync shows its name '
     'only in the one-line app bar, cut',
-    skip: true, // QA VISUAL-R34-02: pending group name cut in the app bar
     (t) async {
       late VisualWorld w;
       const pending = 'cccc0000-0000-7000-8000-000000000001';
