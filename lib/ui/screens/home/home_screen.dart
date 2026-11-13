@@ -193,6 +193,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
               for (final e in pendingJoins.entries)
                 KitListRow(
                   title: e.value,
+                  titleLines: 1,
                   subtitle: S.waitingForFirstSync,
                   onTap: () => context.push(Routes.group(e.key)),
                 ),

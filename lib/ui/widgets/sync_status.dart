@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../theme/tokens.dart';
 import '../format/dates.dart';
+import 'beside_or_below.dart';
 import 'button_semantics.dart';
 import 'kit_layout.dart';
 import 'kit_strings.dart';
@@ -195,15 +196,10 @@ class SyncBanner extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(title, style: theme.textTheme.titleSmall),
-        // A stopped sync's line says what to do next, so it wraps in full;
-        // the "last synced with <phone>" status keeps its cap
-        // (VISUAL-R31-02).
+        // The strip's status and a stopped sync's next step wrap in full
+        // in every state (VISUAL-R31-02).
         Text(
           subtitle,
-          maxLines: state == SyncChipState.failed ? null : (large ? 3 : 1),
-          overflow: state == SyncChipState.failed
-              ? null
-              : TextOverflow.ellipsis,
           style: theme.textTheme.bodySmall!.copyWith(
             color: scheme.onSurfaceVariant,
           ),
@@ -235,35 +231,19 @@ class SyncBanner extends StatelessWidget {
               12,
               action == null || large ? 12 : 6.5,
             ),
-            child: large
-                ? Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          ExcludeSemantics(child: icon),
-                          const SizedBox(width: Space.md),
-                          Expanded(child: text),
-                        ],
-                      ),
-                      if (action != null)
-                        Align(
-                          alignment: AlignmentDirectional.centerEnd,
-                          child: action,
-                        ),
-                    ],
-                  )
-                : Row(
-                    children: [
-                      ExcludeSemantics(child: icon),
-                      const SizedBox(width: Space.md),
-                      Expanded(child: text),
-                      if (action != null) ...[
-                        const SizedBox(width: Space.md),
-                        action,
-                      ],
-                    ],
-                  ),
+            // The Sync button sits beside the text while the text keeps a
+            // readable column, else under it (VISUAL-R32-02).
+            child: BesideOrBelow(
+              leading: ExcludeSemantics(child: icon),
+              leadingGap: Space.md,
+              main: text,
+              trailing: action,
+              gap: Space.md,
+              spacing: 0,
+              below: large,
+              minMainWidth: kMinTextBeside,
+              minMainFraction: 0.5,
+            ),
           ),
         ),
       ),

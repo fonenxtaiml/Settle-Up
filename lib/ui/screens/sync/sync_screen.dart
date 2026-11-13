@@ -383,6 +383,7 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
                         for (final r in history.take(5))
                           KitListRow(
                             title: r.peerName,
+                            titleLines: 1,
                             subtitle: S.recentLine(
                               DateLabels.ago(r.endedAt, now: now),
                               r.transport == TransportKind.lan

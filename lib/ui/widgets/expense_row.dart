@@ -237,6 +237,7 @@ class ExpenseRow extends StatelessWidget {
     };
     Widget rowFor(bool stack) => KitListRow(
       title: title,
+      titleLines: 1,
       subtitle: metaText,
       leading: leading,
       trailing: trailing,
@@ -245,6 +246,7 @@ class ExpenseRow extends StatelessWidget {
       subtitleLines: 2,
       verticalPadding: 7,
       stackTrailing: stack,
+      trailingWidth: trailingWidth == 0 ? null : trailingWidth,
       titleStyle: deleted
           ? titleStyle.copyWith(
               decoration: TextDecoration.lineThrough,
@@ -273,7 +275,7 @@ class ExpenseRow extends StatelessWidget {
                     trailingWidth -
                     (unshared ? Space.sm + 8 : 0);
                 final fits =
-                    textRoom >= _minTextBeside &&
+                    textRoom >= kMinTextBeside &&
                     textFitsWords(
                       context,
                       metaText,
@@ -287,10 +289,6 @@ class ExpenseRow extends StatelessWidget {
     );
   }
 }
-
-/// The least room the title and subline keep beside the trailing block
-/// before the row stacks.
-const double _minTextBeside = 96;
 
 /// "Not yet shared": a small open point, the tether's waiting vocabulary.
 class _WaitingMark extends StatelessWidget {
