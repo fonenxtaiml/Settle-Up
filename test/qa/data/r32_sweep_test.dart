@@ -167,10 +167,6 @@ void main() {
   test(
     'QA DATA-R32-01 repro: a command that fails to store leaves the '
     'snapshot notice equal to the getter',
-    skip:
-        'QA DATA-R32-01: a failed '
-        'edit of a peer-ahead entity sets the clock flag the snapshot never '
-        'gets',
     () async {
       await join();
       // B's clock runs 2 days ahead when it adds an expense A then syncs.
