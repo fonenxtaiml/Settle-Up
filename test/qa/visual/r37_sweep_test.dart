@@ -196,7 +196,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R36-01: an unknown nearby phone with a 40-character name is '
     'cut in its Pair row, and Pair does not show the name in full',
-    skip: true,
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());
