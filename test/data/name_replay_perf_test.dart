@@ -3,6 +3,7 @@
 // on a relaunch and in applyRemote, for renames of a few members and for
 // many members created with names NFKC makes 18 times as long, or of
 // combining marks NFKC expands, which no head of a name can be cut before.
+import 'dart:isolate';
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -45,29 +46,51 @@ Future<int> openMs(List<Operation> extra, {bool base = true}) async {
   return r.openMs;
 }
 
-/// Wraps one timed open of [fasterOpens]: [run] counts from 0, [heavy] is
-/// true for the log under test; it must call [open] once and return its ms.
-typedef OpenRun = Future<int> Function(
+/// Wraps one timed sample of [alternateSamples]: [run] counts from 0,
+/// [heavy] is true for the log under test; it must call [sample] once and
+/// return what it measured.
+typedef SampleRun<T> = Future<T> Function(
   int run,
   bool heavy,
-  Future<int> Function() open,
+  Future<T> Function() sample,
 );
+
+/// Wraps one timed open of [fasterOpens], as [SampleRun] does.
+typedef OpenRun = SampleRun<int>;
 
 /// How many times [fasterOpens] opens each log by default.
 const int kOpenRuns = 3;
 
-/// The wall-clock ms the log of [ordinary] and that of [heavy] take to
-/// open: each opened [runs] times, alternately (ordinary, heavy, ordinary,
-/// ...), and the fastest run of each taken.
+/// [runs] samples of [ordinary] and of [heavy], taken alternately
+/// (ordinary, heavy, ordinary, ...), in the order taken.
 ///
-/// The one way the suite times opens it compares (DATA-R18-02,
-/// DATA-R32-02): the wall clock counts whatever else the host runs (the
-/// other test file `flutter test -j 2` runs beside this one, other work on
-/// a shared host), and a burst of that load over one sample alone would
-/// decide a single-sample comparison. Alternating spreads the samples of
-/// both logs over the same stretch of time, and the fastest of each is the
-/// one load slowed least. [around] wraps each run (for a probe that loads
-/// the host over some of them).
+/// The one way the suite takes the wall-clock samples it bounds
+/// (DATA-R18-02, DATA-R32-02): the wall clock counts whatever else the host
+/// runs (the other test file `flutter test -j 2` runs beside this one,
+/// other work on a shared host), and a burst of that load over one sample
+/// alone would decide a bound on a single sample. Alternating spreads the
+/// samples of both logs over the same stretch of time, and the fastest of
+/// each is the one load slowed least. [around] wraps each sample (for a
+/// probe that loads the host over some of them). A bound on an open that
+/// must be cold takes each sample in a fresh isolate ([coldSample]).
+Future<({List<T> ordinary, List<T> heavy})> alternateSamples<T>(
+  Future<T> Function() ordinary,
+  Future<T> Function() heavy, {
+  int runs = kOpenRuns,
+  SampleRun<T>? around,
+}) async {
+  final wrap = around ?? (_, _, sample) => sample();
+  final o = <T>[], h = <T>[];
+  for (var k = 0; k < runs; k++) {
+    o.add(await wrap(k, false, ordinary));
+    h.add(await wrap(k, true, heavy));
+  }
+  return (ordinary: o, heavy: h);
+}
+
+/// The wall-clock ms the log of [ordinary] and that of [heavy] take to
+/// open: each opened [runs] times by [alternateSamples], and the fastest
+/// run of each taken.
 Future<({int ordinaryMs, int heavyMs})> fasterOpens(
   List<Operation> ordinary,
   List<Operation> heavy, {
@@ -75,20 +98,38 @@ Future<({int ordinaryMs, int heavyMs})> fasterOpens(
   int runs = kOpenRuns,
   OpenRun? around,
 }) async {
-  final wrap = around ?? (_, _, open) => open();
-  var ordinaryMs = 1 << 30, heavyMs = 1 << 30;
-  for (var k = 0; k < runs; k++) {
-    ordinaryMs = min(
-      ordinaryMs,
-      await wrap(k, false, () => openMs(ordinary, base: base)),
-    );
-    heavyMs = min(
-      heavyMs,
-      await wrap(k, true, () => openMs(heavy, base: base)),
-    );
-  }
-  return (ordinaryMs: ordinaryMs, heavyMs: heavyMs);
+  final r = await alternateSamples(
+    () => openMs(ordinary, base: base),
+    () => openMs(heavy, base: base),
+    runs: runs,
+    around: around,
+  );
+  return (ordinaryMs: r.ordinary.reduce(min), heavyMs: r.heavy.reduce(min));
 }
+
+/// The fastest of [runs] wall-clock samples of one open, for a bound on
+/// that open alone (an absolute budget): [open] takes the run, counting
+/// from 0, and returns its ms. One sample would let a burst of host load
+/// over it decide the bound, as in [alternateSamples].
+Future<int> fastestOpenMs(
+  Future<int> Function(int run) open, {
+  int runs = kOpenRuns,
+}) async {
+  var best = 1 << 30;
+  for (var k = 0; k < runs; k++) {
+    best = min(best, await open(k));
+  }
+  return best;
+}
+
+/// Runs [sample] in a fresh isolate of this isolate group and returns what
+/// it measured: for a sample of an open that must be cold, as the first
+/// open after a relaunch is. Every static an isolate fills on first use
+/// (the tables of NormalForm and NameText among them) starts empty there,
+/// whatever this isolate has shown, so such a sample can be repeated and
+/// the fastest taken ([alternateSamples]); the compiled code is shared
+/// within the group, so it is warm as in a running app.
+Future<T> coldSample<T>(Future<T> Function() sample) => Isolate.run(sample);
 
 /// The 20k ops of the base log and 5,000 members created with ordinary
 /// names, and with distinct 159 x U+FDFA names: the logs of the creates
@@ -201,6 +242,9 @@ void expectWithinMarkBudget(MarkCost r) {
   expect(r.openMs - r.ordinaryMs, lessThan(600 * load));
 }
 
+/// A static the [coldSample] test fills in one isolate only.
+final List<int> _filledStatic = [];
+
 void main() {
   test('fasterOpens alternates the two logs and takes the fastest run of '
       'each, so a burst of load over any one sample does not decide it '
@@ -231,6 +275,49 @@ void main() {
       expect(r.ordinaryMs, best(false));
       expect(r.heavyMs, best(true));
     }
+  });
+
+  test('fastestOpenMs takes the fastest of its runs, in order, so a burst '
+      'of load over any one sample does not decide a bound on one open '
+      '(DATA-R32-02)', () async {
+    final rnd = Random(3302);
+    for (var trial = 0; trial < 200; trial++) {
+      final runs = 1 + rnd.nextInt(4);
+      final times = [for (var k = 0; k < runs; k++) 100 + rnd.nextInt(2000)];
+      final seen = <int>[];
+      final ms = await fastestOpenMs((run) async {
+        seen.add(run);
+        return times[run];
+      }, runs: runs);
+      expect(seen, [for (var k = 0; k < runs; k++) k]);
+      expect(ms, times.reduce(min));
+    }
+  });
+
+  test('coldSample runs in a fresh isolate: what this isolate has filled '
+      'in (the name tables, any static) starts empty there each time, and '
+      'what the sample fills stays there (DATA-R32-02)', () async {
+    final fresh = await coldSample(
+      () async => (NameText.astralEntries, _filledStatic.length),
+    );
+    // Fill this isolate's tables and a static of the test.
+    for (var r = 0x1D400; r < 0x1D800; r++) {
+      NameText.display('a${String.fromCharCode(r)}\u0301');
+    }
+    _filledStatic.add(1);
+    expect(NameText.astralEntries, greaterThan(fresh.$1));
+    for (var k = 0; k < 2; k++) {
+      final r = await coldSample(() async {
+        final before = (NameText.astralEntries, _filledStatic.length);
+        _filledStatic.addAll([1, 2, 3]);
+        for (var c = 0x1D400; c < 0x1D800; c++) {
+          NameText.display('a${String.fromCharCode(c)}\u0301');
+        }
+        return before;
+      });
+      expect(r, fresh);
+    }
+    expect(_filledStatic, [1]);
   });
 
   test('20k ops + 20,000 renames with distinct 159 x U+FDFA names open '
