@@ -457,7 +457,9 @@ class _HistoryRow extends StatelessWidget {
           children: [
             Text(title, style: theme.textTheme.titleSmall),
             const SizedBox(height: 2),
-            for (final l in lines) Text(l, style: sub),
+            // A change line can carry an amount ("Amount: KD1.000 →
+            // KD99,999,999.999"): never split (VISUAL-R34-01).
+            for (final l in lines) FitWordsText(l, style: sub),
           ],
         ),
       ),

@@ -157,7 +157,8 @@ void showSnack(
     ..hideCurrentSnackBar()
     ..showSnackBar(
       SnackBar(
-        content: Text(message),
+        // A message can carry an amount: never split (VISUAL-R34-01).
+        content: FitWordsText(message),
         behavior: SnackBarBehavior.floating,
         action: actionLabel == null
             ? null
@@ -263,7 +264,8 @@ Future<bool?> askChoice(
       // at a large text size never pushes them off (VISUAL-R29-01).
       scrollable: true,
       title: Text(title),
-      content: Text(body),
+      // A body can carry an amount: never split (VISUAL-R34-01).
+      content: FitWordsText(body),
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(false),

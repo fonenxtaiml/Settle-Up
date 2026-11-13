@@ -147,7 +147,9 @@ class _MembersScreenState extends ConsumerState<MembersScreen> {
               // at a large text size never pushes them off (VISUAL-R29-01).
               scrollable: true,
               title: Text(S.cannotRemoveTitle(m.displayName)),
-              content: Text(S.cannotRemoveBody(m.displayName, open)),
+              // The body carries an amount: a word wider than the line
+              // sets it smaller, never split (VISUAL-R34-01).
+              content: FitWordsText(S.cannotRemoveBody(m.displayName, open)),
               actions: [
                 FilledButton(
                   onPressed: () => Navigator.of(context).pop(),

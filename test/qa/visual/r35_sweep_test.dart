@@ -85,7 +85,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R34-01: the "can\'t be removed yet" dialog splits '
     'Money.maxMinor in KWD across lines at 2.0x on a 320 dp phone',
-    skip: true, // QA VISUAL-R34-01: amount split in the Remove dialog body
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.huge());
