@@ -401,7 +401,10 @@ class SyncRecordRow extends StatelessWidget {
       title: ok
           ? S.syncedWith(record.peerName)
           : S.syncStoppedWith(record.peerName),
-      titleLines: 1,
+      // Wraps in full: the row opens Sync, which lists only the latest
+      // syncs, so a capped phone name from an older sync would read in
+      // full nowhere (VISUAL-R36-01). Phone names are at most 40
+      // characters (SPEC 5.16).
       subtitle:
           '${S.sentGot(record.sentOps, record.receivedOps)}, '
           '${transportWord(record.transport)}, '
