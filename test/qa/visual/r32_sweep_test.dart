@@ -251,7 +251,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R32-01: the Settings switch label "Simplify debts in new '
     'groups" is cut with an ellipsis at 1.0x on 320 dp and 1.3x on 360 dp',
-    skip: true, // QA VISUAL-R32-01: Settings switch label cut
     (t) async {
       late VisualPhone phone;
       await t.runAsync(() async => phone = await VisualPhone.create());
