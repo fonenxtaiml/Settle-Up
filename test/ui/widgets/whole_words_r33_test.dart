@@ -434,7 +434,7 @@ void main() {
     await t.tap(find.text('Description'));
     await t.pump();
     expect(
-      t.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+      t.widget<EditableText>(find.byType(EditableText)).focusNode.hasFocus,
       isTrue,
     );
     await t.enterText(find.byType(TextField), 'Supercalifragilistic' * 3);
