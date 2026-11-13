@@ -151,8 +151,9 @@ void main() {
           final para = e.renderObject! as RenderParagraph;
           final txt = para.text.toPlainText();
           if (txt == s || txt.trim().isEmpty) continue;
-          if (para.didExceedMaxLines)
+          if (para.didExceedMaxLines) {
             problems.add('$at: "$s" value "$txt" cut');
+          }
           final r = para.localToGlobal(Offset.zero) & para.size;
           if (r.overlaps(tr)) problems.add('$at: "$s" value "$txt" over it');
           if (r.left < -0.5 || r.right > v.size.width + 0.5) {
