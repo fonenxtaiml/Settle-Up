@@ -542,6 +542,11 @@ class PickerTile extends StatelessWidget {
 /// Key and value row in a grouped list (render 4, "Date Today, 9 Nov"):
 /// a 72 dp secondary key column, a semibold value, a chevron. A null value
 /// shows [placeholder] in secondary ink ("Optional").
+///
+/// When the key column or the room beside it is narrower than a word of
+/// the key or the value ("Optional" at 2.0x on a 320 dp phone), the value
+/// goes under the key: no word is broken mid-word (the VISUAL-R32-02 rule,
+/// as [PickerTilePair] and the Settle up table, VISUAL-R33-01/02).
 class KeyValueRow extends StatelessWidget {
   const KeyValueRow({
     super.key,
@@ -556,12 +561,27 @@ class KeyValueRow extends StatelessWidget {
   final String? placeholder;
   final VoidCallback? onTap;
 
+  /// The chevron.
+  static const double _chevron = 20;
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final scheme = theme.colorScheme;
     final shown = value ?? placeholder ?? '';
-    final keyWidth = MediaQuery.textScalerOf(context).scale(72);
+    final keyWidth = MediaQuery.textScalerOf(context)
+        .scale(72)
+        .clamp(72.0, 140.0);
+    final keyStyle = theme.textTheme.bodyMedium!.copyWith(
+      color: scheme.onSurfaceVariant,
+    );
+    final valueStyle = value == null
+        ? theme.textTheme.titleSmall!
+              .withWeight(FontWeight.w500)
+              .copyWith(color: scheme.onSurfaceVariant)
+        : theme.textTheme.titleSmall!;
+    final keyText = Text(label, style: keyStyle);
+    final valueText = Text(shown, style: valueStyle);
     return ButtonSemantics(
       alwaysButton: false,
       label: '$label, $shown',
@@ -572,35 +592,39 @@ class KeyValueRow extends StatelessWidget {
           constraints: const BoxConstraints(minHeight: 52),
           child: Padding(
             padding: const EdgeInsetsDirectional.fromSTEB(16, 6, 12, 6),
-            child: Row(
-              children: [
-                SizedBox(
-                  width: keyWidth.clamp(72, 140),
-                  child: Text(
-                    label,
-                    style: theme.textTheme.bodyMedium!.copyWith(
-                      color: scheme.onSurfaceVariant,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: Space.md),
-                Expanded(
-                  child: Text(
-                    shown,
-                    style: value == null
-                        ? theme.textTheme.titleSmall!
-                              .withWeight(FontWeight.w500)
-                              .copyWith(color: scheme.onSurfaceVariant)
-                        : theme.textTheme.titleSmall,
-                  ),
-                ),
-                if (onTap != null)
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    size: 20,
-                    color: scheme.onSurfaceVariant,
-                  ),
-              ],
+            child: LayoutBuilder(
+              builder: (context, c) {
+                final room =
+                    c.maxWidth - (onTap == null ? 0 : _chevron) - Space.md;
+                final beside =
+                    !c.hasBoundedWidth ||
+                    (longestWordWidth(context, label, keyStyle) <=
+                            keyWidth + 0.5 &&
+                        longestWordWidth(context, shown, valueStyle) <=
+                            room - keyWidth + 0.5);
+                return Row(
+                  children: [
+                    if (beside) ...[
+                      SizedBox(width: keyWidth, child: keyText),
+                      const SizedBox(width: Space.md),
+                      Expanded(child: valueText),
+                    ] else
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [keyText, valueText],
+                        ),
+                      ),
+                    if (onTap != null)
+                      Icon(
+                        Icons.chevron_right_rounded,
+                        size: _chevron,
+                        color: scheme.onSurfaceVariant,
+                      ),
+                  ],
+                );
+              },
             ),
           ),
         ),
