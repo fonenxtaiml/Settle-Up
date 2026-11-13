@@ -183,7 +183,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R33-01: Settle up "What changes" breaks its row labels '
     'mid-word in a 34 dp column on a 320 dp phone (1.0x and 1.3x)',
-    skip: true, // QA VISUAL-R33-01: What changes labels broken mid-word
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());

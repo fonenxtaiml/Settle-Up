@@ -82,8 +82,8 @@ reference screens. Copy its layouts when you build the real screens.
 
 ### Settle up
 - **PaymentMethodSelector**: UPI, Cash, Bank and Other as pill segments. `PaymentMethodSelector({required PaymentMethod value, required ValueChanged<PaymentMethod>? onChanged})`; a null `onChanged` disables it (a payment being saved) and it keeps showing `value`
-- **BeforeAfterTable**: the "What changes" table, with Now → After for each balance. `BeforeAfterTable({required List<BeforeAfterEntry> entries, required String currency, String nowLabel = 'Now', String afterLabel = 'After'})`, where `BeforeAfterEntry({required String title, String? subtitle, required BalanceCell now, required BalanceCell after})` and `BalanceCell({required String word, required int minor, MoneyDirection? direction})`.
 - **KeyValueRow**: a row such as "Date Today, 9 Nov ›" or "Note Optional ›". `KeyValueRow({required String label, required String? value, String? placeholder, VoidCallback? onTap})`
+- **BeforeAfterTable**: the "What changes" table, with Now → After for each balance. `BeforeAfterTable({required List<BeforeAfterEntry> entries, required String currency, String nowLabel = 'Now', String afterLabel = 'After'})`, where `BeforeAfterEntry({required String title, String? subtitle, required BalanceCell now, required BalanceCell after})` and `BalanceCell({required String word, required int minor, MoneyDirection? direction})`. Each row stacks (label above Now → After) at large text or when the two 96 dp columns would leave a label less than its widest word.
 
 ### Sync
 - **SyncStatusChip**: a compact stone pill for app bars. It never says "offline". `SyncStatusChip({required SyncChipState state, int pendingCount = 0, DateTime? lastSyncedAt, String? peerName, VoidCallback? onTap})`
