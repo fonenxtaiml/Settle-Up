@@ -112,6 +112,10 @@ class _CurrencySheetState extends State<_CurrencySheet> {
             inputFormatters: const [WellFormedTextFormatter()],
             decoration: const InputDecoration(
               hintText: S.searchCurrencies,
+              // The hint wraps in full at a large text size (the theme's
+              // hintMaxLines, VISUAL-R33-03); once the user types, the
+              // field gives that room back to the list.
+              maintainHintSize: false,
               prefixIcon: Icon(Icons.search_rounded),
             ),
             onChanged: (v) => setState(() => _query = v),

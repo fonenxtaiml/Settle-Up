@@ -132,7 +132,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R31-02: the nearby phone row cuts its status line ("Wi-Fi, '
     'may share a group", "... and 2 more") with an ellipsis',
-    skip: true, // QA VISUAL-R31-02: nearby phone status line cut
     (t) async {
       final problems = <String>[];
       for (final v in kVariants) {
@@ -184,7 +183,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R33-01: Settle up "What changes" breaks its row labels '
     'mid-word in a 34 dp column on a 320 dp phone (1.0x and 1.3x)',
-    skip: true, // QA VISUAL-R33-01: What changes labels broken mid-word
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());
@@ -225,7 +223,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R33-02: the Add expense Date tile breaks "Today," mid-word '
     'on a 320 dp phone at 1.3x',
-    skip: true, // QA VISUAL-R33-02: Date tile value broken mid-word
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());
@@ -266,7 +263,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R33-03: the Description field label and the name hints are '
     'cut with an ellipsis at 2.0x',
-    skip: true, // QA VISUAL-R33-03: field label and hint cut at 2.0x
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());
