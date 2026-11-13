@@ -380,6 +380,55 @@ void main() {
     });
   });
 
+  group('defects', () {
+    test(
+      'SYNC-R39-01: a repeat sync across a held-back op says "got 2 changes" '
+      'while it stores nothing; the same screen lists the group with 0',
+      skip:
+          'QA SYNC-R39-01: Sync summary and history count re-sent duplicates '
+          'as changes got',
+      () async {
+        final a = await phone('a', "Alex's Pixel");
+        final b = await phone('b', "Priya's Pixel");
+        final s = await a.seedGroup(expenses: 1);
+        await b.join(a, s.g);
+        await syncByLink(b, a);
+        a.clock.offset = _day * 10;
+        await a.addExpense(
+          s.g,
+          payer: s.a,
+          owers: [s.a, s.b],
+          description: 'X',
+        );
+        a.clock.offset = Duration.zero;
+        await a.addExpense(
+          s.g,
+          payer: s.a,
+          owers: [s.a, s.b],
+          description: 'Y',
+        );
+        await syncByLink(b, a);
+        final held = b.opCount(s.g);
+        final shown = b.canonical;
+
+        // Nothing new reaches B: the same ops come again behind the gap.
+        final again = await syncByLink(b, a);
+        expect(b.opCount(s.g), held);
+        expect(b.canonical, shown);
+        expect(again.receivedByGroup[s.g] ?? 0, 0);
+        // The session screen shows S.sentAndGot(sentOps, receivedOps) above
+        // the per-group receivedByGroup lines, and Sync history and
+        // Activity show the record's receivedOps.
+        expect(
+          again.receivedOps,
+          again.receivedByGroup.values.fold(0, (x, y) => x + y),
+          reason: '"got ${again.receivedOps} changes" but none stored',
+        );
+        expect((await b.records()).first.receivedOps, 0);
+      },
+    );
+  });
+
   group('own stamps ahead are not a peer ahead (DATA-R29-02)', () {
     test('A edits, its clock 3 h ahead, then edits the same entity again on '
         'the right time: A shows no notice, B (who received ops 3 h ahead) '
