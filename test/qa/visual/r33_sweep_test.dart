@@ -223,7 +223,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R33-02: the Add expense Date tile breaks "Today," mid-word '
     'on a 320 dp phone at 1.3x',
-    skip: true, // QA VISUAL-R33-02: Date tile value broken mid-word
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.realistic());

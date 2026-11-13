@@ -6,6 +6,7 @@ import '../../theme/tokens.dart';
 import '../format/well_formed_formatter.dart';
 import 'button_semantics.dart';
 import 'category_glyph.dart';
+import 'kit_layout.dart';
 import 'kit_strings.dart';
 
 /// White 12 dp-radius input with a small label above the text and an
@@ -222,6 +223,59 @@ class CategoryChip extends StatelessWidget {
   }
 }
 
+/// Two [PickerTile]s side by side (Add expense: Paid by | Date), each
+/// taking half the row, or one above the other when either would break a
+/// word of its label or value in half the row ("Today / , 9 / Nov" on a
+/// 320 dp phone at 1.3x, VISUAL-R33-02, the VISUAL-R32-02 rule) and at a
+/// large text scale.
+class PickerTilePair extends StatelessWidget {
+  const PickerTilePair({super.key, required this.first, required this.second});
+
+  final PickerTile first;
+  final PickerTile second;
+
+  static const double _gap = Space.sm;
+
+  bool _fitsBeside(BuildContext context, double width) {
+    if (!width.isFinite) return true;
+    final half = (width - _gap) / 2;
+    for (final t in [first, second]) {
+      final need = PickerTile.minWidthFor(
+        context,
+        label: t.label,
+        value: t.value,
+        hasLeading: t.leading != null,
+      );
+      if (half + 0.5 < need) return false;
+    }
+    return true;
+  }
+
+  @override
+  Widget build(BuildContext context) => LayoutBuilder(
+    builder: (context, c) {
+      if (!isLargeText(context) && _fitsBeside(context, c.maxWidth)) {
+        return Row(
+          children: [
+            Expanded(child: first),
+            const SizedBox(width: _gap),
+            Expanded(child: second),
+          ],
+        );
+      }
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          first,
+          const SizedBox(height: _gap),
+          second,
+        ],
+      );
+    },
+  );
+}
+
 /// A picker button on Add expense ("Paid by Priya", "Date Today, 9 Nov"):
 /// white, 12 dp radius, a leading avatar or icon, a small label above the
 /// value, and an expand chevron.
@@ -273,9 +327,12 @@ class PickerTile extends StatelessWidget {
       ellipsis: '\u2026',
       locale: Localizations.maybeLocaleOf(context),
     );
+    // A width narrower than a word would break it at character level
+    // ("Today / , 9 / Nov") and still count as a fit: the value never
+    // gets less than its widest word (VISUAL-R33-02).
     bool fits(double w) {
       painter.layout(maxWidth: w);
-      return !painter.didExceedMaxLines;
+      return !painter.didExceedMaxLines && painter.minIntrinsicWidth <= w + 0.5;
     }
 
     try {
@@ -294,6 +351,37 @@ class PickerTile extends StatelessWidget {
     } finally {
       painter.dispose();
     }
+  }
+
+  /// The horizontal padding of the tile (12 + 10).
+  static const double _padding = 12 + 10;
+
+  /// The gap between the leading and the value.
+  static const double _leadingGap = 10;
+
+  static TextStyle _labelStyle(ThemeData theme) => theme.textTheme.labelSmall!
+      .withWeight(FontWeight.w500)
+      .copyWith(color: theme.colorScheme.onSurfaceVariant);
+
+  /// The least width a tile showing [label] and [value] beside a 26 dp
+  /// leading needs so that neither breaks a word: layouts that put two
+  /// tiles side by side (Paid by | Date) stack them when half the row is
+  /// less (VISUAL-R33-02, the VISUAL-R32-02 rule).
+  static double minWidthFor(
+    BuildContext context, {
+    required String label,
+    required String value,
+    bool hasLeading = true,
+  }) {
+    final theme = Theme.of(context);
+    final text = [
+      longestWordWidth(context, label, _labelStyle(theme)),
+      longestWordWidth(context, value, theme.textTheme.titleSmall),
+    ].reduce((a, b) => a > b ? a : b);
+    return _padding +
+        (hasLeading ? _leadingMin + _leadingGap : 0) +
+        text.ceilToDouble() +
+        _chrome;
   }
 
   @override
@@ -362,12 +450,7 @@ class PickerTile extends StatelessWidget {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Text(
-                              label,
-                              style: theme.textTheme.labelSmall!
-                                  .withWeight(FontWeight.w500)
-                                  .copyWith(color: scheme.onSurfaceVariant),
-                            ),
+                            Text(label, style: _labelStyle(theme)),
                             Text(
                               value,
                               maxLines: maxLines,
