@@ -122,6 +122,16 @@ Future<int> fastestOpenMs(
   return best;
 }
 
+/// The wall-clock ms one relaunch of [phone] takes: closed, then launched
+/// again, which reads and replays its whole log as the first launch did.
+/// For [fastestOpenMs] over the opens of one log.
+Future<int> relaunchMs(FilePhone phone) async {
+  await phone.close();
+  final sw = Stopwatch()..start();
+  await phone.launch();
+  return sw.elapsedMilliseconds;
+}
+
 /// Runs [sample] in a fresh isolate of this isolate group and returns what
 /// it measured: for a sample of an open that must be cold, as the first
 /// open after a relaunch is. Every static an isolate fills on first use
