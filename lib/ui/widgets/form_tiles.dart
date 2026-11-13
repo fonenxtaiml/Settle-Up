@@ -17,10 +17,11 @@ import 'kit_strings.dart';
 ///
 /// The label and the hint are the app's words and always read in full
 /// (VISUAL-R33-03, as VISUAL-R31-01 for helper and error text): the label
-/// is drawn above the input and wraps, the hint wraps, and the trailing
-/// widget goes under the field, end-aligned, when beside it the label or
-/// the hint would get less room than its widest word ([BesideOrBelow]).
-class LabeledTextField extends StatefulWidget {
+/// wraps over the input's top padding (the whole field still takes a tap,
+/// VISUAL-R8-01), the hint wraps, and the trailing widget goes under the
+/// field, end-aligned, when beside it the label or the hint would get less
+/// room than its widest word ([BesideOrBelow]).
+class LabeledTextField extends StatelessWidget {
   const LabeledTextField({
     super.key,
     required this.label,
@@ -57,23 +58,7 @@ class LabeledTextField extends StatefulWidget {
   /// it holds on the first key.
   final bool multiline;
 
-  @override
-  State<LabeledTextField> createState() => _LabeledTextFieldState();
-}
-
-class _LabeledTextFieldState extends State<LabeledTextField> {
   static const double _fieldPad = 8;
-
-  FocusNode? _ownFocus;
-
-  FocusNode get _focus =>
-      widget.focusNode ?? (_ownFocus ??= FocusNode(debugLabel: widget.label));
-
-  @override
-  void dispose() {
-    _ownFocus?.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -84,18 +69,15 @@ class _LabeledTextFieldState extends State<LabeledTextField> {
         .withWeight(FontWeight.w500)
         .copyWith(color: scheme.onSurfaceVariant);
     final hintStyle = valueStyle.copyWith(color: scheme.onSurfaceVariant);
-    final multiline = widget.multiline;
-    final textInputAction = widget.textInputAction;
-    final hint = widget.hintText;
 
-    final field = TextField(
-      controller: widget.controller,
-      focusNode: _focus,
-      onChanged: widget.onChanged,
-      onSubmitted: widget.onSubmitted,
+    Widget field(double labelHeight) => TextField(
+      controller: controller,
+      focusNode: focusNode,
+      onChanged: onChanged,
+      onSubmitted: onSubmitted,
       textInputAction: textInputAction,
-      maxLength: widget.maxLength,
-      inputFormatters: WellFormedTextFormatter.first(widget.inputFormatters),
+      maxLength: maxLength,
+      inputFormatters: WellFormedTextFormatter.first(inputFormatters),
       minLines: 1,
       maxLines: multiline ? null : 1,
       // With an action of its own (Done on the description) the key
@@ -115,41 +97,56 @@ class _LabeledTextFieldState extends State<LabeledTextField> {
         enabledBorder: InputBorder.none,
         focusedBorder: InputBorder.none,
         errorBorder: InputBorder.none,
-        contentPadding: const EdgeInsets.only(bottom: _fieldPad),
+        // The 8 dp above the label and below the text are the field's own
+        // padding, and so is the label's room, so the whole height takes a
+        // tap (at least 48 dp, VISUAL-R8-01).
+        contentPadding: EdgeInsets.only(
+          top: _fieldPad + labelHeight,
+          bottom: _fieldPad,
+        ),
         counterText: '',
-        hintText: hint,
+        hintText: hintText,
         // The hint wraps in full (the theme's hintMaxLines, VISUAL-R33-03).
         hintMaxLines: AppTheme.fieldNoteMaxLines,
         hintStyle: hintStyle,
       ),
     );
 
-    // The label above the input (render 3: 12 dp, medium). A tap on it, or
-    // on the 8 dp above it, focuses the field, so the whole height takes a
-    // tap (at least 48 dp, VISUAL-R8-01); TalkBack reads it as the field's
-    // label (one merged node).
-    final main = MergeSemantics(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            excludeFromSemantics: true,
-            onTap: _focus.requestFocus,
-            child: Padding(
-              padding: const EdgeInsets.only(top: _fieldPad),
-              child: Text(widget.label, style: labelStyle),
+    // The label (render 3: 12 dp, medium) wraps in the field's width and
+    // sits in the field's top padding; taps go through it to the field,
+    // and TalkBack reads it as the field's label (one merged node).
+    final main = _NoMinIntrinsicWidth(
+      child: LayoutBuilder(
+        builder: (context, c) {
+          final painter = TextPainter(
+            text: TextSpan(
+              text: label,
+              style: effectiveTextStyle(context, labelStyle),
             ),
-          ),
-          // What the user types never moves the trailing chip: only the
-          // label and the hint decide whether it fits beside the field.
-          _NoMinIntrinsicWidth(child: field),
-        ],
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            locale: Localizations.maybeLocaleOf(context),
+          )..layout(maxWidth: c.maxWidth);
+          final labelHeight = painter.height;
+          painter.dispose();
+          return MergeSemantics(
+            child: Stack(
+              children: [
+                field(labelHeight),
+                PositionedDirectional(
+                  top: _fieldPad,
+                  start: 0,
+                  end: 0,
+                  child: IgnorePointer(child: Text(label, style: labelStyle)),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
 
-    final trailing = widget.trailing;
+    final trailing = this.trailing;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       mainAxisSize: MainAxisSize.min,
@@ -160,7 +157,7 @@ class _LabeledTextFieldState extends State<LabeledTextField> {
           decoration: BoxDecoration(
             color: scheme.surfaceContainerLowest,
             borderRadius: BorderRadius.circular(Radii.md),
-            border: widget.errorText == null
+            border: errorText == null
                 ? null
                 : Border.all(color: scheme.error, width: 2),
           ),
@@ -170,9 +167,14 @@ class _LabeledTextFieldState extends State<LabeledTextField> {
                   main: main,
                   gap: Space.md,
                   spacing: 0,
-                  minMainWidth: hint == null
-                      ? 0
-                      : longestWordWidth(context, hint, hintStyle),
+                  // What the user types never moves the chip: only the
+                  // label's and the hint's widest words decide whether it
+                  // fits beside the field.
+                  minMainWidth: [
+                    longestWordWidth(context, label, labelStyle),
+                    if (hintText case final hint?)
+                      longestWordWidth(context, hint, hintStyle),
+                  ].reduce((a, b) => a > b ? a : b),
                   trailing: Padding(
                     // A CategoryChip brings its own 48 dp target (8 dp
                     // above and below its 32 dp chip), so the field stays
@@ -186,13 +188,13 @@ class _LabeledTextFieldState extends State<LabeledTextField> {
                   ),
                 ),
         ),
-        if (widget.errorText != null)
+        if (errorText != null)
           Padding(
             padding: const EdgeInsets.fromLTRB(4, Space.xs, 4, 0),
             child: Semantics(
               liveRegion: true,
               child: Text(
-                widget.errorText!,
+                errorText!,
                 style: theme.textTheme.bodySmall!.copyWith(color: scheme.error),
               ),
             ),
@@ -202,8 +204,9 @@ class _LabeledTextFieldState extends State<LabeledTextField> {
   }
 }
 
-/// [child] with no least width of its own: a text field's typed words do
-/// not count when a row decides whether its trailing block fits beside it.
+/// [child] with no least width of its own (and none asked of it): a text
+/// field's typed words do not count when a row decides whether its trailing
+/// block fits beside it.
 class _NoMinIntrinsicWidth extends SingleChildRenderObjectWidget {
   const _NoMinIntrinsicWidth({required Widget super.child});
 
