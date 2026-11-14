@@ -260,6 +260,107 @@ void main() {
     expect(b.snap.state.toCanonicalJson(), a.snap.state.toCanonicalJson());
   });
 
+  // Property over two phones whose dates jump days ahead and back
+  // independently, editing the same entities and syncing in between:
+  // what a phone just saved is what it shows, whoever wrote the entity's
+  // newest op and however far ahead (MONEY-R39-01), own stamps stay
+  // unique, and once real time passes every stamp both converge.
+  for (var seed = 1; seed <= 10; seed++) {
+    test(
+      'two-phone clock story $seed: a local write always wins locally',
+      () async {
+        final rnd = Random(4000 + seed);
+        await join();
+        final phones = [a, b];
+        final expenses = <ExpenseId>[];
+        var real = 0;
+        final offset = {a: 0, b: 0};
+        const offsets = [
+          0,
+          0,
+          _day,
+          -_day,
+          3 * _day,
+          6 * _day,
+          8 * _day,
+          15 * _day ~/ 2,
+          12 * _day,
+          30 * _day,
+        ];
+        for (var step = 0; step < 40; step++) {
+          real += 1000 + rnd.nextInt(60000);
+          final p = phones[rnd.nextInt(2)];
+          if (rnd.nextInt(4) == 0) {
+            offset[p] = offsets[rnd.nextInt(offsets.length)];
+          }
+          for (final q in phones) {
+            q.clock.now = kQaBaseMs + real + offset[q]!;
+          }
+          final r = rnd.nextInt(10);
+          final why = 'seed $seed step $step';
+          // The expenses this phone holds (a peer's may not have reached it).
+          final held = [
+            for (final e in expenses)
+              if (p.snap.state.expense(e) != null) e,
+          ];
+          if (r <= 1 || held.isEmpty) {
+            final d = 'E$step';
+            final e = await p.ledger.addExpense(
+              qaDraft(t.g, [t.me, t.sam], description: d),
+            );
+            expenses.add(e);
+            expect(p.snap.state.expense(e)!.description, d, reason: why);
+          } else if (r <= 4) {
+            final e = held[rnd.nextInt(held.length)];
+            final before = newestOpOf(p, e).hlc;
+            final d = 'E$step edit';
+            await p.ledger.updateExpense(
+              e,
+              qaDraft(t.g, [t.me, t.sam], description: d),
+            );
+            expect(p.snap.state.expense(e)!.description, d, reason: why);
+            expect(newestOpOf(p, e).hlc > before, isTrue, reason: why);
+          } else if (r == 5) {
+            final e = held[rnd.nextInt(held.length)];
+            final deleted = p.snap.state.expense(e)!.isDeleted;
+            if (deleted) {
+              await p.ledger.restoreExpense(e);
+            } else {
+              await p.ledger.deleteExpense(e);
+            }
+            expect(p.snap.state.expense(e)!.isDeleted, !deleted, reason: why);
+          } else if (r == 6) {
+            final n = 'Sam $step';
+            await p.ledger.renameMember(t.g, t.sam, n);
+            expect(p.group(t.g).members[t.sam]!.displayName, n, reason: why);
+          } else if (r == 7) {
+            await p.restart();
+          } else {
+            expect(await sync(), SyncOutcome.completed, reason: why);
+          }
+        }
+        for (final p in phones) {
+          final own = p.snap.ops.where((o) => o.deviceId == p.deviceId);
+          expect(
+            own.map((o) => o.hlc).toSet().length,
+            own.length,
+            reason: 'seed $seed: no two own ops share a stamp',
+          );
+        }
+        a.clock.now = kQaBaseMs + 80 * _day;
+        b.clock.now = a.clock.now;
+        expect(await sync(), SyncOutcome.completed);
+        expect(await sync(), SyncOutcome.completed);
+        expect(a.snap.totalUnshared, 0, reason: 'seed $seed');
+        expect(
+          b.snap.state.toCanonicalJson(),
+          a.snap.state.toCanonicalJson(),
+          reason: 'seed $seed',
+        );
+      },
+    );
+  }
+
   test('any damaged leading digit of a stored hlc.last: the next change is '
       'stamped near the wall clock and reaches a peer', () async {
     await join();
