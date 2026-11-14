@@ -183,6 +183,41 @@ void main() {
     },
   );
 
+  for (final (code, wrong) in [('JPY', '30,000'), ('KWD', '30')]) {
+    testWidgets(
+      'QA UIFLOW-R39-02 ($code): Add expense, type 300 in a rupee group, '
+      'change to a $code group: the amount is not rescaled to $wrong',
+      // QA UIFLOW-R39-02: Changing the group on Add expense to one in a
+      // currency with other decimals rescales the typed amount
+      skip: true,
+      (tester) async {
+        qaPhone(tester);
+        final w = await RealWorld.create(name: 'Arjun');
+        final goa = await w.seedGroup(name: 'Goa', people: const ['Priya']);
+        await w.seedGroup(
+          name: 'Tokyo',
+          people: const ['Priya'],
+          currency: code,
+        );
+        await pumpReal(tester, w, location: Routes.home);
+        w.push(Routes.newExpense(groupId: goa));
+        await qaSettle(tester);
+        final amount = find.byType(TextField).at(0);
+        await tester.enterText(amount, '300');
+        await tester.pump();
+        expect(find.text(S.eachSummary('₹150', 2)), findsOneWidget);
+        await _pickGroupNamed(tester, 'Tokyo');
+        // Expected: the amount is kept as typed (300) or cleared, as the
+        // currency picker does. Actual: the minor units are kept, so ₹300
+        // becomes ¥30,000 (or KD30), and Save stores that.
+        final text = tester.widget<TextField>(amount).controller!.text;
+        expect(text, anyOf('300', ''), reason: 'shown: $text');
+        expect(text, isNot(wrong));
+        await w.shutdown(tester);
+      },
+    );
+  }
+
   testWidgets('R39 sweep: Edit an expense in a 60-character group at 1.3x '
       'keeps untouched fields and saves', (tester) async {
     _smallPhone(tester);
