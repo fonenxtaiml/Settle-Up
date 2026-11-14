@@ -59,9 +59,8 @@ void main() {
         expect(w.location, Routes.newGroup);
         await w.shutdown(tester);
       },
-      // QA UIFLOW-R42-01: New group drops a person name with no letter or
-      // number left in the field on Create, without a word.
-      skip: true,
+      // QA UIFLOW-R42-01: fixed, New group's Create refuses such a name the
+      // way the keyboard's Done does.
     );
   }
 
