@@ -6,7 +6,6 @@
 // would hit every phone. These probes drive the real main() through the
 // lifecycle in the started, the failed and the retried states.
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' show AppLifecycleState;
 
 import 'package:flutter/services.dart';
