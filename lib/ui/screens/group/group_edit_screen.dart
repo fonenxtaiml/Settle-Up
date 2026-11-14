@@ -25,6 +25,9 @@ String groupTypeLabel(GroupType t) => switch (t) {
   _ => S.typeOther,
 };
 
+/// What [_GroupEditScreenState._addPerson] did with the person field.
+enum _PersonAdd { added, repeat, notName }
+
 class GroupEditScreen extends ConsumerStatefulWidget {
   const GroupEditScreen({super.key, this.groupId});
 
@@ -80,14 +83,19 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
   /// "Priya is already in this group" when the typed name repeats one.
   String? _personError;
 
-  /// Adds the typed person; false when the name is already in the list.
-  bool _addPerson([Map<PersonId, String> people = const {}]) {
+  /// Adds the typed person. What the field held decides the outcome:
+  /// nothing, or a name now in the list, is [_PersonAdd.added]; a repeat
+  /// of a name already there is [_PersonAdd.repeat] (that person is in
+  /// the list once); text that is no name ([nameInputError]: no letter or
+  /// number, or too long) is [_PersonAdd.notName] and stays in the field
+  /// with the reason under it.
+  _PersonAdd _addPerson([Map<PersonId, String> people = const {}]) {
     final n = _person.text.trim();
-    if (n.isEmpty) return true;
+    if (n.isEmpty) return _PersonAdd.added;
     final notName = nameInputError(n, limit: kMemberNameMax);
     if (notName != null) {
       setState(() => _personError = notName);
-      return false;
+      return _PersonAdd.notName;
     }
     // You are a member of every new group too (Members refuses your name
     // for the same reason).
@@ -99,14 +107,14 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
     ]);
     if (dup != null) {
       setState(() => _personError = S.alreadyInGroup(dup));
-      return false;
+      return _PersonAdd.repeat;
     }
     setState(() {
       _newNames.add(n);
       _person.clear();
       _personError = null;
     });
-    return true;
+    return _PersonAdd.added;
   }
 
   /// Whether the name field still holds the name the form was loaded
@@ -133,10 +141,22 @@ class _GroupEditScreenState extends ConsumerState<GroupEditScreen> {
       return;
     }
     // A name still in the field joins the list; one that repeats a name
-    // already there is that person, so it is not added twice.
-    if (_isNew && _person.text.trim().isNotEmpty && !_addPerson(people)) {
-      _person.clear();
-      _personError = null;
+    // already there is that person, so it is not added twice. Text that is
+    // no name is refused the way the keyboard's Done refuses it: the
+    // reason shows under the field and the group is not created, so the
+    // person the user meant to add is never left out without a word
+    // (UIFLOW-R42-01).
+    if (_isNew) {
+      switch (_addPerson(people)) {
+        case _PersonAdd.added:
+          break;
+        case _PersonAdd.repeat:
+          _person.clear();
+          _personError = null;
+        case _PersonAdd.notName:
+          Haptics.invalid(context);
+          return;
+      }
     }
     setState(() => _saving = true);
     final ledger = ref.read(ledgerRepositoryProvider);
