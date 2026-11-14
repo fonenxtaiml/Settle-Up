@@ -245,6 +245,41 @@ void main() {
     expect(problems, isEmpty, reason: problems.join('\n'));
   });
 
+  testWidgets('R44 sweep: Done on a repeated 40-character person says so in '
+      'full and heard at every size, scale and theme', (t) async {
+    final handle = t.ensureSemantics();
+    final problems = <String>[];
+    final said = S.alreadyInGroup(kName40);
+    for (final v in kVariants) {
+      final at = variantName(v);
+      late VisualPhone p;
+      await t.runAsync(() async => p = await VisualPhone.create());
+      final errors = await collectLayoutErrors(() async {
+        await pumpVisual(t, p, v: v, location: Routes.newGroup);
+        await _reveal(t, _field(S.personName));
+        await t.enterText(_field(S.personName), kName40);
+        await t.testTextInput.receiveAction(TextInputAction.done);
+        await t.pump();
+        await t.enterText(_field(S.personName), kName40);
+        await t.testTextInput.receiveAction(TextInputAction.done);
+        await settleFrames(t);
+      });
+      problems.addAll(errors.map((e) => '$at: $e'));
+      for (final c in _cutParagraphs()) {
+        problems.add('$at: "$c" is cut');
+      }
+      if (!_shownInFull(said)) problems.add('$at: "$said" is not in full');
+      if (!_liveRegionSays(t, said)) {
+        problems.add('$at: TalkBack is not told "$said"');
+      }
+      problems.addAll(await _guidelines(t, at));
+      await t.pumpWidget(const SizedBox.shrink());
+      await t.runAsync(p.dispose);
+    }
+    handle.dispose();
+    expect(problems, isEmpty, reason: problems.join('\n'));
+  });
+
   testWidgets('R44 sweep: the refused New group form stands still under '
       'Remove animations', (t) async {
     late VisualPhone p;
