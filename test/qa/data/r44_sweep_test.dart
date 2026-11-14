@@ -138,230 +138,245 @@ void main() {
   List<ExpenseId> expensesOf(FilePhone p) =>
       [...?gsOf(p)?.expenses.keys]..sort();
 
-  test('seeded soak on two file-backed phones: commands, refused writes, '
-      'lost clock saves, clock jumps, syncs and relaunches keep every '
-      'durability invariant', () async {
-    await join();
-    final rnd = Random(44);
-    var refused = 0, lostSaves = 0, clean = 0, unclean = 0, syncs = 0;
-    var cmds = 0;
-    Hlc? newestOwnA;
+  for (final seed in [44, 4401, 4402, 4403]) {
+    test('seeded soak (seed $seed) on two file-backed phones: commands, '
+        'refused writes, lost clock saves, clock jumps, syncs and relaunches '
+        'keep every durability invariant', () async {
+      await join();
+      final rnd = Random(seed);
+      var refused = 0, lostSaves = 0, clean = 0, unclean = 0, syncs = 0;
+      var cmds = 0;
+      Hlc? newestOwnA;
 
-    Future<bool> command(FilePhone p) async {
-      final gs = gsOf(p);
-      if (gs == null || gs.group == null) return false;
-      final members =
-          gs.members.values.where((m) => !m.isRemoved).map((m) => m.id).toList()
-            ..sort();
-      final ids = expensesOf(p);
-      final pick = rnd.nextInt(7);
-      final n = cmds++;
-      switch (pick) {
-        case 0 || 1:
-          await p.ledger.addExpense(
-            qaDraft(
-              t.g,
-              members,
-              description: 'E$n',
-              total: 100 + rnd.nextInt(90000),
-            ),
-          );
-        case 2 when ids.isNotEmpty:
-          final id = ids[rnd.nextInt(ids.length)];
-          final e = p.snap.state.expense(id)!;
-          if (e.isDeleted) {
-            await p.ledger.restoreExpense(id, groupId: t.g);
-          } else if (e.isPayment) {
-            return false;
-          } else {
-            await p.ledger.updateExpense(
-              id,
+      Future<bool> command(FilePhone p) async {
+        final gs = gsOf(p);
+        if (gs == null || gs.group == null) return false;
+        final members =
+            gs.members.values
+                .where((m) => !m.isRemoved)
+                .map((m) => m.id)
+                .toList()
+              ..sort();
+        final ids = expensesOf(p);
+        final pick = rnd.nextInt(7);
+        final n = cmds++;
+        switch (pick) {
+          case 0 || 1:
+            await p.ledger.addExpense(
               qaDraft(
                 t.g,
                 members,
-                description: 'U$n',
+                description: 'E$n',
                 total: 100 + rnd.nextInt(90000),
               ),
             );
-          }
-        case 3 when ids.isNotEmpty:
-          final id = ids[rnd.nextInt(ids.length)];
-          if (p.snap.state.expense(id)!.isDeleted) return false;
-          await p.ledger.deleteExpense(id, groupId: t.g);
-        case 4:
-          await p.ledger.recordPayment(
-            PaymentDraft(
-              groupId: t.g,
-              from: members[rnd.nextInt(members.length)],
-              to: members.first == members.last ? members.first : members.last,
-              amount: 1 + rnd.nextInt(5000),
-              currency: 'INR',
-              method: PaymentMethod.cash,
-              date: utcFromMillis(p.clock.now),
-            ),
-          );
-        case 5:
-          final m = members[rnd.nextInt(members.length)];
-          await p.ledger.renameMember(t.g, m, 'Name $n');
-        case 6:
-          await p.ledger.addMember(t.g, displayName: 'Guest $n');
-        default:
-          return false;
+          case 2 when ids.isNotEmpty:
+            final id = ids[rnd.nextInt(ids.length)];
+            final e = p.snap.state.expense(id)!;
+            if (e.isDeleted) {
+              await p.ledger.restoreExpense(id, groupId: t.g);
+            } else if (e.isPayment) {
+              return false;
+            } else {
+              await p.ledger.updateExpense(
+                id,
+                qaDraft(
+                  t.g,
+                  members,
+                  description: 'U$n',
+                  total: 100 + rnd.nextInt(90000),
+                ),
+              );
+            }
+          case 3 when ids.isNotEmpty:
+            final id = ids[rnd.nextInt(ids.length)];
+            if (p.snap.state.expense(id)!.isDeleted) return false;
+            await p.ledger.deleteExpense(id, groupId: t.g);
+          case 4:
+            await p.ledger.recordPayment(
+              PaymentDraft(
+                groupId: t.g,
+                from: members[rnd.nextInt(members.length)],
+                to: members.first == members.last
+                    ? members.first
+                    : members.last,
+                amount: 1 + rnd.nextInt(5000),
+                currency: 'INR',
+                method: PaymentMethod.cash,
+                date: utcFromMillis(p.clock.now),
+              ),
+            );
+          case 5:
+            final m = members[rnd.nextInt(members.length)];
+            await p.ledger.renameMember(t.g, m, 'Name $n');
+          case 6:
+            await p.ledger.addMember(t.g, displayName: 'Guest $n');
+          default:
+            return false;
+        }
+        return true;
       }
-      return true;
-    }
 
-    for (var step = 0; step < 220; step++) {
-      final at = 'step $step';
-      // Clocks: mostly forward, sometimes set back up to 3 h or jumped a
-      // day ahead; both stay within the 7-day adopt window of each other.
-      for (final p in [a, b]) {
-        final r = rnd.nextInt(20);
-        if (r == 0) {
-          p.clock.now -= rnd.nextInt(3 * _hour);
-        } else if (r == 1) {
-          p.clock.now += _day;
-        } else {
-          p.clock.now += 1 + rnd.nextInt(60000);
-        }
-        if (p.clock.now > kQaBaseMs + 4 * _day) {
-          p.clock.now = kQaBaseMs + rnd.nextInt(_day);
-        }
-      }
-      final action = rnd.nextInt(100);
-      if (action < 40) {
-        try {
-          await command(a);
-        } on LedgerException catch (e) {
-          // Name or split rules can refuse a random command; never storage.
-          expect(e.code, isNot(LedgerErrorCode.storageFailed), reason: at);
-        }
-      } else if (action < 55) {
-        try {
-          await command(b);
-        } on LedgerException catch (e) {
-          expect(e.code, isNot(LedgerErrorCode.storageFailed), reason: at);
-        }
-      } else if (action < 63) {
-        // A write the store refuses: nothing changes, no counter burned.
-        final before = a.snap;
-        faulty.failNextInsert = true;
-        var threw = false;
-        try {
-          if (!await command(a)) {
-            faulty.failNextInsert = false;
-            continue;
+      for (var step = 0; step < 220; step++) {
+        final at = 'step $step';
+        // Clocks: mostly forward, sometimes set back up to 3 h or jumped a
+        // day ahead; both stay within the 7-day adopt window of each other.
+        for (final p in [a, b]) {
+          final r = rnd.nextInt(20);
+          if (r == 0) {
+            p.clock.now -= rnd.nextInt(3 * _hour);
+          } else if (r == 1) {
+            p.clock.now += _day;
+          } else {
+            p.clock.now += 1 + rnd.nextInt(60000);
           }
-        } on LedgerException catch (e) {
-          threw = true;
-          if (e.code == LedgerErrorCode.storageFailed) {
-            refused++;
-            expectSameSnapshot(a.snap, before);
+          if (p.clock.now > kQaBaseMs + 4 * _day) {
+            p.clock.now = kQaBaseMs + rnd.nextInt(_day);
           }
         }
-        expect(threw, isTrue, reason: '$at: refused write surfaced');
-        faulty.failNextInsert = false;
-      } else if (action < 68) {
-        // The ops land, the clock save is lost.
-        faulty.failNextSetKvKey = KvKeys.hlcLast;
-        try {
-          if (await command(a)) lostSaves++;
-        } on LedgerException catch (e) {
-          expect(e.code, isNot(LedgerErrorCode.storageFailed), reason: at);
-        }
-        faulty.failNextSetKvKey = null;
-      } else if (action < 82) {
-        final (r1, r2) = rnd.nextBool()
-            ? await sync(a.ledger, b.ledger)
-            : await sync(b.ledger, a.ledger);
-        expect(r1.outcome, SyncOutcome.completed, reason: '$at ${r1.message}');
-        expect(r2.outcome, SyncOutcome.completed, reason: '$at ${r2.message}');
-        syncs++;
-        expect(
-          a.snap.state.toCanonicalJson(),
-          b.snap.state.toCanonicalJson(),
-          reason: '$at: converged',
-        );
-        expect(a.snap.totalUnshared, 0, reason: '$at: A all shared');
-        expect(b.snap.totalUnshared, 0, reason: '$at: B all shared');
-      } else if (action < 92) {
-        final live = a.snap;
-        final profile = profileToJson(a.settings.profile!);
-        final settings = settingsToJson(a.settings.settings);
-        final device = a.settings.device;
-        await a.restart();
-        clean++;
-        expectSameSnapshot(a.snap, live);
-        expect(
-          profileToJson(a.settings.profile!),
-          profile,
-          reason: '$at: profile',
-        );
-        expect(
-          settingsToJson(a.settings.settings),
-          settings,
-          reason: '$at: settings',
-        );
-        expect(
-          a.settings.device.deviceId,
-          device.deviceId,
-          reason: '$at: device id',
-        );
-        expect(
-          a.settings.device.deviceName,
-          device.deviceName,
-          reason: '$at: device name',
-        );
-      } else {
-        // Unclean: drop everything, relaunch from the file.
-        final live = a.snap;
-        await a.launch();
-        unclean++;
-        expect(
-          a.snap.state.toCanonicalJson(),
-          live.state.toCanonicalJson(),
-          reason: '$at: unclean relaunch state',
-        );
-        expect(
-          a.snap.unsharedCounts,
-          live.unsharedCounts,
-          reason: '$at: unclean relaunch unshared',
-        );
-      }
-      expectOwn(a, '$at A');
-      expectOwn(b, '$at B');
-      final mine = a.mineIn(t.g);
-      if (mine.isNotEmpty) {
-        final top = mine.last.hlc;
-        if (newestOwnA != null) {
+        final action = rnd.nextInt(100);
+        if (action < 40) {
+          try {
+            await command(a);
+          } on LedgerException catch (e) {
+            // Name or split rules can refuse a random command; never storage.
+            expect(e.code, isNot(LedgerErrorCode.storageFailed), reason: at);
+          }
+        } else if (action < 55) {
+          try {
+            await command(b);
+          } on LedgerException catch (e) {
+            expect(e.code, isNot(LedgerErrorCode.storageFailed), reason: at);
+          }
+        } else if (action < 63) {
+          // A write the store refuses: nothing changes, no counter burned.
+          final before = a.snap;
+          faulty.failNextInsert = true;
+          var threw = false;
+          try {
+            if (!await command(a)) {
+              faulty.failNextInsert = false;
+              continue;
+            }
+          } on LedgerException catch (e) {
+            threw = true;
+            if (e.code == LedgerErrorCode.storageFailed) {
+              refused++;
+              expectSameSnapshot(a.snap, before);
+            }
+          }
+          expect(threw, isTrue, reason: '$at: refused write surfaced');
+          faulty.failNextInsert = false;
+        } else if (action < 68) {
+          // The ops land, the clock save is lost.
+          faulty.failNextSetKvKey = KvKeys.hlcLast;
+          try {
+            if (await command(a)) lostSaves++;
+          } on LedgerException catch (e) {
+            expect(e.code, isNot(LedgerErrorCode.storageFailed), reason: at);
+          }
+          faulty.failNextSetKvKey = null;
+        } else if (action < 82) {
+          final (r1, r2) = rnd.nextBool()
+              ? await sync(a.ledger, b.ledger)
+              : await sync(b.ledger, a.ledger);
           expect(
-            !(top < newestOwnA),
-            isTrue,
-            reason:
-                '$at: newest own stamp went back from $newestOwnA '
-                'to $top',
+            r1.outcome,
+            SyncOutcome.completed,
+            reason: '$at ${r1.message}',
+          );
+          expect(
+            r2.outcome,
+            SyncOutcome.completed,
+            reason: '$at ${r2.message}',
+          );
+          syncs++;
+          expect(
+            a.snap.state.toCanonicalJson(),
+            b.snap.state.toCanonicalJson(),
+            reason: '$at: converged',
+          );
+          expect(a.snap.totalUnshared, 0, reason: '$at: A all shared');
+          expect(b.snap.totalUnshared, 0, reason: '$at: B all shared');
+        } else if (action < 92) {
+          final live = a.snap;
+          final profile = profileToJson(a.settings.profile!);
+          final settings = settingsToJson(a.settings.settings);
+          final device = a.settings.device;
+          await a.restart();
+          clean++;
+          expectSameSnapshot(a.snap, live);
+          expect(
+            profileToJson(a.settings.profile!),
+            profile,
+            reason: '$at: profile',
+          );
+          expect(
+            settingsToJson(a.settings.settings),
+            settings,
+            reason: '$at: settings',
+          );
+          expect(
+            a.settings.device.deviceId,
+            device.deviceId,
+            reason: '$at: device id',
+          );
+          expect(
+            a.settings.device.deviceName,
+            device.deviceName,
+            reason: '$at: device name',
+          );
+        } else {
+          // Unclean: drop everything, relaunch from the file.
+          final live = a.snap;
+          await a.launch();
+          unclean++;
+          expect(
+            a.snap.state.toCanonicalJson(),
+            live.state.toCanonicalJson(),
+            reason: '$at: unclean relaunch state',
+          );
+          expect(
+            a.snap.unsharedCounts,
+            live.unsharedCounts,
+            reason: '$at: unclean relaunch unshared',
           );
         }
-        newestOwnA = top;
+        expectOwn(a, '$at A');
+        expectOwn(b, '$at B');
+        final mine = a.mineIn(t.g);
+        if (mine.isNotEmpty) {
+          final top = mine.last.hlc;
+          if (newestOwnA != null) {
+            expect(
+              !(top < newestOwnA),
+              isTrue,
+              reason:
+                  '$at: newest own stamp went back from $newestOwnA '
+                  'to $top',
+            );
+          }
+          newestOwnA = top;
+        }
       }
-    }
-    final (r1, _) = await sync(a.ledger, b.ledger);
-    expect(r1.outcome, SyncOutcome.completed);
-    expect(a.snap.state.toCanonicalJson(), b.snap.state.toCanonicalJson());
-    final live = b.snap;
-    await b.restart();
-    expectSameSnapshot(b.snap, live);
-    // ignore: avoid_print
-    print(
-      '[r44] soak: ${a.mineIn(t.g).length} own ops on A, '
-      '${b.mineIn(t.g).length} on B, ${a.snap.ops.length} ops; '
-      'refused $refused, lost clock saves $lostSaves, syncs $syncs, '
-      'clean relaunches $clean, unclean $unclean',
-    );
-    expect(refused, greaterThan(5));
-    expect(syncs, greaterThan(10));
-    expect(clean + unclean, greaterThan(10));
-  });
+      final (r1, _) = await sync(a.ledger, b.ledger);
+      expect(r1.outcome, SyncOutcome.completed);
+      expect(a.snap.state.toCanonicalJson(), b.snap.state.toCanonicalJson());
+      final live = b.snap;
+      await b.restart();
+      expectSameSnapshot(b.snap, live);
+      // ignore: avoid_print
+      print(
+        '[r44] soak $seed: ${a.mineIn(t.g).length} own ops on A, '
+        '${b.mineIn(t.g).length} on B, ${a.snap.ops.length} ops; '
+        'refused $refused, lost clock saves $lostSaves, syncs $syncs, '
+        'clean relaunches $clean, unclean $unclean',
+      );
+      expect(refused, greaterThan(5));
+      expect(syncs, greaterThan(10));
+      expect(clean + unclean, greaterThan(10));
+    });
+  }
 
   test('a real SQLite write lock held by another connection: commands, '
       'settings and a sync are refused without advancing anything; a cold '
