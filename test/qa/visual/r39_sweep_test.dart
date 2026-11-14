@@ -8,11 +8,20 @@
 // 360x640, 1.0/1.3/2.0, light and dark); r39_real_font_test.dart runs this
 // file again with the bundled Familjen Grotesk.
 //
+// The final sweep adds balances above Money.maxMinor (twelve entries of
+// Money.maxMinor in one group, in INR, JPY and KWD, with the editor's
+// longest names), and a repro for what it found:
+// - VISUAL-R39-01: Settle up offers "Record ₹1,99,99,99,999.98 payment"
+//   for a debt above Money.maxMinor; the tap records nothing and only
+//   says "Check the highlighted fields." with no field highlighted.
+//
 // Tests named "QA VISUAL-R3x-NN" with `skip:` are failing repros for open
 // findings (docs/qa/QA-REPORT.md); remove the skip once fixed.
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:settle_up/core/models.dart';
+import 'package:settle_up/core/money.dart';
 import 'package:settle_up/ui/router.dart';
 import 'package:settle_up/ui/strings.dart';
 
@@ -275,4 +284,138 @@ void main() {
     handle.dispose();
     expect(problems, isEmpty, reason: problems.join('\n'));
   });
+
+  // ------------------------------------------------------------------
+  // Balances above Money.maxMinor: twelve entries of Money.maxMinor in
+  // one group (INR, JPY and KWD), a 40-character name, a 60-character
+  // group and a 120-character description. Home, both groups, the
+  // person, Settle up, Activity, the entry and Members lay out with no
+  // overflow and no amount cut, anywhere in the matrix.
+  // ------------------------------------------------------------------
+  testWidgets('R39 sweep: balances above Money.maxMinor lay out with no '
+      'overflow and no amount cut', (t) async {
+    late VisualPhone p;
+    late String inr, jpy, kwd, person, entry;
+    final f = kName40.replaceFirst('B', 'C');
+    await t.runAsync(() async {
+      p = await VisualPhone.create(name: kName40);
+      Future<String> twelve(
+        String name,
+        String currency, {
+        required bool mePays,
+      }) async {
+        final g = await p.group(name, [f, 'Sam'], currency: currency);
+        for (var i = 0; i < 12; i++) {
+          entry = await p.add(
+            g.g,
+            total: Money.maxMinor,
+            currency: currency,
+            payer: mePays ? g.m['me']! : g.m[f]!,
+            owedBy: SplitSpec.single(
+              mePays ? g.m[f]! : g.m['me']!,
+              Money.maxMinor,
+            ),
+            description: kDesc120,
+          );
+        }
+        person = p.gs(g.g).members[g.m[f]!]!.personId;
+        return g.g;
+      }
+
+      inr = await twelve(kGroup60, 'INR', mePays: true);
+      kwd = await twelve(kGroup60.replaceFirst('A', 'K'), 'KWD', mePays: true);
+      jpy = await twelve(kGroup60.replaceFirst('A', 'J'), 'JPY', mePays: false);
+    });
+    final problems = <String>[];
+    for (final v in kVariants) {
+      for (final (n, loc) in [
+        ('home', Routes.home),
+        ('group INR', Routes.group(inr)),
+        ('group KWD', Routes.group(kwd)),
+        ('group JPY', Routes.group(jpy)),
+        ('person', Routes.person(person)),
+        ('settle INR', Routes.settle(groupId: inr)),
+        ('settle KWD', Routes.settle(groupId: kwd)),
+        ('settle JPY', Routes.settle(groupId: jpy)),
+        ('activity', Routes.activity),
+        ('entry', Routes.expense(entry)),
+        ('members', Routes.members(jpy)),
+      ]) {
+        final at = '${variantName(v)} $n';
+        final errors = await collectLayoutErrors(
+          () => pumpVisual(t, p, v: v, location: loc),
+        );
+        problems.addAll(errors.toSet().map((e) => '$at: $e'));
+        problems.addAll(findCutAmounts(t).map((c) => '$at: cut $c'));
+        await t.pumpWidget(const SizedBox.shrink());
+      }
+    }
+    await t.runAsync(() => p.dispose());
+    expect(problems, isEmpty, reason: problems.join('\n'));
+  });
+
+  // ------------------------------------------------------------------
+  // VISUAL-R39-01: a debt above Money.maxMinor (two entries of
+  // Money.maxMinor, ₹1,99,99,99,999.98) opens Settle up on "Record
+  // ₹1,99,99,99,999.98 payment". The ledger holds at most Money.maxMinor
+  // in one payment, so the tap records nothing and the only feedback is
+  // "Check the highlighted fields." with no field highlighted. Settle up
+  // should not offer a payment it cannot record: record the whole debt
+  // (in as many payments as it takes) or offer at most Money.maxMinor and
+  // say what remains.
+  // ------------------------------------------------------------------
+  testWidgets(
+    'QA VISUAL-R39-01: Settle up offers a payment above Money.maxMinor '
+    'that it cannot record',
+    skip: true, // QA VISUAL-R39-01: Settle up offers a payment above Money.maxMinor that it cannot record
+    (t) async {
+      late VisualPhone p;
+      late String gid;
+      await t.runAsync(() async {
+        p = await VisualPhone.create(name: 'Arjun Mehta');
+        final g = await p.group('Goa trip', ['Priya Sharma']);
+        gid = g.g;
+        for (var i = 0; i < 2; i++) {
+          await p.add(
+            g.g,
+            total: Money.maxMinor,
+            payer: g.m['me']!,
+            owedBy: SplitSpec.single(g.m['Priya Sharma']!, Money.maxMinor),
+          );
+        }
+      });
+      final problems = <String>[];
+      for (final v in [kVariants.first, kVariants.last]) {
+        await pumpVisual(
+          t,
+          p,
+          v: v,
+          location: Routes.settle(groupId: gid),
+        );
+        final before = p.gs(gid).expenses.values.where((e) => e.isPayment);
+        final record = find.textContaining('Record');
+        await t.ensureVisible(record.first);
+        await t.pump();
+        final label = (record.evaluate().first.widget as Text).data ?? '';
+        await t.tap(record.first);
+        await t.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 200)),
+        );
+        await settleFrames(t);
+        final after = p.gs(gid).expenses.values.where((e) => e.isPayment);
+        if (after.length == before.length) {
+          problems.add('${variantName(v)}: "$label" recorded nothing');
+        }
+        if (find.text(S.errInvalidInput).evaluate().isNotEmpty) {
+          problems.add(
+            '${variantName(v)}: "$label" says "${S.errInvalidInput}" with '
+            'no field highlighted',
+          );
+        }
+        await t.pumpWidget(const SizedBox.shrink());
+      }
+      await t.runAsync(() => p.dispose());
+      expect(problems, isEmpty, reason: problems.join('\n'));
+    },
+  );
 }
