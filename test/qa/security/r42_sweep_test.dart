@@ -4,17 +4,14 @@
 // Those vectors come from the other phone, so a key holder sending forged
 // ACKs must not crash the session, inflate "sent" past what was offered,
 // or undo the SECURITY-R2-01 clamp of stored peer knowledge.
-import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/version_vector.dart';
-import 'package:settle_up/sync/protocol/codec.dart';
 import 'package:settle_up/sync/protocol/messages.dart';
 import 'package:settle_up/sync/protocol/session.dart';
-import 'package:settle_up/sync/sync_engine.dart';
 
 import '../../sync/support/evil_peer.dart';
 import '../../sync/support/harness.dart';
@@ -81,78 +78,88 @@ void main() {
   Future<int> ownWritten() async =>
       (await priya.opStore.versionVector(seed.g))[priya.deviceId];
 
-  test('a forged ACK vector claiming every counter and 10,000 authors '
-      'leaves "sent" at most what was offered and peer knowledge clamped',
-      () async {
-    final written = await ownWritten();
-    expect(written, greaterThan(0));
-    final (evil, result, ops) = await attack();
-    final forged = <DeviceId, int>{
-      priya.deviceId: 1 << 52,
-      alex.deviceId: 1 << 52,
-      for (var i = 0; i < 9998; i++)
-        'ffffffff-0000-7000-8000-${i.toString().padLeft(12, '0')}': 1 << 40,
-    };
-    await evil.sendSealed(
-        AckMessage(groupId: seed.g, batch: ops.batch, vv: VersionVector(forged)));
-    // Mallory has nothing to send; Priya may go on to DONE and BYE.
-    await evil.sendSealed(DoneMessage(groupId: seed.g));
-    await evil.until((m) => m is DoneMessage || m is ErrorMessage);
-    await evil.sendSealed(const ByeMessage());
-    final r = await result.timeout(const Duration(seconds: 10));
-    await evil.close();
-    expect(r.sentOps, lessThanOrEqualTo(ops.total),
-        reason: 'only offered ops can be counted as sent');
-    // SECURITY-R2-01: Mallory cannot hold more of Priya's ops than exist.
-    final stored = await priya.opStore.peerKnowledge(seed.g);
-    expect(stored[priya.deviceId], lessThanOrEqualTo(written));
-    // A later own change still counts as unshared.
-    await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
-    await pumpEventQueue();
-    expect(priya.ledger.current.unsharedCounts[seed.g] ?? 0,
-        greaterThanOrEqualTo(1));
-    await expectStillSyncs();
-  });
+  test(
+    'a forged ACK vector claiming every counter and 10,000 authors '
+    'leaves "sent" at most what was offered and peer knowledge clamped',
+    () async {
+      final written = await ownWritten();
+      expect(written, greaterThan(0));
+      final (evil, result, ops) = await attack();
+      final forged = <DeviceId, int>{
+        priya.deviceId: 1 << 52,
+        alex.deviceId: 1 << 52,
+        for (var i = 0; i < 9998; i++)
+          'ffffffff-0000-7000-8000-${i.toString().padLeft(12, '0')}': 1 << 40,
+      };
+      await evil.sendSealed(
+        AckMessage(
+          groupId: seed.g,
+          batch: ops.batch,
+          vv: VersionVector(forged),
+        ),
+      );
+      // Mallory has nothing to send; Priya may go on to DONE and BYE.
+      await evil.sendSealed(DoneMessage(groupId: seed.g));
+      await evil.until((m) => m is DoneMessage || m is ErrorMessage);
+      await evil.sendSealed(const ByeMessage());
+      final r = await result.timeout(const Duration(seconds: 10));
+      await evil.close();
+      expect(
+        r.sentOps,
+        lessThanOrEqualTo(ops.total),
+        reason: 'only offered ops can be counted as sent',
+      );
+      // SECURITY-R2-01: Mallory cannot hold more of Priya's ops than exist.
+      final stored = await priya.opStore.peerKnowledge(seed.g);
+      expect(stored[priya.deviceId], lessThanOrEqualTo(written));
+      // A later own change still counts as unshared.
+      await priya.addExpense(seed.g, payer: seed.b, owers: [seed.a, seed.b]);
+      await pumpEventQueue();
+      expect(
+        priya.ledger.current.unsharedCounts[seed.g] ?? 0,
+        greaterThanOrEqualTo(1),
+      );
+      await expectStillSyncs();
+    },
+  );
 
   group('malformed ACK vectors are bad frames and Priya still syncs', () {
     final cases = <String, Map<String, Object?> Function(GroupId, int)>{
       'vv with 10,001 authors': (g, b) => {
-            'g': g,
-            'batch': b,
-            'vv': {
-              for (var i = 0; i < 10001; i++) 'd$i': 1,
-            },
-          },
+        'g': g,
+        'batch': b,
+        'vv': {for (var i = 0; i < 10001; i++) 'd$i': 1},
+      },
       'negative counter': (g, b) => {
-            'g': g,
-            'batch': b,
-            'vv': {mallory: -1},
-          },
+        'g': g,
+        'batch': b,
+        'vv': {mallory: -1},
+      },
       'double counter': (g, b) => {
-            'g': g,
-            'batch': b,
-            'vv': {mallory: 1.5},
-          },
+        'g': g,
+        'batch': b,
+        'vv': {mallory: 1.5},
+      },
       'vv as list': (g, b) => {
-            'g': g,
-            'batch': b,
-            'vv': [1, 2],
-          },
+        'g': g,
+        'batch': b,
+        'vv': [1, 2],
+      },
       'oversized author id': (g, b) => {
-            'g': g,
-            'batch': b,
-            'vv': {'x' * 5000: 1},
-          },
+        'g': g,
+        'batch': b,
+        'vv': {'x' * 5000: 1},
+      },
       'ACK for a group not shared': (g, b) => {
-            'g': 'other-group',
-            'batch': b,
-            'vv': <String, Object?>{},
-          },
+        'g': 'other-group',
+        'batch': b,
+        'vv': <String, Object?>{},
+      },
       'ACK for a batch never sent': (g, b) => {
-            'g': g,
-            'batch': b + 99,
-            'vv': <String, Object?>{},
-          },
+        'g': g,
+        'batch': b + 99,
+        'vv': <String, Object?>{},
+      },
     };
     for (final MapEntry(key: name, value: body) in cases.entries) {
       test(name, () async {
@@ -170,8 +177,12 @@ void main() {
   test('the same batch ACKed twice is refused the second time', () async {
     final (evil, result, ops) = await attack();
     final vv = await priya.opStore.versionVector(seed.g);
-    await evil.sendSealed(AckMessage(groupId: seed.g, batch: ops.batch, vv: vv));
-    await evil.sendSealed(AckMessage(groupId: seed.g, batch: ops.batch, vv: vv));
+    await evil.sendSealed(
+      AckMessage(groupId: seed.g, batch: ops.batch, vv: vv),
+    );
+    await evil.sendSealed(
+      AckMessage(groupId: seed.g, batch: ops.batch, vv: vv),
+    );
     final r = await result.timeout(const Duration(seconds: 10));
     await evil.close();
     expect(r.isSuccess, isFalse);
