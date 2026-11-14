@@ -303,9 +303,6 @@ void main() {
     test(
       'SYNC-R41-01: A says "Sent 2 changes" on every sync behind a held-back '
       'op while its badge still counts both unshared and B stored nothing',
-      skip:
-          'QA SYNC-R41-01: Sync summary and history count held-back and '
-          're-sent ops as changes sent',
       () async {
         final a = await phone('a', "Alex's Pixel");
         final b = await phone('b', "Priya's Pixel");

@@ -16,6 +16,7 @@ import 'package:meta/meta.dart';
 import '../../core/ids.dart';
 import '../../core/models.dart';
 import '../../core/ops.dart';
+import '../../core/version_vector.dart';
 import '../../data/repositories.dart';
 import '../crypto/aead.dart';
 import '../crypto/handshake.dart';
@@ -114,7 +115,11 @@ final class SessionResult {
   final DateTime startedAt;
   final DateTime endedAt;
 
-  /// Ops the peer acknowledged (committed on its side).
+  /// Ops this sync shared with the peer: offered ops its version vector
+  /// came to cover during the session. A batch the peer ACKed without
+  /// covering it (an op held back for its clock, an op that came again
+  /// behind that gap) is not counted, so "sent N changes" moves with the
+  /// unshared badge, which reads the same version vector (QA SYNC-R41-01).
   final int sentOps;
 
   /// Ops this session newly stored: the sum of [receivedByGroup]. An op
@@ -289,7 +294,20 @@ final class SyncSession {
 
   /// The peer sent BYE while we were LIVE with batches still un-ACKed.
   bool _peerLeftLive = false;
-  int _sentOps = 0;
+
+  /// Ops in ACKed batches (progress against [_sendTotal] only).
+  int _ackedOps = 0;
+
+  /// Offered ops the peer's version vector came to cover: what the result
+  /// reports as sent.
+  int _sharedOps = 0;
+
+  /// What the peer is known to hold per group: its VV, merged with the VV
+  /// of every ACK since.
+  final Map<GroupId, VersionVector> _peerVv = {};
+
+  /// Offered ops (author, counter) that [_peerVv] does not cover yet.
+  final Map<GroupId, List<(DeviceId, int)>> _uncovered = {};
 
   /// Ops that came over the wire (progress against the peer's totals).
   int _receivedOps = 0;
@@ -614,8 +632,10 @@ final class SyncSession {
         if (op.groupId == g) op,
     ];
     _sendTotal[g] = missing.length;
+    _peerVv[g] = msg.vv;
     for (final op in missing) {
       _offered.add(op.id);
+      _trackOffered(g, op);
     }
     if (missing.isEmpty) {
       _myDone.add(g);
@@ -707,7 +727,8 @@ final class SyncSession {
     if (n == null) {
       throw const ProtocolException(ErrorCodes.badFrame, 'ACK for no batch');
     }
-    _sentOps += n;
+    _ackedOps += n;
+    _sharedOps += _coverBy(g, msg.vv);
     await store.recordPeerKnowledge(_peerHello!.deviceId, g, msg.vv);
     if (_peerLeftLive) {
       if (_inFlight.isEmpty) await _byeAndFinish();
@@ -716,6 +737,25 @@ final class SyncSession {
     await _pump();
     _emitProgress();
     await _checkComplete();
+  }
+
+  /// Remembers [op], offered to the peer, until its VV covers it.
+  void _trackOffered(GroupId g, Operation op) {
+    final known = _peerVv[g];
+    if (known != null && known.includes(op.deviceId, op.counter)) return;
+    (_uncovered[g] ??= []).add((op.deviceId, op.counter));
+  }
+
+  /// Merges [vv] (from an ACK) into what the peer is known to hold and
+  /// returns how many offered ops it covers for the first time.
+  int _coverBy(GroupId g, VersionVector vv) {
+    final known = (_peerVv[g] ?? VersionVector.empty).merge(vv);
+    _peerVv[g] = known;
+    final pending = _uncovered[g];
+    if (pending == null || pending.isEmpty) return 0;
+    final before = pending.length;
+    pending.removeWhere((e) => known.includes(e.$1, e.$2));
+    return before - pending.length;
   }
 
   Future<void> _onDone(DoneMessage msg) async {
@@ -834,7 +874,10 @@ final class SyncSession {
     if (_state != SessionState.live || _liveBuffer.isEmpty) return;
     final byGroup = <GroupId, List<Operation>>{};
     for (final op in _liveBuffer) {
-      if (_offered.add(op.id)) (byGroup[op.groupId] ??= []).add(op);
+      if (_offered.add(op.id)) {
+        (byGroup[op.groupId] ??= []).add(op);
+        _trackOffered(op.groupId, op);
+      }
     }
     _liveBuffer.clear();
     for (final e in byGroup.entries) {
@@ -924,7 +967,7 @@ final class SyncSession {
         transport: channel.kind,
         phase: _phase,
         groupIds: sharedGroups,
-        sentOps: _sentOps,
+        sentOps: _ackedOps,
         toSendOps: _sendTotal.values.fold(0, (a, b) => a + b),
         receivedOps: _receivedOps,
         toReceiveOps: _peerTotal.values.fold(0, (a, b) => a + b),
@@ -949,7 +992,7 @@ final class SyncSession {
         transport: channel.kind,
         startedAt: _startedAt,
         endedAt: _now(),
-        sentOps: _sentOps,
+        sentOps: _sharedOps,
         receivedOps: _storedOps,
         receivedByGroup: Map.unmodifiable(_receivedNew),
         groupIds: sharedGroups,
@@ -988,7 +1031,7 @@ final class SyncSession {
     await _teardown();
     final outcome = failure == SyncFailure.cancelled
         ? SyncOutcome.cancelled
-        : (_sentOps > 0 || _storedOps > 0
+        : (_sharedOps > 0 || _storedOps > 0
             ? SyncOutcome.partial
             : SyncOutcome.failed);
     _result.complete(_snapshot(outcome, failure: failure, message: message));
