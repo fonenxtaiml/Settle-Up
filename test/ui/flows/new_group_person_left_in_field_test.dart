@@ -53,9 +53,22 @@ const _classes = <String, List<String>>{
     '|',
     '~',
   ],
-  'spaces': [' ', ' ', ' ', '　', ' ', ' '],
-  'format': ['​', '‌', '‍', '‎', '‏', '⁠', '­', '‪', '‮', '⁦', '⁩', '﻿'],
-  'fillers': ['ㅤ', 'ᅠ', 'ᅟ', 'ﾠ', '⠀'],
+  'spaces': [' ', '\u00A0', '\u2003', '\u3000', '\u202F', '\u205F'],
+  'format': [
+    '\u200B',
+    '\u200C',
+    '\u200D',
+    '\u200E',
+    '\u200F',
+    '\u2060',
+    '\u00AD',
+    '\u202A',
+    '\u202E',
+    '\u2066',
+    '\u2069',
+    '\uFEFF',
+  ],
+  'fillers': ['\u3164', '\u1160', '\u115F', '\uFFA0', '\u2800'],
 };
 
 /// [count] seeded random texts drawn from every class above, each with at
@@ -165,7 +178,7 @@ void main() {
     await w.shutdown(tester);
   });
 
-  for (final repeat in const ['meera', 'ARJUN', 'Mee­ra']) {
+  for (final repeat in const ['meera', 'ARJUN', 'Mee\u00ADra']) {
     testWidgets('UIFLOW-R42-01: a repeat ("${_show(repeat)}") left in the '
         'field is that person, once', (tester) async {
       final w = await _openNewGroup(tester);
