@@ -1,57 +1,58 @@
 # Settle Up 1.0.0: QA report
 
 Owner: QA lead. Branch: `qa/integration` at the commit that adds this
-revision (parent `d48004d`). Baseline: `dev` at `854df42`. Rounds 1 to 35.
-Date: 2026-11-13. Plan: [TEST-PLAN.md](TEST-PLAN.md). Manual radio
+revision (parent `913cace`). Baseline: `dev` at `854df42`. Rounds 1 to 43.
+Date: 2026-11-14. Plan: [TEST-PLAN.md](TEST-PLAN.md). Manual radio
 checklist: [../QA.md](../QA.md).
 
 ## 1. Verdict
 
-**The report is not clean. 224 findings were raised in rounds 1 to 35: 222
-are closed, fixed and re-verified by QA, and two are open, VISUAL-R34-01 and
-VISUAL-R34-02 (both minor), raised in round 34 and reopened in round 35.**
-`flutter analyze` reports no issues and the full suite is green
-(3,880 tests: 3,876 passed, 4 skipped, 0 failed). The 4 skipped tests are the failing repros of VISUAL-R34-01 and VISUAL-R34-02, each run twice (with the test font and with the bundled Familjen Grotesk), and flip on with the fixes. The release build succeeds with R8.
+**The report is not clean. 234 findings were raised in rounds 1 to 43: 233
+are closed, fixed and re-verified by QA, and one is open, UIFLOW-R42-01
+(minor), raised by the round 42 full sweep.** `flutter analyze` reports no
+issues and the full suite is green (4,186 tests: 4,183 passed,
+3 skipped, 0 failed). The 3 skipped tests are the failing repro of
+UIFLOW-R42-01, run with three typed names, and flip on with the fix. The
+release build succeeds with R8.
 
 **Release recommendation: NO-GO for the Play production release, and no
 release candidate yet.** TEST-PLAN exit criterion 1 requires zero open
-findings of any severity, and two are open. Both are minor layout issues
-with no effect on money, data or sync: every amount, balance and stored
-value is right. What they get wrong is how two texts are drawn:
+findings of any severity, and one is open. It is a minor form issue with no
+effect on money, balances or sync, and nothing already stored is wrong:
 
-- **VISUAL-R34-01.** The round 34 fix keeps an amount whole in expense row
-  sublines, the Record payment button and the hero lines, but the class is
-  not closed. The Members > Remove "can't be removed yet" dialog body ("Sam K
-  has KD99,999,999.999 open in this group...") is still a plain `Text` and
-  breaks Money.maxMinor in KWD mid-amount at 2.0x on a 320 dp phone.
-- **VISUAL-R34-02.** The round 34 fix shows the full title on the expense and
-  payment detail screens and on the group and person screens, but the
-  screen of a group still waiting for its first sync shows the group's name
-  only in the one-line app bar, cut, and nowhere else.
+- **UIFLOW-R42-01.** On New group, a name with no letter or number (for
+  example "😎", "?!" or "---") left in the Person name field when the user
+  taps Create group is silently dropped: the group is created without that
+  person and nothing is said. Add person and the keyboard's Done both
+  refuse the same text with "needs a letter or number", so only Create
+  loses it.
 
 The path to GO:
 
-1. **Fix and re-verify VISUAL-R34-01 and VISUAL-R34-02.** A senior engineer
-   fixes both on a `fix/*` branch with regression tests (use `FitWordsText`
-   for every sentence that carries an amount, dialogs included; give the
-   pending group screen the same `TitleCutScope` / `CutTitleHeading` as the
-   live group screen). QA merges it into `qa/integration`, turns the two
-   skipped repros in `test/qa/visual/r35_sweep_test.dart` on (they also run
-   with the bundled font through `r35_real_font_test.dart`), and walks both
-   classes on every screen again.
-2. **A confirmation full sweep on the final commit.** Rounds 1, 15, 21, 24
-   and 29 were full sweeps of all seven areas and found 87, 8, 3, 4 and 4
-   findings; none was clean. Rounds 31 to 35 have been a chain in VISUAL
-   (text cut or broken mid-word at large text, 10 findings), each fix
-   exposing the next spot of the same class. QA would want one clean full
-   sweep after the R34 fixes before calling the report clean.
-3. **Bring rounds 7 to 35 into `dev`.** `origin/dev` is `319f2f8` (PR #12,
-   the squash merge of rounds 1 to 6). `qa/integration` is 352
-   commits ahead of it and holds the 67 fixes verified since round 6.
-   Squash merge it into `dev` with `tool/squash_merge.sh` (7.2), re-run
-   `flutter analyze` and `flutter test -j 2` on `dev`, and build the release
-   from `dev`/`main`, not from this branch. TEST-PLAN exit criterion 1 counts
-   a fix once it is on `dev`.
+1. **Fix and re-verify UIFLOW-R42-01.** A senior engineer fixes it on a
+   `fix/*` branch with a regression test. In `_save` of
+   `lib/ui/screens/group/group_edit_screen.dart`, a refused `_addPerson`
+   is treated as "already in the group" and the field is cleared; only a
+   duplicate should be cleared, and a name `nameInputError` refuses should
+   stop the save and show the error under the field. QA merges it into
+   `qa/integration`, turns on the three skipped repros in
+   `test/qa/uiflow/r42_sweep_test.dart` and walks the other places that add
+   a typed name on save (Members, the claim screen, onboarding, Settings).
+2. **Bring rounds 36 to 43 into `dev`.** `origin/dev` is `9d4b7b8`, the merge
+   of `qa/integration` at `8920953` (rounds 1 to 35). `qa/integration` is 76
+   commits ahead of it before this revision and holds the 11 fixes verified
+   in rounds 36 to 42 (VISUAL-R34-01, VISUAL-R34-02, VISUAL-R36-01,
+   VISUAL-R38-01, MONEY-R39-01, SYNC-R39-01, UIFLOW-R39-01, UIFLOW-R39-02,
+   VISUAL-R39-01, SECURITY-R39-01, SYNC-R41-01). Merge it into `dev` with
+   the UIFLOW-R42-01 fix, re-run `flutter analyze` and `flutter test -j 2`
+   on `dev`, and build the release from `dev`/`main`, not from this branch.
+   TEST-PLAN exit criterion 1 counts a fix once it is on `dev`.
+3. **A confirmation pass on the final commit.** Rounds 1, 15, 21, 24, 29, 39
+   and 42 were full sweeps of all seven areas and found 87, 8, 3, 4, 4, 6
+   and 1 findings; none was clean. The round 42 sweep found only a single
+   minor finding, so QA does not ask for another full sweep, but the
+   UIFLOW-R42-01 re-verification should probe its neighbours in all of
+   UIFLOW and come back clean.
 4. **Release signing.** No `android/key.properties` exists on this host, so
    the local release build is signed with the debug key (the build prints the
    PLATFORM-R2-02 warning). The APK for the owner's phone and for Play must be
@@ -63,19 +64,20 @@ The path to GO:
    checks that should pass before a production release; the rest can follow
    as a tester build is used.
 
-Once steps 1 and 2 close both findings with no new one, QA's recommendation
-becomes GO for a 1.0.0 release candidate built from `dev` and signed with
-the upload key, and GO for Play production once section 6.0 passes on the
-owner's phone.
+Once step 1 closes UIFLOW-R42-01 with no new finding and step 2 lands it on
+`dev`, QA's recommendation becomes GO for a 1.0.0 release candidate built
+from `dev` and signed with the upload key, and GO for Play production once
+section 6.0 passes on the owner's phone.
 
-On the trend: after round 6 the loop raised 59 more findings (5 major, 53
+On the trend: after round 6 the loop raised 69 more findings (8 major, 60
 minor, 1 trivial), almost all narrow edge cases found next to the previous
 fix: the date picker (rounds 10 to 14), names and notes (17 to 21), the
-Settle up preview and save path (24 to 29), the clock notice (29 to 33) and
-text cut or broken mid-word at large text (31 to 35). The 13 findings of
-rounds 31 to 35 are 10 layout issues, 2 on when the clock notice shows
-(DATA-R31-01, DATA-R32-01) and 1 on test timing (DATA-R32-02); none of them
-changes an amount, a balance, stored data or what is synced.
+Settle up preview and save path (24 to 29), the clock notice (29 to 33),
+text cut or broken mid-word at large text (31 to 38), and the clock-ahead
+and sync-count follow-ups of the round 39 sweep (39 to 41). The round 39
+sweep was the last to find major issues (MONEY-R39-01, UIFLOW-R39-01,
+UIFLOW-R39-02, all fixed and re-verified in round 41). The round 42 sweep of
+all seven areas found one minor finding, the smallest result of any sweep.
 
 ## 2. Scope and environment
 
@@ -118,30 +120,31 @@ Seven QA areas, each with one owner and its own tests under `test/qa/<area>/`
 Workflow (TEST-PLAN.md section 8): QA files findings and writes a failing
 repro; a separate pool of senior engineers fixes each one on a `fix/*` branch
 with a regression test; QA merges and re-verifies; a finding closes only on QA
-re-verification. Rounds 1, 15, 21, 24 and 29 were full sweeps of all
-seven areas; rounds 2 to 6, 8 to 14, 17 to 21, 23, 24, 26 to 29 and 31 to 35
-re-verified the previous fixes and probed their neighbours (from round 31
-on, in the areas that had fixes: DATA and VISUAL); rounds 7, 16, 22, 25 and
-30 were engineer fix rounds with no QA verdicts (the fixes re-verified in
-rounds 24, 27 and 29 were made just before those rounds). Repros of open
-findings stay in the suite as `skip:` tests until the fix flips them on; the
-VISUAL-R34-01 and VISUAL-R34-02 repros in `test/qa/visual/r35_sweep_test.dart`
-are the only ones left for open findings.
+re-verification. Rounds 1, 15, 21, 24, 29, 39 and 42 were full sweeps of
+all seven areas; rounds 2 to 6, 8 to 14, 17 to 21, 23, 24, 26 to 29, 31 to
+39, 41 and 42 re-verified the previous fixes and probed their neighbours
+(from round 31 on, in the areas that had fixes); rounds 7, 16, 22, 25, 30
+and 40 were engineer fix rounds with no QA verdicts (the fixes re-verified
+in rounds 24, 27, 29 and 41 were made just before those rounds). Round 43 is
+this report: the final analyze, full-suite and release-build run on
+`qa/integration` with no new probes. Repros of open findings stay in the
+suite as `skip:` tests until the fix flips them on; the UIFLOW-R42-01 repros
+in `test/qa/uiflow/r42_sweep_test.dart` are the only ones left.
 
 Severity scale: TEST-PLAN.md section 4 (blocker, critical, major, minor,
 trivial).
 
 ## 4. Metrics
 
-### 4.1 Final run (this commit's parent, `d48004d`)
+### 4.1 Final run (round 43, this commit's parent, `913cace`)
 
 | Check | Result |
 |---|---|
 | `flutter analyze` | **No issues found** (infos included) |
-| `flutter test -j 2` (full suite) | **3,880 tests: 3,876 passed, 4 skipped, 0 failed** (30 min 1 s on the shared host). The 4 skipped tests are the failing repros of VISUAL-R34-01 and VISUAL-R34-02, each run twice (with the test font and with the bundled Familjen Grotesk), and flip on with the fixes. |
-| Of which `test/qa/**` | 2,003 tests: 1,999 passed, 4 skipped (a separate `flutter test test/qa -j 2` run with the JSON reporter, which gave the per-area counts in 4.2) |
-| `flutter build apk --release` | **Built** `app-release.apk` (108.9 MB, all ABIs) in about 1 min 17 s, R8 on, `mapping.txt` produced. `aapt2`: package `app.settleup.settleup`, label "Settle Up", versionCode 2, versionName 1.0.0, targetSdk 36, compileSdk 37. `apksigner`: signed with the **Android Debug** certificate because `android/key.properties` is absent (the PLATFORM-R2-02 warning was printed). Build check only; the APK was deleted with `build/` and `android/.gradle/` and not published or handed out. |
-| Commit messages | `tool/check_commit_messages.sh origin/main..HEAD`: 786 commits, all clean (no co-author or session trailers, every commit authored by sushil3125 or fonenxtaiml); `origin/main..origin/dev`: 436 commits, all clean |
+| `flutter test -j 2` (full suite) | **4,186 tests: 4,183 passed, 3 skipped, 0 failed** (36 min 41 s on the shared host). The 3 skipped tests are the failing repro of UIFLOW-R42-01 for "😎", "?!" and "---", and flip on with the fix. |
+| Of which `test/qa/**` | 2,224 tests: 2,221 passed, 3 skipped (counted per file from the same run's JSON report, which gave the per-area counts in 4.2) |
+| `flutter build apk --release` | **Built** `app-release.apk` (109.0 MB, all ABIs) in about 1 min 8 s, R8 on, `mapping.txt` produced. `aapt2`: package `app.settleup.settleup`, label "Settle Up", versionCode 2, versionName 1.0.0, targetSdk 36, compileSdk 37. `apksigner`: signed with the **Android Debug** certificate because `android/key.properties` is absent (the PLATFORM-R2-02 warning was printed). Build check only; the APK was deleted with `build/` and `android/.gradle/` and not published or handed out. |
+| Commit messages | `tool/check_commit_messages.sh origin/main..HEAD`: 863 commits (before this revision), all clean (no co-author or session trailers, every commit authored by sushil3125 or fonenxtaiml); `origin/main..origin/dev`: 789 commits, all clean |
 
 ### 4.2 Tests
 
@@ -151,47 +154,50 @@ trivial).
 | Suite at the end of round 6 | 2,463 |
 | Suite at the end of round 21 | 3,254 |
 | Suite at the end of round 27 | 3,547 |
-| Final suite (round 35) | 3,880 |
-| Added by QA (`test/qa/**`) | **2,003** (data 225, money 329, platform 284, security 241, sync 257, uiflow 373, visual 294) |
-| Added by the fix engineers (regression tests outside `test/qa`) | 1,011 |
-| Skipped | 4 (the VISUAL-R34-01 and VISUAL-R34-02 repros, each run with the test font and the bundled font) |
+| Suite at the end of round 35 | 3,880 |
+| Final suite (round 43) | 4,186 |
+| Added by QA (`test/qa/**`) | **2,224** (data 234, money 377, platform 289, security 260, sync 306, uiflow 426, visual 332) |
+| Added by the fix engineers (regression tests outside `test/qa`) | 1,096 |
+| Skipped | 3 (the UIFLOW-R42-01 repro, one per typed name) |
 
 ### 4.3 Findings by area and severity (all rounds)
 
 | Area | Blocker | Critical | Major | Minor | Trivial | Total | Open |
 |---|---:|---:|---:|---:|---:|---:|---:|
-| MONEY | 0 | 1 | 11 | 19 | 0 | 31 | 0 |
-| SYNC | 0 | 1 | 5 | 10 | 0 | 16 | 0 |
+| MONEY | 0 | 1 | 12 | 19 | 0 | 32 | 0 |
+| SYNC | 0 | 1 | 5 | 12 | 0 | 18 | 0 |
 | DATA | 0 | 1 | 4 | 19 | 8 | 32 | 0 |
-| UIFLOW | 0 | 0 | 11 | 31 | 2 | 44 | 0 |
-| VISUAL | 0 | 0 | 13 | 39 | 2 | 54 | 2 |
-| SECURITY | 0 | 0 | 9 | 17 | 3 | 29 | 0 |
+| UIFLOW | 0 | 0 | 13 | 32 | 2 | 47 | 1 |
+| VISUAL | 0 | 0 | 13 | 42 | 2 | 57 | 0 |
+| SECURITY | 0 | 0 | 9 | 18 | 3 | 30 | 0 |
 | PLATFORM | 1 | 2 | 5 | 8 | 2 | 18 | 0 |
-| **All** | **1** | **5** | **58** | **143** | **17** | **224** | **2** |
+| **All** | **1** | **5** | **61** | **150** | **17** | **234** | **1** |
 
-Closed: 222, all **closed, fixed** (re-verified by QA). Closed as not a
-defect: 0. Open: 2 (VISUAL-R34-01 and VISUAL-R34-02, both minor). Reopen
-events: 32 on 27 distinct findings (a fix that did not hold in
-re-verification is reopened, not duplicated); the last reopens were
-VISUAL-R34-01 and VISUAL-R34-02 in round 35. Of the 224, 155 were closed in
-rounds 2 to 6 and 67 after round 6.
+Closed: 233, all **closed, fixed** (re-verified by QA). Closed as not a
+defect: 0. Open: 1 (UIFLOW-R42-01, minor). Reopen events: 33 on 28 distinct
+findings (a fix that did not hold in re-verification is reopened, not
+duplicated); the last reopen was VISUAL-R36-01 in round 37. Of the 234, 155
+were closed in rounds 2 to 6 and 78 after round 6 (67 in rounds 8 to 35 and
+11 in rounds 36 to 42).
 
 ### 4.4 Findings by area and round
 
-| Area | R1 | R2-6 | R8-14 | R15 sweep | R17-21 | R21 sweep | R24 sweep | R26-28 | R29 sweep | R31-35 | Total |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| MONEY | 9 | 17 | 0 | 0 | 0 | 0 | 1 | 4 | 0 | 0 | 31 |
-| SYNC | 8 | 7 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 16 |
-| DATA | 9 | 12 | 1 | 1 | 2 | 1 | 1 | 0 | 2 | 3 | 32 |
-| UIFLOW | 21 | 11 | 2 | 3 | 4 | 1 | 1 | 0 | 1 | 0 | 44 |
-| VISUAL | 15 | 16 | 9 | 1 | 1 | 0 | 1 | 0 | 1 | 10 | 54 |
-| SECURITY | 14 | 10 | 0 | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 29 |
-| PLATFORM | 11 | 5 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 18 |
-| **All** | **87** | **78** | **13** | **8** | **10** | **3** | **4** | **4** | **4** | **13** | **224** |
+| Area | R1 | R2-6 | R8-14 | R15 sweep | R17-21 | R21 sweep | R24 sweep | R26-28 | R29 sweep | R31-38 | R39 sweep | R41 | R42 sweep | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| MONEY | 9 | 17 | 0 | 0 | 0 | 0 | 1 | 4 | 0 | 0 | 1 | 0 | 0 | 32 |
+| SYNC | 8 | 7 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 18 |
+| DATA | 9 | 12 | 1 | 1 | 2 | 1 | 1 | 0 | 2 | 3 | 0 | 0 | 0 | 32 |
+| UIFLOW | 21 | 11 | 2 | 3 | 4 | 1 | 1 | 0 | 1 | 0 | 2 | 0 | 1 | 47 |
+| VISUAL | 15 | 16 | 9 | 1 | 1 | 0 | 1 | 0 | 1 | 12 | 1 | 0 | 0 | 57 |
+| SECURITY | 14 | 10 | 0 | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 30 |
+| PLATFORM | 11 | 5 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 18 |
+| **All** | **87** | **78** | **13** | **8** | **10** | **3** | **4** | **4** | **4** | **15** | **6** | **1** | **1** | **234** |
 
-By severity, the 59 findings raised after round 6 were 5 major
-(VISUAL-R9-01, VISUAL-R11-01, MONEY-R24-01, DATA-R29-01, VISUAL-R29-01), 53
-minor and 1 trivial (SECURITY-R17-02).
+By severity, the 69 findings raised after round 6 were 8 major
+(VISUAL-R9-01, VISUAL-R11-01, MONEY-R24-01, DATA-R29-01, VISUAL-R29-01,
+MONEY-R39-01, UIFLOW-R39-01, UIFLOW-R39-02), 60 minor and 1 trivial
+(SECURITY-R17-02). Of the 10 raised in rounds 36 to 42, 3 were major (all
+from the round 39 sweep) and 7 minor.
 
 ### 4.5 Rounds
 
@@ -235,7 +241,17 @@ minor and 1 trivial (SECURITY-R17-02).
 | 32 | Re-verify | 4 | 2 | 1 | 5 |
 | 33 | Re-verify | 3 | 3 | 2 | 5 |
 | 34 | Re-verify | 3 | 5 | 0 | 3 |
-| 35 | Re-verify | 0 | 1 | 2 | **2** |
+| 35 | Re-verify | 0 | 1 | 2 | 2 |
+| 36 | Re-verify | 1 | 2 | 0 | 1 |
+| 37 | Re-verify | 0 | 0 | 1 | 1 |
+| 38 | Re-verify | 1 | 1 | 0 | 1 |
+| 39 | Re-verify | 0 | 1 | 0 | 0 |
+| 39 | Full sweep | 6 | 0 | 0 | 6 |
+| 40 | Fix round | - | - | - | 6 |
+| 41 | Re-verify | 1 | 6 | 0 | 1 |
+| 42 | Re-verify | 0 | 1 | 0 | 0 |
+| 42 | Full sweep | 1 | 0 | 0 | 1 |
+| 43 | Final report run (no probes) | - | - | - | **1** |
 
 Rounds 9 to 14 were a chain in the date picker (VISUAL-R10-01 to R14-01):
 each fix to the stock Material picker exposed the next issue, until round 15
@@ -244,68 +260,52 @@ found none. Rounds 17 to 21 were the same pattern in names and notes
 "What changes" preview and the save lock on Settle up and Expense detail
 (MONEY-R24-01, R26-01, R26-02, R27-01, R28-01); rounds 29 to 33 in the
 clock-skew notice (DATA-R29-01, R29-02, R31-01, R32-01); and rounds 31 to
-35 in text cut or broken mid-word at large text on small phones
-(VISUAL-R31-01 to VISUAL-R34-03, ten findings, two of them reopened in
-round 35 and still open).
+39 in text cut or broken mid-word at large text on small phones
+(VISUAL-R31-01 to VISUAL-R38-01, twelve findings, closed in round 39). The
+round 39 sweep found three majors outside those chains: an edit lost after
+the phone's date ran ahead (MONEY-R39-01) and two Add expense group-change
+bugs (UIFLOW-R39-01, UIFLOW-R39-02); its sync-count fix led to one more
+(SYNC-R41-01), closed in round 42.
 
 ## 5. Findings
 
-### 5.1 Open findings (2)
+### 5.1 Open findings (1)
 
 | ID | Severity | Area | Found | Title |
 |---|---|---|---|---|
-| VISUAL-R34-01 | Minor | VISUAL (layout at large text) | Round 34, reopened in round 35 | Money.maxMinor in KWD breaks mid-amount at 2.0x on a 320 dp phone ('Sam paid / KD99,999,999.99 / 9', 'Record KD99,999, / 999.999 payment') |
-| VISUAL-R34-02 | Minor | VISUAL (titles) | Round 34, reopened in round 35 | The expense and payment detail screens cut the entry's title ('Dinner at ...', 'Sam paid ...') in a one-line app bar and show it nowhere else |
+| UIFLOW-R42-01 | Minor | UIFLOW (New group) | Round 42 full sweep | New group drops a person name with no letter or number left in the field on Create, without a word |
 
-**VISUAL-R34-01.**
+**UIFLOW-R42-01.**
 
-- **What happens.** The round 34 fix (`FitWordsText` in `KitListRow`
-  sublines, button labels and the hero lines) keeps the amount whole on the
-  screens the round 34 repro walked: the group expense rows, the Record
-  payment button and the Home and group heroes. Round 35 walked the class
-  on every screen. Members > Sam K > Remove in a KWD group where Sam K holds
-  Money.maxMinor opens "Sam K can't be removed yet", whose body ("Sam K has
-  KD99,999,999.999 open in this group. Settle up first, then remove.") is a
-  plain `Text` in the `AlertDialog` content
-  (`lib/ui/screens/group/members_screen.dart`). On a 320 dp phone at 2.0x the
-  amount is 242 dp wide in a 224 dp column and breaks mid-amount.
-- **Impact.** Display only, at the extreme of the charter (the largest
-  amount the app allows, in a three-decimal currency, at 2.0x on the
-  smallest phone). The amount is right; only where its line breaks is wrong.
-- **Repro.** `skip: true` test "QA VISUAL-R34-01: the "can't be removed yet"
-  dialog splits Money.maxMinor in KWD across lines at 2.0x on a 320 dp
-  phone" in `test/qa/visual/r35_sweep_test.dart` (also run with the bundled
-  Familjen Grotesk by `r35_real_font_test.dart`).
-- **Expected fix.** Draw every sentence that carries an amount with
-  `FitWordsText` (or the same no-split rule), dialogs and snack bars
-  included, and add a class test that walks every screen's dialogs.
+- **What happens.** On New group, the user types a group name, adds Meera,
+  then types a name with no letter or number ("😎", "?!" or "---") in
+  Person name and taps Create group without tapping Add person or the
+  keyboard's Done. The group is created with Meera and without the typed
+  person, the screen closes and nothing is said. Add person is disabled for
+  that text and Done shows "needs a letter or number", so the same text is
+  refused on every path except Create.
+- **Cause.** `_save` in `lib/ui/screens/group/group_edit_screen.dart` calls
+  `_addPerson` for a name still in the field and, when it returns false,
+  clears the field and goes on. That branch is meant for a name that repeats
+  one already in the list (the person is already there), but `_addPerson`
+  also returns false when `nameInputError` refuses the text.
+- **Impact.** A person the user meant to add is missing from the new group,
+  and the user is not told. They can add the person on Members afterwards.
+  No money, balance or stored data is wrong, and only names that cannot be
+  a person's name are affected.
+- **Repro.** `skip: true` test "QA UIFLOW-R42-01 (<typed>): New group, a name
+  with no letter or number left in the person field on Create is not
+  dropped without a word", run for the three names, in
+  `test/qa/uiflow/r42_sweep_test.dart`. The premise probes in the same file
+  pass (a repeated name left in the field is added once; Add person is off
+  and Done says why).
+- **Expected fix.** Clear the field only for a duplicate. For a name that
+  `nameInputError` refuses, keep the form open, show the error under Person
+  name and do not create the group.
+- **Status.** Not fixed; no `fix/*` branch yet. Assigned to the engineer
+  pool for the next fix round, then QA re-verification (section 1, step 1).
 
-**VISUAL-R34-02.**
-
-- **What happens.** The round 34 fix (`AppBarTitle` with `TitleCutScope` and
-  `CutTitleHeading`) shows the full title in the body of the expense and
-  payment detail screens and the group and person screens when the app bar
-  cuts it. The screen of a group still waiting for its first sync (the
-  pending branch of `lib/ui/screens/group/group_screen.dart`,
-  `AppBarTitle(pendingName ?? S.groups)`) has neither: its body is the
-  static "Waiting for the group" empty state, and the Home row of that
-  group caps the name to one line. A 60-character group name is never shown
-  in full anywhere, at every charter size and text scale.
-- **Impact.** Display only, for a group the user has joined but not yet
-  synced. The name is stored and shown in full once the first sync lands.
-- **Repro.** `skip: true` test "QA VISUAL-R34-02: a group waiting for its
-  first sync shows its name only in the one-line app bar, cut" in
-  `test/qa/visual/r35_sweep_test.dart` (and its real-font run).
-- **Expected fix.** Give the pending group screen the same `TitleCutScope`
-  and `CutTitleHeading` as the live group screen (or show the name in the
-  "Waiting for the group" body), and walk every `AppBarTitle` use in a class
-  test.
-
-**Status of both.** Not fixed; no `fix/*` branch yet. Assigned to the
-engineer pool for the next fix round, then QA re-verification (section 1,
-steps 1 and 2).
-
-The 67 findings closed after round 6 (the rounds 1 to 6 list is in 5.2):
+The 78 findings closed after round 6 (the rounds 1 to 6 list is in 5.2):
 
 | ID | Severity | Closed in round |
 |---|---|---:|
@@ -339,13 +339,19 @@ The 67 findings closed after round 6 (the rounds 1 to 6 list is in 5.2):
 | DATA-R32-01, VISUAL-R32-01, VISUAL-R32-02 | Minor | 33 |
 | VISUAL-R31-02, DATA-R32-02, VISUAL-R33-01, VISUAL-R33-02, VISUAL-R33-03 | Minor | 34 |
 | VISUAL-R34-03 | Minor | 35 |
+| VISUAL-R34-01, VISUAL-R34-02 | Minor | 36 |
+| VISUAL-R36-01 | Minor | 38 |
+| VISUAL-R38-01 | Minor | 39 |
+| MONEY-R39-01, UIFLOW-R39-01, UIFLOW-R39-02 | Major | 41 |
+| SYNC-R39-01, VISUAL-R39-01, SECURITY-R39-01 | Minor | 41 |
+| SYNC-R41-01 | Minor | 42 |
 
 ### 5.2 All findings with final status
 
 Status key: "Closed, fixed (round N)" means fixed by an engineer and
 re-verified by QA in round N. "Reopened" is how many times a fix failed
-re-verification. "Open" means not fixed yet. Two findings are open
-(VISUAL-R34-01 and VISUAL-R34-02) and none was closed as not a defect.
+re-verification. "Open" means not fixed yet. One finding is open
+(UIFLOW-R42-01) and none was closed as not a defect.
 Rows are grouped by area, then by the round the finding was raised in.
 
 #### MONEY
@@ -383,6 +389,7 @@ Rows are grouped by area, then by the round the finding was raised in.
 | MONEY-R26-02 | Minor | After a failed save, the over-payment sentence stays frozen: it is shown for a smaller amount and in that payment's confirmation | R26 |  | Closed, fixed (round 27) |
 | MONEY-R27-01 | Minor | Settle up keeps the method, Date and Note controls live while the payment is saved and during the confirmation: a method picked then is shown but not stored, and a picker opened then is closed in place of the screen | R27 |  | Closed, fixed (round 28) |
 | MONEY-R28-01 | Minor | Expense detail Delete still closes whatever is on top: an Edit screen or the overflow menu opened while the delete is saved is closed in place of the detail screen | R28 |  | Closed, fixed (round 29) |
+| MONEY-R39-01 | Major | An edit saved after this phone's date ran more than 7 days ahead is silently lost when a peer edited the expense on top of it | R39 sweep |  | Closed, fixed (round 41) |
 
 #### SYNC
 
@@ -404,6 +411,8 @@ Rows are grouped by area, then by the round the finding was raised in.
 | SYNC-R5-01 | Minor | A phone renamed while hosting keeps advertising its old name for up to 10 minutes, so its mutual Sync is refused as 'Starting its own sync with someone else' | R5 |  | Closed, fixed (round 6) |
 | SYNC-R6-01 | Minor | After a rename while visible, a missed mDNS goodbye leaves the old LAN service cached, so the Nearby row keeps flipping between the old and the new name | R6 |  | Closed, fixed (round 8) |
 | SYNC-R8-01 | Minor | A stale cached sighting of a phone's old name replaces its live renamed service, and when the old record expires the phone disappears from Nearby although it is still advertising | R8 | 1 | Closed, fixed (round 10) |
+| SYNC-R39-01 | Minor | Sync summary and history count re-sent duplicates as changes got | R39 sweep |  | Closed, fixed (round 41) |
+| SYNC-R41-01 | Minor | Sync summary and history count held-back and re-sent ops as changes sent | R41 |  | Closed, fixed (round 42) |
 
 #### DATA
 
@@ -490,6 +499,9 @@ Rows are grouped by area, then by the round the finding was raised in.
 | UIFLOW-R21-01 | Minor | Settings > Your name saved unchanged renames my member in every group, undoing a group's own name for me | R21 sweep |  | Closed, fixed (round 23) |
 | UIFLOW-R24-01 | Minor | A description of only hidden characters is refused with 'Check the highlighted fields.' and nothing is highlighted | R24 sweep |  | Closed, fixed (round 26) |
 | UIFLOW-R29-01 | Minor | Deleting or restoring a payment from its detail calls it an expense (menu, prompt and snack bars) | R29 sweep |  | Closed, fixed (round 31) |
+| UIFLOW-R39-01 | Major | Changing the group on Add expense keeps the old group's people in the split, so Save is refused | R39 sweep |  | Closed, fixed (round 41) |
+| UIFLOW-R39-02 | Major | Changing the group on Add expense to one in a currency with other decimals rescales the typed amount | R39 sweep |  | Closed, fixed (round 41) |
+| UIFLOW-R42-01 | Minor | New group drops a person name with no letter or number left in the field on Create, without a word | R42 sweep |  | **Open** |
 
 #### VISUAL
 
@@ -546,9 +558,12 @@ Rows are grouped by area, then by the round the finding was raised in.
 | VISUAL-R33-01 | Minor | Settle up 'What changes' squeezes its row labels into a 34 dp column on a 320 dp phone and breaks them mid-word at 1.0x and 1.3x | R33 |  | Closed, fixed (round 34) |
 | VISUAL-R33-02 | Minor | The Add expense Date tile breaks 'Today,' mid-word on a 320 dp phone at 1.3x ('Today / , 9 / Nov') | R33 |  | Closed, fixed (round 34) |
 | VISUAL-R33-03 | Minor | The Description field label is cut to 'Descripti...' at 2.0x on 320 dp, and the name hints are cut ('For example, Goa...', 'For example, Pri...') | R33 |  | Closed, fixed (round 34) |
-| VISUAL-R34-01 | Minor | Money.maxMinor in KWD breaks mid-amount at 2.0x on a 320 dp phone ('Sam paid / KD99,999,999.99 / 9', 'Record KD99,999, / 999.999 payment') | R34 | 1 | **Open** (reopened in round 35) |
-| VISUAL-R34-02 | Minor | The expense and payment detail screens cut the entry's title ('Dinner at ...', 'Sam paid ...') in a one-line app bar and show it nowhere else | R34 | 1 | **Open** (reopened in round 35) |
+| VISUAL-R34-01 | Minor | Money.maxMinor in KWD breaks mid-amount at 2.0x on a 320 dp phone ('Sam paid / KD99,999,999.99 / 9', 'Record KD99,999, / 999.999 payment') | R34 | 1 | Closed, fixed (round 36) |
+| VISUAL-R34-02 | Minor | The expense and payment detail screens cut the entry's title ('Dinner at ...', 'Sam paid ...') in a one-line app bar and show it nowhere else | R34 | 1 | Closed, fixed (round 36) |
 | VISUAL-R34-03 | Minor | Edit payment shows a bare, unlabelled '₹200' under Note that keeps the stored amount after the user changes it | R34 |  | Closed, fixed (round 35) |
+| VISUAL-R36-01 | Minor | A 40-character phone name from an earlier sync is cut in Sync's Recent syncs and in Activity, and reads in full nowhere | R36 | 1 | Closed, fixed (round 38) |
+| VISUAL-R38-01 | Minor | Your own 40-character name and phone name are cut on Settings and read in full nowhere | R38 |  | Closed, fixed (round 39) |
+| VISUAL-R39-01 | Minor | Settle up offers a payment above Money.maxMinor that it cannot record | R39 sweep |  | Closed, fixed (round 41) |
 
 #### SECURITY
 
@@ -583,6 +598,7 @@ Rows are grouped by area, then by the round the finding was raised in.
 | SECURITY-R17-01 | Minor | A stranger flooding mDNS adverts makes the Sync screen build every forged row on each list change | R17 |  | Closed, fixed (round 18) |
 | SECURITY-R17-02 | Trivial | The HELLO group id guard in crypto_test is flaky on random ephemeral keys | R17 |  | Closed, fixed (round 18) |
 | SECURITY-R21-01 | Minor | Peer text with a lone UTF-16 surrogate is accepted and blanks whole lines on screen | R21 sweep |  | Closed, fixed (round 23) |
+| SECURITY-R39-01 | Minor | A connect link from any web page records a phone name of up to 960 code units in Sync history, which now wraps it in full | R39 sweep |  | Closed, fixed (round 41) |
 
 #### PLATFORM
 
@@ -610,7 +626,7 @@ Rows are grouped by area, then by the round the finding was raised in.
 ## 6. Device-only checks for the owner's test phone
 
 None of these were run: no emulator or phone was available. They are merged
-and deduplicated from every area's device notes in rounds 1 to 35 and from
+and deduplicated from every area's device notes in rounds 1 to 43 and from
 TEST-PLAN section 7. Tick each one and note the phone, Android version and
 result. Radio steps in detail: [../QA.md](../QA.md). Many need two phones
 (marked **2P**). Finding ids show which fix a check confirms on hardware.
@@ -645,8 +661,22 @@ from the subsections below:
   320-360 dp phone: the body scrolls and Delete can be reached by finger and
   TalkBack (VISUAL-R29-01, 6.7).
 - [ ] At font size Largest on a 320 dp phone, the whole-word and full-title
-  fixes (VISUAL-R31-01 to VISUAL-R34-03), and the VISUAL-R34-01 and
-  VISUAL-R34-02 fixes once they land (6.7).
+  fixes (VISUAL-R31-01 to VISUAL-R38-01): amounts never split, cut titles
+  shown in full in the body, and 40-character phone and profile names read
+  in full on Sync, Activity and Settings (6.7).
+- [ ] **2P** Clock ahead with a peer edit on top (MONEY-R39-01): the edit made
+  after the date is put back shows at once on the phone and reaches the
+  peer, and the Sync summary and history counts match what changed
+  (SYNC-R39-01, SYNC-R41-01) (6.3, 6.8).
+- [ ] Add expense: change the group and the currency after typing amounts
+  (UIFLOW-R39-01, UIFLOW-R39-02); the split follows the new group and the
+  saved expense matches the screen (6.5).
+- [ ] Settle up on a debt above Money.maxMinor offers one payment at the
+  limit, names what is left, and two payments settle it (VISUAL-R39-01,
+  6.7).
+- [ ] New group with an emoji-only name left in Person name, then Create
+  group: after the UIFLOW-R42-01 fix the form stays open with "needs a
+  letter or number" (6.9).
 - [ ] If the test phone ever ran a preview APK: the upgrade keeps its groups,
   profile and settings, and it syncs with a phone that only ran the release
   APK (DATA-R24-01, 6.1).
@@ -735,6 +765,17 @@ from the subsections below:
   start: the splash is dark (PLATFORM-R1-05, VISUAL-R1-14).
 - [ ] Theme "Match system" follows the system dark-mode toggle live, with no
   launch flash.
+- [ ] Upgrade over a build that recorded long received phone names (before
+  SECURITY-R39-01): the app starts and Sync history shows the names cut to
+  40 characters (covered against real SQLite in
+  `test/qa/platform/round42_test.dart`, not on a device).
+- [ ] Settings > About shows 1.0.0 (2); the themed icon and the "Settle Up"
+  label on the launcher; the edge-to-edge stone launch window in day and
+  night.
+- [ ] After Try again on the startup error screen, the app still re-checks
+  the clock on resume (DATA-R31-01 `AppLifecycleListener`): background it
+  for more than an hour, change the system date and resume; Settings
+  updates the clock notice with no crash.
 - [ ] iOS (if built): Local Network, Bluetooth and camera prompts and copy;
   Nearby hidden.
 
@@ -881,6 +922,36 @@ from the subsections below:
   in a shared group (for example "Arjun (Pune)") and syncs; open Settings >
   Your name and tap Save without editing, then sync. The friend's name for me
   stays, and no rename shows in either phone's Activity.
+- [ ] Clock ahead with a peer edit on top (MONEY-R39-01): set Alex's date 7.5
+  days ahead and Sam's 1 day ahead, edit an expense on Alex, sync, edit it
+  on Sam, sync, set Alex's date back (automatic time on) and edit the amount
+  again. Alex shows the new amount at once, Sam gets it after a sync, and
+  both agree on the nets once their dates agree. While Alex's edit is more
+  than 7 days ahead of a peer's date, Settings on Alex shows "Changes made
+  while this phone's date was ahead are shared once that date is near."
+- [ ] Held-back counts (SYNC-R39-01, SYNC-R41-01) over hotspot/LAN, Nearby and
+  BLE: put A's clock 10 days ahead, add X, set the clock back, add Y, then
+  sync B with A 3 or more times. B shows only Y; A's session screen, Sync
+  history and Activity say "Sent 0 changes" on the repeat syncs while A's
+  badge shows the held-back change as not shared. Once real time passes X's
+  stamp, one sync shows the right "Sent" count, X arrives and A's badge and
+  clock notice clear. Repeat syncs with nothing new report 0 sent and 0 got.
+- [ ] Invite with `h=` for a group created while A's clock ran ahead (its
+  create ops are held back): B's scan-and-join screen shows the group as
+  pending (no crash, no blank group) until the clock catches up; then
+  "Which one are you?" and the claim sync back.
+- [ ] LIVE session over a real hotspot: type expenses on both phones while
+  the Sync screen is open, then leave Sync on one phone. Both Sync histories
+  count each change once and the badges clear. Walk out of range
+  (half-open link) during a LIVE session over BLE and Nearby: the session
+  ends within the idle limit and the next sync sends only the rest.
+- [ ] Hostile peers over real hotspot, Nearby and BLE radios (forged ACK
+  vectors, malformed frames; only in-memory channels were probed in rounds
+  39 and 42): the session is refused or ends cleanly, nothing is stored.
+- [ ] Nearby endpoint names are cut only by the platform's endpointInfo
+  limit on receipt (`NearbyEndpointName.tryParse` does not cut them): a long
+  advertised name shows at a bounded length in the nearby list, now that
+  rows wrap in full (VISUAL-R36-01).
 - [ ] How cut names look on the peer: a long Devanagari phone name cut to the
   63-byte mDNS label, flag or conjunct cuts in Nearby/BLE names, and a name
   with U+FFFD in the Sync screen and history (DATA-R4-03, DATA-R5-01).
@@ -906,6 +977,13 @@ from the subsections below:
   chat app and from a browser. The join screen opens in well under a second
   with no ANR (host: 2-2.5 ms warm). Also check the largest URL Android passes
   to the activity and that a link of about 1 MB does not crash the app.
+- [ ] Long names from links (SECURITY-R39-01): tap a `settleup://sync` link
+  whose `n` is about 1,000 characters (for example 200 x "Pixel") from a chat
+  app, with the host unreachable. Sync "Recent syncs" and Activity "Synced
+  with ..." show at most 40 characters over 2-3 lines with the device font,
+  also at 2.0x and with a 40-character name in a very wide script (for
+  example cuneiform). Tests use a test font and cannot measure real glyph
+  widths.
 - [ ] Capture TCP 52741 on a hotspot (Wireshark/PCAPdroid): only HELLO, AUTH
   and ERROR are plain; no group id or name in clear.
 - [ ] mDNS browser and nRF Connect: TXT/INFO/endpoint names show rotating
@@ -960,6 +1038,12 @@ from the subsections below:
 - [ ] Tapping the currency symbol in the Amount field (48 dp target with a
   chevron) opens the currency picker, and changing currency keeps the typed
   amount readable in the new currency's grammar.
+- [ ] Group and currency change on Add expense (UIFLOW-R39-01, UIFLOW-R39-02):
+  type a total and several payer amounts in INR, switch the currency to JPY
+  then KWD, and the group to another one in a different currency. Amounts
+  keep their face value, or are cleared when they cannot be held exactly,
+  the split lists the new group's people, Save works, and the saved expense
+  matches what the screen showed.
 - [ ] Non-English system locale: amounts still display in the app's format
   (MoneyFormat uses en/en_IN). Typing amounts in Settle up and the expense
   editor with the en_IN, de_DE and ar keyboards (decimal key ',' or '.',
@@ -1003,6 +1087,13 @@ from the subsections below:
   is correct (UTF-8 BOM); descriptions and names starting with '=', '+', '@'
   or a tab stay text; negative amounts stay numbers; CRLF rows and multi-line
   descriptions import as one row each.
+- [ ] CSV export of a multi-currency group: each currency's member columns
+  sum to zero in Sheets or Excel.
+- [ ] Real Android intent route strings for `settleup://join` and
+  `settleup://sync` (cold, warm and singleTop): widget tests can only fake
+  them with `handlePushRoute`. An invite link opened before onboarding, then
+  Get started: the invitation opens, and joining a 60-character group shows
+  the pending screen with the name in full (VISUAL-R34-02).
 - [ ] Invite and Scan with the real camera and real hosting; the 2:00 QR
   hide timer.
 - [ ] Haptics: none with Settings > Vibration off; selection, medium and heavy
@@ -1126,15 +1217,24 @@ from the subsections below:
 - [ ] Amounts never split (VISUAL-R34-01): at font size Largest and Display
   size Largest with Money.maxMinor in KWD, the Record payment button, the
   group expense row sublines and the hero lines shrink the amount without
-  clipping or breaking it; after the VISUAL-R34-01 fix, also the Members >
-  Remove "can't be removed yet" dialog.
+  clipping or breaking it, and so does the Members > Remove "can't be
+  removed yet" dialog body ("Sam K has KD99,999,999.999 open ..."), which
+  is set smaller and still readable at 200% on 320 dp.
 - [ ] Full titles (VISUAL-R34-02): on the group, person and expense/payment
   detail screens with a long title, the app bar names the kind of entry or a
   cut title and the body heading reads the full title. With TalkBack, check
   the reading order has no confusing double read, and that no stale heading
   remains after rotating or changing the text size (the heading is driven by
-  a post-frame callback from layout). After the VISUAL-R34-02 fix, also the
-  screen of a group still waiting for its first sync.
+  a post-frame callback from layout). The same on the screen of a group
+  still waiting for its first sync with a 60-character name at 1.0x, 1.3x
+  and 2.0x, on Settle up and Members of a 60-character group (TalkBack reads
+  the heading once), and on Settle up and Expense edit at 320 dp with a long
+  group name, where the Record payment amount, the split summary bar and
+  the before/after table still show every amount whole.
+- [ ] Add expense from Home on a 320-360 dp phone with a 60-character group
+  name: the group chip leaves the app bar for a line of its own above the
+  amount; it is easy to tap and the keyboard opened by the amount field's
+  autofocus does not cover it.
 - [ ] Edit payment (VISUAL-R34-03): no bare, unlabelled amount shows under
   Note, before or after changing the amount.
 - [ ] Sync with nothing to share at 200% on a 320-360 dp Android 14+ phone:
@@ -1146,6 +1246,43 @@ from the subsections below:
 - [ ] Sync > Make this phone visible at 1.3x on a 320 dp phone: the hotspot
   name ("AndroidAP_4B") and the address ("192.168.43.1:52741") wrap at a
   character beside the QR; check they are still easy to read and type.
+- [ ] Phone names in full (VISUAL-R36-01) at 1.0x, 1.3x and 2.0x on 320 and
+  360 dp with Familjen Grotesk: a 40-character phone name from an earlier
+  sync wraps in full in Sync > Recent syncs and in the Activity sync rows,
+  with "Sent N changes, got M" never cut; TalkBack reads each row as one
+  item with the full name and the counts. An unknown nearby phone (Pair) at
+  the 40-character limit, for example "Bartholomew Fitzgerald-Johnston Pixel
+  8a" next to "... Pixel 9", wraps in full beside or under Pair at the
+  largest font size, and TalkBack reads "Pair with <full name>".
+- [ ] Your own names in full (VISUAL-R38-01): Settings with a 40-character
+  name and phone name at the default and largest font sizes; at 2.0x on a
+  320 dp phone the profile row ("This phone: <name>") and the Phone name
+  value wrapped under its title look right next to the 1-6 renders, with no
+  clipping by the navigation bar. In Settings > Your name, Settings > Phone
+  name and Members > Rename, the wrapped one-line field shows the Done
+  action key (not a newline key) on Gboard, Done saves, a hardware Enter
+  saves and inserts no line, TalkBack reads it as an ordinary edit box with
+  its name and counter, and the caret stays visible at the end of a
+  40-character name at 2.0x with the keyboard up.
+- [ ] Sync session screen in every state (transfer, done with nothing
+  shared, done with six-digit counts and a 60-character group, stopped with
+  and without a partial result) with a 40-character phone name at 1.0x,
+  1.3x and 2.0x, light and dark. TalkBack reads each result line; the tether
+  and the progress bar stand still with Remove animations on. The step
+  labels ("Connected", light) and "Keep both phones close until it
+  finishes." (dark) are readable by eye: the test contrast guideline reports
+  3.25:1 and 4.30:1 only because it samples a 1 px-per-dp screenshot with
+  the test font; their declared inks are about 16:1 and 8:1.
+- [ ] Settle up above Money.maxMinor (VISUAL-R39-01), INR and KWD, at 320 dp
+  and 2.0x: the offered payment stops at the limit, the cap line under the
+  tether names what is left and wraps without clipping, TalkBack reads it
+  in order after the amount and reads the snack after Record, and recording
+  twice settles the rest.
+- [ ] TalkBack reads large hero amounts in their spoken form (for example
+  "23999999999.76 INR" from `MoneyFormat.spoken`), and the 12- and 13-digit
+  lakh-grouped hero amounts look right at 2.0x on 320 and 360 dp.
+- [ ] Remove animations: the Settle up "What changes" crossfade and the
+  recorded-payment close stay still.
 
 ### 6.8 Dates and time zones (release build, asserts stripped)
 
@@ -1200,6 +1337,9 @@ from the subsections below:
   app open in the foreground past the clearing moment (or across an hour):
   it clears with no other change, and the hourly re-check timer has no
   measurable battery or wakeup cost.
+- [ ] Single phone (MONEY-R39-01): set the date 30 days ahead, edit an
+  expense, set it back, edit again and restart. The second edit takes effect
+  and survives the restart.
 - [ ] Clock notice after a failed save (DATA-R32-01): with a full or failing
   disk, a failed edit of an expense written by a phone whose clock is 2 days
   ahead shows the "A phone you synced with is more than an hour ahead"
@@ -1281,6 +1421,10 @@ from the subsections below:
   typed at the end of 998 letters give 1000/1000, also while autocorrect is
   composing. TalkBack reads the remaining count as 0 when the counter is full
   and as the shown room otherwise.
+- [ ] New group (UIFLOW-R42-01) with Gboard: type an emoji-only friend name in
+  Person name and tap Create group without pressing Done. Today the group is
+  created without that person and nothing is said; after the fix the form
+  stays open with "needs a letter or number" under the field.
 - [ ] Edit group on a group whose name came from an older phone with no letter
   or number (UIFLOW-R15-01): another field can be changed and saved; a note
   added on Settle up can be removed (UIFLOW-R15-03). **2P**
@@ -1302,17 +1446,18 @@ from the subsections below:
    flutter_secure_storage 11.2.0 whose error strings were matched to the
    plugin source. A wrong match on a real OEM would show up as groups that
    work locally but cannot sync.
-4. **Layout at large text is the live area.** Rounds 31 to 35 raised ten
-   VISUAL findings in one class (text cut with an ellipsis or broken
-   mid-word on a 320-360 dp phone at 1.3x to 2.0x), and two of them
-   (VISUAL-R34-01, VISUAL-R34-02) are open after their round 34 fixes held
-   only on the screens first reported. The fixes (`FitWordsText`, whole-word
-   rows, tiles, tables and fields, `TitleCutScope` / `CutTitleHeading`) are
-   pinned by property tests over the charter matrix with the test font and
-   with the bundled Familjen Grotesk, but the widget tests scale text
-   linearly, while Android 14+ scales large text non-linearly and OEM font
-   rendering differs. The tests can both over- and under-report against a
-   phone (for example "Everything is shared" at 200%, 6.7).
+4. **Layout at large text.** Rounds 31 to 38 raised twelve VISUAL findings
+   in one class (text cut with an ellipsis or broken mid-word on a 320-360 dp
+   phone at 1.3x to 2.0x, and names or titles shown in full nowhere); three
+   were reopened once before they held. All are closed since round 39, and
+   the round 39 and 42 sweeps found none. The fixes (`FitWordsText`,
+   whole-word rows, tiles, tables and fields, `TitleCutScope` /
+   `CutTitleHeading`, wrapped name rows) are pinned by property tests over
+   the charter matrix with the test font and with the bundled Familjen
+   Grotesk, but the widget tests scale text linearly, while Android 14+
+   scales large text non-linearly and OEM font rendering differs. The tests
+   can both over- and under-report against a phone (for example "Everything
+   is shared" at 200%, 6.7).
 5. **Text handling.** Names, notes, descriptions and caps (NameText
    normalisation, invisible and joiner handling, lone surrogates, the
    counters and formatters) produced findings in rounds 4 to 6, 8, 15, 17 to
@@ -1322,7 +1467,7 @@ from the subsections below:
 6. **Amount parsing heuristics.** MONEY has 31 findings; 17 came from rounds
    2 to 6, nearly all in free-text parsing of typed and pasted amounts. None
    in parsing has been raised since round 6, including the full sweeps in
-   rounds 15, 21, 24 and 29, but the parser is still a set of rules and real
+   rounds 15, 21, 24, 29, 39 and 42, but the parser is still a set of rules and real
    keyboards may send edit sequences the harness does not (6.5).
 7. **Settle up and the save lock.** The round 24 sweep found MONEY-R24-01
    (major: "What changes" did not match the ledger), and each
@@ -1330,16 +1475,24 @@ from the subsections below:
    (MONEY-R26-01, R26-02, R27-01, R28-01). All are closed; the preview is
    computed from the ledger with the payment applied, pinned by seeded
    property tests, and Settle up, Expense edit and detail and Edit group
-   lock their controls while saving. The round 29 sweep and rounds 31 to 35
-   found nothing more there, but the timing of taps and system back during a
+   lock their controls while saving. The round 29, 39 and 42 sweeps found
+   nothing more in the preview or the lock (VISUAL-R39-01 was the payment
+   limit, fixed in round 41), but the timing of taps and system back during a
    save is checked on a device only (6.3, 6.6).
 8. **Clock skew.** DATA-R29-01 (major) showed that one edit made while the
-   phone's date ran more than 7 days ahead held back every later change.
-   It is fixed, and the Settings clock notice now shows both a peer ahead
-   and this phone's own held-back changes (DATA-R29-02, R31-01, R32-01). The
-   hold-back itself is by design (peers refuse ops stamped too far ahead);
-   real clock changes, resume events and the hourly re-check are verified on
-   a device only (6.8).
+   phone's date ran more than 7 days ahead held back every later change, and
+   the round 39 sweep found MONEY-R39-01 (major): an edit saved after the
+   date was put back was lost when a peer had edited the same expense on top
+   of the far-ahead one. Both are fixed (a local edit is now stamped after
+   any far-ahead newest op of its entity, and own stamps stay unique after
+   the clock is set back), the Settings clock notice shows both a peer
+   ahead and this phone's own held-back changes (DATA-R29-02, R31-01,
+   R32-01), and the sync counts no longer count held-back or re-sent ops
+   (SYNC-R39-01, SYNC-R41-01). The hold-back itself is by design (peers
+   refuse ops stamped too far ahead). Clock handling produced findings in
+   rounds 29 to 41, more than any other area late in the loop; it is pinned
+   by a 3-phone clock fuzz on the host, but real clock changes, resume
+   events and the hourly re-check are verified on a device only (6.3, 6.8).
 9. **Data written by preview builds.** DATA-R24-01 showed that an op stored
    before a validation change can block a phone's sync with updated peers.
    It is fixed by offering stored ops in the form peers accept, but any
@@ -1357,31 +1510,35 @@ from the subsections below:
    (6.1, 6.4).
 12. **R8 at runtime.** The release build succeeds with R8 and keep rules, but
    reflection-loaded plugin classes can only be confirmed on a phone (6.1).
-13. **Release APK size** is 108.9 MB for all ABIs; prefer
+13. **Release APK size** is 109.0 MB for all ABIs; prefer
    `--split-per-abi` or an app bundle for distribution (README "Build").
 14. **iOS** was not built or tested.
+15. **Add expense context changes.** The round 39 sweep found two majors in
+   one flow (UIFLOW-R39-01, UIFLOW-R39-02): changing the group or currency
+   after typing kept the old split or rescaled the amount. Both are fixed
+   and pinned by widget tests on the real Ledger; the one open finding
+   (UIFLOW-R42-01) is another form that loses typed input on save. Forms
+   that change their context mid-entry deserve a look on the device (6.5).
 
 ### 7.2 Process
 
-1. **Two findings are open** (VISUAL-R34-01 and VISUAL-R34-02, section 5.1).
-   Exit criterion 1 is not met until they are fixed by an engineer, merged
-   and re-verified by QA.
-2. **`dev` does not have the rounds 7 to 35 fixes yet** (section 1).
-   `origin/dev` is `319f2f8`; `qa/integration` is 352 commits ahead
-   with this revision. Exit criterion 1 counts a fix once it is merged into
-   `dev`; squash merge with `tool/squash_merge.sh`, then re-run analyze and
-   the full suite on `dev` before building the release.
-3. **No clean full sweep.** Rounds 1, 15, 21, 24 and 29 were full sweeps of
-   all seven areas and found 87, 8, 3, 4 and 4 findings. Re-verification has
-   kept finding an issue next to each fix (every round from 26 to 34; round
-   35 found no new finding but reopened two). After the VISUAL-R34-01 and
-   R34-02 fixes, QA recommends one more full sweep on the final commit (or
-   on `dev` after the merge) before calling the report clean; the exit
-   criteria do not require it, but the trend does.
+1. **One finding is open** (UIFLOW-R42-01, section 5.1). Exit criterion 1 is
+   not met until it is fixed by an engineer, merged and re-verified by QA.
+2. **`dev` does not have the rounds 36 to 43 fixes yet** (section 1).
+   `origin/dev` is `9d4b7b8` (rounds 1 to 35); `qa/integration` is 76
+   commits ahead before this revision. Exit criterion 1 counts a fix once it
+   is merged into `dev`; merge it (with `tool/squash_merge.sh` for a
+   squash), then re-run analyze and the full suite on `dev` before building
+   the release.
+3. **No clean full sweep yet.** Rounds 1, 15, 21, 24, 29, 39 and 42 were full
+   sweeps of all seven areas and found 87, 8, 3, 4, 4, 6 and 1 findings. The
+   round 42 result is one minor form issue, the best of any sweep. QA does
+   not ask for another full sweep after the UIFLOW-R42-01 fix; the
+   re-verification should cover all of UIFLOW and come back clean.
 4. **Commit history.** UIFLOW-R2-05 is closed by prevention
    (`tool/git-hooks/commit-msg`, `tool/check_commit_messages.sh`,
-   `tool/squash_merge.sh`, and the CI check). All 786 commits in
-   `origin/main..qa/integration` (before this revision) and the 436 commits
+   `tool/squash_merge.sh`, and the CI check). All 863 commits in
+   `origin/main..qa/integration` (before this revision) and the 789 commits
    of `origin/main..origin/dev` are clean: no co-author or session trailers,
    and every commit is authored by sushil3125 or fonenxtaiml. 55 stale round
    1 to 5 `fix/*` branches on `origin` (for example `fix/qa-ui-r3`) still
@@ -1399,11 +1556,11 @@ from the subsections below:
 
 | Item | Status |
 |---|---|
-| Findings | **224 raised, 222 closed and re-verified, 2 open** (VISUAL-R34-01 and VISUAL-R34-02, both minor). All rounds: 1 blocker, 5 critical, 58 major, 143 minor, 17 trivial over rounds 1 to 35 |
+| Findings | **234 raised, 233 closed and re-verified, 1 open** (UIFLOW-R42-01, minor). All rounds: 1 blocker, 5 critical, 61 major, 150 minor, 17 trivial over rounds 1 to 43 |
 | Analyze | Clean |
-| Tests | 3,880 total, 3,876 passed, 4 skipped (the VISUAL-R34-01 and VISUAL-R34-02 repros, each run with two fonts), 0 failed (2,003 added by QA) |
-| Release build | Builds with R8 (108.9 MB); debug-signed here (no key.properties); not published |
+| Tests | 4,186 total, 4,183 passed, 3 skipped (the UIFLOW-R42-01 repro, one per typed name), 0 failed (2,224 added by QA) |
+| Release build | Builds with R8 (109.0 MB); debug-signed here (no key.properties); not published |
 | Commit messages | Clean on `qa/integration` and `dev` |
 | Device checks | 0 of section 6 run (no device) |
-| Report clean | **No** (two open minor findings, VISUAL-R34-01 and VISUAL-R34-02) |
-| Recommendation | **NO-GO** for now: no release candidate and no Play production release until VISUAL-R34-01 and VISUAL-R34-02 are fixed and re-verified (exit criterion 1), ideally followed by one clean full sweep. Then **GO** for a 1.0.0 release candidate built from `dev` after the squash merge and signed with the upload key, for the owner's device pass, and **GO for Play production** once section 6.0 passes on the device; any defect found there goes back through the same fix and re-verify loop |
+| Report clean | **No** (one open minor finding, UIFLOW-R42-01; the last full sweep, round 42, was not clean) |
+| Recommendation | **NO-GO** for now: no release candidate and no Play production release until UIFLOW-R42-01 is fixed and re-verified and rounds 36 to 43 are merged into `dev` (exit criterion 1). Then **GO** for a 1.0.0 release candidate built from `dev` and signed with the upload key, for the owner's device pass, and **GO for Play production** once section 6.0 passes on the device; any defect found there goes back through the same fix and re-verify loop |
