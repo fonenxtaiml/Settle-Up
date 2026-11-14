@@ -19,9 +19,19 @@ import '../core/name_text.dart';
 const int kMaxPeerNameUnits =
     4 * NameText.maxGroupLength * NameText.unitsPerChar;
 
-/// [raw] as it may be shown or stored: its first [kMaxPeerNameUnits] code
-/// units in the form names typed on this phone take ([NameText.normalize]).
+/// [raw] cleaned for matching: its first [kMaxPeerNameUnits] code units
+/// in the form names typed on this phone take ([NameText.normalize]), not
+/// cut to a name limit (an mDNS " (2)" suffix may still follow the name).
 String cleanPeerName(String raw) => NameText.normalize(boundPeerName(raw));
+
+/// [raw] as it may be shown or stored: its first [kMaxPeerNameUnits] code
+/// units saved as a name of at most [limit] characters is on this phone
+/// ([NameText.fit]). A received name is the peer's word, and a link from
+/// any web page may carry hundreds of characters; shown and recorded, it
+/// takes no more room than a name typed on a phone (SECURITY-R39-01). A
+/// phone name is at most [NameText.maxLength] characters (SPEC 5.16).
+String fitPeerName(String raw, [int limit = NameText.maxLength]) =>
+    NameText.fit(boundPeerName(raw), limit);
 
 /// The first [kMaxPeerNameUnits] code units of [raw], never half of a
 /// surrogate pair.

@@ -7,6 +7,7 @@
 import 'dart:convert';
 
 import '../core/models.dart';
+import '../core/name_text.dart';
 
 Map<String, Object?> syncRecordToJson(SyncRecord r) => {
       'id': r.id,
@@ -28,7 +29,7 @@ SyncRecord? syncRecordFromJson(Object? json) {
     return SyncRecord(
       id: json['id']! as String,
       peerDeviceId: json['peerDeviceId'] as String?,
-      peerName: json['peerName']! as String,
+      peerName: _recordedPeerName(json['peerName']! as String),
       transport: enumByName(
           TransportKind.values, json['transport'], TransportKind.lan),
       startedAt: utcFromMillis(json['startedAt']! as int),
@@ -43,6 +44,16 @@ SyncRecord? syncRecordFromJson(Object? json) {
   } catch (_) {
     return null;
   }
+}
+
+/// A recorded phone name as Sync history shows it: at most a phone name's
+/// [NameText.maxLength] characters. The engine records names in that form;
+/// this bounds a record an earlier build stored with a longer received
+/// name (SECURITY-R39-01).
+String _recordedPeerName(String raw) {
+  if (NameText.fits(raw, NameText.maxLength)) return raw;
+  final name = NameText.fit(raw);
+  return name.isEmpty ? 'Phone' : name;
 }
 
 /// Newest first; ties by id descending so the order is total.
