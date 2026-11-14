@@ -1,73 +1,57 @@
 # Settle Up 1.0.0: QA report
 
 Owner: QA lead. Branch: `qa/integration` at the commit that adds this
-revision (parent `913cace`). Baseline: `dev` at `854df42`. Rounds 1 to 43.
+revision (parent `9aeffd3`). Baseline: `dev` at `854df42`. Rounds 1 to 44.
 Date: 2026-11-14. Plan: [TEST-PLAN.md](TEST-PLAN.md). Manual radio
 checklist: [../QA.md](../QA.md).
 
 ## 1. Verdict
 
-**The report is not clean. 234 findings were raised in rounds 1 to 43: 233
-are closed, fixed and re-verified by QA, and one is open, UIFLOW-R42-01
-(minor), raised by the round 42 full sweep.** `flutter analyze` reports no
-issues and the full suite is green (4,186 tests: 4,183 passed,
-3 skipped, 0 failed). The 3 skipped tests are the failing repro of
-UIFLOW-R42-01, run with three typed names, and flip on with the fix. The
-release build succeeds with R8.
+**The report is clean. 234 findings were raised in rounds 1 to 44, and all
+234 are closed, fixed and re-verified by QA. None is open and none was
+closed as not a defect. The round 44 full sweep of all seven areas found
+nothing, the first clean sweep of the loop.** `flutter analyze` reports no
+issues and the full suite is green (4,281 tests: 4,281 passed,
+0 skipped, 0 failed). The release build succeeds with R8.
 
-**Release recommendation: NO-GO for the Play production release, and no
-release candidate yet.** TEST-PLAN exit criterion 1 requires zero open
-findings of any severity, and one is open. It is a minor form issue with no
-effect on money, balances or sync, and nothing already stored is wrong:
+The last open finding, UIFLOW-R42-01 (minor), was fixed in round 43 on
+`fix/qa-ui-r43` and re-verified in round 44. On New group, a name with no
+letter or number ("😎", "?!", "---") left in Person name when the user taps
+Create group was silently dropped. Create now treats the field the way Add
+person and the keyboard's Done do: the form stays open and "Use at least
+one letter or number" shows under the field. A repeat of a name already in
+the list is still taken as that person once. The three repros in
+`test/qa/uiflow/r42_sweep_test.dart` are now on and pass. The round 44
+re-verification (`test/qa/uiflow/r44_reverify_test.dart`) also probed the
+paths around the changed Create and found nothing.
 
-- **UIFLOW-R42-01.** On New group, a name with no letter or number (for
-  example "😎", "?!" or "---") left in the Person name field when the user
-  taps Create group is silently dropped: the group is created without that
-  person and nothing is said. Add person and the keyboard's Done both
-  refuse the same text with "needs a letter or number", so only Create
-  loses it.
+**Release recommendation: GO for a 1.0.0 release candidate** built from
+`dev` and signed with the upload key, once the step 1 merge below is done.
+**GO for Play production** once section 6.0 passes on the owner's phone.
+TEST-PLAN exit criterion 1 (zero open findings of any severity) is met on
+`qa/integration`. It counts on `dev` once step 1 is done:
 
-The path to GO:
-
-1. **Fix and re-verify UIFLOW-R42-01.** A senior engineer fixes it on a
-   `fix/*` branch with a regression test. In `_save` of
-   `lib/ui/screens/group/group_edit_screen.dart`, a refused `_addPerson`
-   is treated as "already in the group" and the field is cleared; only a
-   duplicate should be cleared, and a name `nameInputError` refuses should
-   stop the save and show the error under the field. QA merges it into
-   `qa/integration`, turns on the three skipped repros in
-   `test/qa/uiflow/r42_sweep_test.dart` and walks the other places that add
-   a typed name on save (Members, the claim screen, onboarding, Settings).
-2. **Bring rounds 36 to 43 into `dev`.** `origin/dev` is `9d4b7b8`, the merge
-   of `qa/integration` at `8920953` (rounds 1 to 35). `qa/integration` is 76
-   commits ahead of it before this revision and holds the 11 fixes verified
-   in rounds 36 to 42 (VISUAL-R34-01, VISUAL-R34-02, VISUAL-R36-01,
+1. **Bring rounds 36 to 44 into `dev`.** `origin/dev` is `9d4b7b8`, the merge
+   of `qa/integration` at `8920953` (rounds 1 to 35). `qa/integration` is 97
+   commits ahead of it before this revision. Those commits hold the 12 fixes
+   verified in rounds 36 to 44 (VISUAL-R34-01, VISUAL-R34-02, VISUAL-R36-01,
    VISUAL-R38-01, MONEY-R39-01, SYNC-R39-01, UIFLOW-R39-01, UIFLOW-R39-02,
-   VISUAL-R39-01, SECURITY-R39-01, SYNC-R41-01). Merge it into `dev` with
-   the UIFLOW-R42-01 fix, re-run `flutter analyze` and `flutter test -j 2`
-   on `dev`, and build the release from `dev`/`main`, not from this branch.
-   TEST-PLAN exit criterion 1 counts a fix once it is on `dev`.
-3. **A confirmation pass on the final commit.** Rounds 1, 15, 21, 24, 29, 39
-   and 42 were full sweeps of all seven areas and found 87, 8, 3, 4, 4, 6
-   and 1 findings; none was clean. The round 42 sweep found only a single
-   minor finding, so QA does not ask for another full sweep, but the
-   UIFLOW-R42-01 re-verification should probe its neighbours in all of
-   UIFLOW and come back clean.
-4. **Release signing.** No `android/key.properties` exists on this host, so
+   VISUAL-R39-01, SECURITY-R39-01, SYNC-R41-01, UIFLOW-R42-01) and their
+   tests. `dev` has no commit of its own beyond the two merge commits. Merge
+   `qa/integration` into `dev`, re-run `flutter analyze` and
+   `flutter test -j 2` on `dev`, and build the release from `dev`/`main`.
+2. **Release signing.** No `android/key.properties` exists on this host, so
    the local release build is signed with the debug key (the build prints the
    PLATFORM-R2-02 warning). The APK for the owner's phone and for Play must be
    built with the real upload key (README "Release signing").
-5. **The device pass in section 6.** No emulator or phone was available.
+3. **The device pass in section 6.** No emulator or phone was available.
    Radios, permissions, real keyboards (IME composing), real fonts and text
    scaling, the Keystore, deep-link intents, TalkBack and R8 at runtime are
    verified only by static review and host tests. Section 6.0 lists the
-   checks that should pass before a production release; the rest can follow
-   as a tester build is used.
-
-Once step 1 closes UIFLOW-R42-01 with no new finding and step 2 lands it on
-`dev`, QA's recommendation becomes GO for a 1.0.0 release candidate built
-from `dev` and signed with the upload key, and GO for Play production once
-section 6.0 passes on the owner's phone.
+   checks that should pass before Play production; the rest can follow as a
+   tester build is used. A defect found on the phone goes back through the
+   same loop: an engineer fixes it on a `fix/*` branch with a regression
+   test, and QA re-verifies it.
 
 On the trend: after round 6 the loop raised 69 more findings (8 major, 60
 minor, 1 trivial), almost all narrow edge cases found next to the previous
@@ -76,8 +60,9 @@ Settle up preview and save path (24 to 29), the clock notice (29 to 33),
 text cut or broken mid-word at large text (31 to 38), and the clock-ahead
 and sync-count follow-ups of the round 39 sweep (39 to 41). The round 39
 sweep was the last to find major issues (MONEY-R39-01, UIFLOW-R39-01,
-UIFLOW-R39-02, all fixed and re-verified in round 41). The round 42 sweep of
-all seven areas found one minor finding, the smallest result of any sweep.
+UIFLOW-R39-02, all fixed and re-verified in round 41). The full sweeps found
+87, 8, 3, 4, 4, 6, 1 and 0 findings (rounds 1, 15, 21, 24, 29, 39, 42 and
+44). The last reopen was VISUAL-R36-01 in round 37.
 
 ## 2. Scope and environment
 
@@ -120,31 +105,49 @@ Seven QA areas, each with one owner and its own tests under `test/qa/<area>/`
 Workflow (TEST-PLAN.md section 8): QA files findings and writes a failing
 repro; a separate pool of senior engineers fixes each one on a `fix/*` branch
 with a regression test; QA merges and re-verifies; a finding closes only on QA
-re-verification. Rounds 1, 15, 21, 24, 29, 39 and 42 were full sweeps of
-all seven areas; rounds 2 to 6, 8 to 14, 17 to 21, 23, 24, 26 to 29, 31 to
-39, 41 and 42 re-verified the previous fixes and probed their neighbours
-(from round 31 on, in the areas that had fixes); rounds 7, 16, 22, 25, 30
-and 40 were engineer fix rounds with no QA verdicts (the fixes re-verified
-in rounds 24, 27, 29 and 41 were made just before those rounds). Round 43 is
-this report: the final analyze, full-suite and release-build run on
-`qa/integration` with no new probes. Repros of open findings stay in the
-suite as `skip:` tests until the fix flips them on; the UIFLOW-R42-01 repros
-in `test/qa/uiflow/r42_sweep_test.dart` are the only ones left.
+re-verification. Rounds 1, 15, 21, 24, 29, 39, 42 and 44 were full sweeps
+of all seven areas; rounds 2 to 6, 8 to 14, 17 to 21, 23, 24, 26 to 29, 31
+to 39, 41, 42 and 44 re-verified the previous fixes and probed their
+neighbours (from round 31 on, in the areas that had fixes); rounds 7, 16,
+22, 25, 30 and 40 were engineer fix rounds with no QA verdicts (the fixes
+re-verified in rounds 24, 27, 29 and 41 were made just before those
+rounds). Round 43 was the previous revision of this report (analyze, full
+suite and release build, no new probes) and the engineers' UIFLOW-R42-01
+fix. Round 44 re-verified that fix, then ran the final full sweep (below).
+This revision is the closing analyze, full-suite and release-build run on
+`qa/integration` after round 44, with no new probes. Repros of open findings
+stay in the suite as `skip:` tests until the fix flips them on; none is
+left.
+
+The round 44 sweep ran every area's existing suites on the integrated build
+and added probes that combine the charter's paths:
+
+| Area | Round 44 sweep probes |
+|---|---|
+| MONEY | `test/qa/money/r44_sweep_test.dart`: three phones run seeded random money commands offline (every split method, several payers, money edits, delete and restore, payments with a flipped direction or a new currency, merges, removals, simplify toggles) and sync random pairs. After a full ring sync all three hold the same expenses, nets, transfers and CSV, and every money invariant holds. The CSV is read back and its member columns sum to the nets. Then the charter's fixed vectors, formula-leading text in every CSV text cell, and the amount grammar. |
+| SYNC | `test/qa/sync/r44_sweep_test.dart`: a two-way, two-group BLE sync (16 KiB frames) cut after every frame count until it completes. At each cut, on both phones: no op stored twice, a partial outcome exactly when something was shared or stored, "sent" and "got" match the badge and the ops stored, and the next sync completes with equal snapshots and both badges at 0. A second group gossips over three phones with a cut on every hop. |
+| DATA | `test/qa/data/r44_sweep_test.dart`: a seeded soak on two phones over real SQLite files, over four seeds (every command kind, refused writes, lost clock saves, wall-clock jumps both ways, syncs, clean and unclean relaunches), checking contiguous counters, strictly rising own stamps across relaunches, identical replays and convergence. A real SQLite write lock held by another connection (SQLITE_BUSY): commands, settings and a sync are refused without advancing anything, a cold open still starts, and all works once the lock is gone. |
+| UIFLOW | `test/qa/uiflow/r44_reverify_test.dart` (UIFLOW-R42-01 and the paths around Create: the group name refused first, a person from other groups typed again, a name too long once stored, a valid name left in the field while the group name is missing) and `test/qa/uiflow/r44_sweep_test.dart` (the currency picker on Edit expense with several payers and an exact split, an edit in a group whose currency is not the expense's, Add expense with a person who has no 1:1 group yet, and the one-line name prompts that wrap and save on Done). |
+| VISUAL | `test/qa/visual/r44_sweep_test.dart`, run again with Familjen Grotesk by `r44_real_font_test.dart`: the refused Create at every size, scale and theme with a 60-character group name and a 40-character person chip. The reason shows in full above the Create bar, TalkBack hears it (a live region), the guidelines hold, and the repeat path lands on a group screen that lays out. |
+| SECURITY | `test/qa/security/r44_sweep_test.dart`: a name that spells out `&h=` or `&k=` cannot add a host or swap the key of an invite or connect link; the Ledger still drops bidi controls and refuses a name of only invisibles whatever the New group form lets through; peer text with an invisible character in front of a formula is still prefixed with `'` in the CSV. |
+| PLATFORM | No new probe file: the only product change since round 42 is in the New group form. Its suites ran in the full suite, and the release build check in 4.1 covers release readiness. |
+
+No probe failed, so the sweep raised no finding.
 
 Severity scale: TEST-PLAN.md section 4 (blocker, critical, major, minor,
 trivial).
 
 ## 4. Metrics
 
-### 4.1 Final run (round 43, this commit's parent, `913cace`)
+### 4.1 Final run (after round 44, this commit's parent, `9aeffd3`)
 
 | Check | Result |
 |---|---|
 | `flutter analyze` | **No issues found** (infos included) |
-| `flutter test -j 2` (full suite) | **4,186 tests: 4,183 passed, 3 skipped, 0 failed** (36 min 41 s on the shared host). The 3 skipped tests are the failing repro of UIFLOW-R42-01 for "😎", "?!" and "---", and flip on with the fix. |
-| Of which `test/qa/**` | 2,224 tests: 2,221 passed, 3 skipped (counted per file from the same run's JSON report, which gave the per-area counts in 4.2) |
-| `flutter build apk --release` | **Built** `app-release.apk` (109.0 MB, all ABIs) in about 1 min 8 s, R8 on, `mapping.txt` produced. `aapt2`: package `app.settleup.settleup`, label "Settle Up", versionCode 2, versionName 1.0.0, targetSdk 36, compileSdk 37. `apksigner`: signed with the **Android Debug** certificate because `android/key.properties` is absent (the PLATFORM-R2-02 warning was printed). Build check only; the APK was deleted with `build/` and `android/.gradle/` and not published or handed out. |
-| Commit messages | `tool/check_commit_messages.sh origin/main..HEAD`: 863 commits (before this revision), all clean (no co-author or session trailers, every commit authored by sushil3125 or fonenxtaiml); `origin/main..origin/dev`: 789 commits, all clean |
+| `flutter test -j 2` (full suite) | **4,281 tests: 4,281 passed, 0 skipped, 0 failed** ("All tests passed!", 37 min 35 s on the shared host). No repro is skipped: the three UIFLOW-R42-01 repros are on and pass. |
+| Of which `test/qa/**` | 2,312 tests: 2,312 passed, 0 skipped (counted per file from the same run's JSON report, which gave the per-area counts in 4.2) |
+| `flutter build apk --release` | **Built** `app-release.apk` (109.0 MB, all ABIs) in about 1 min 32 s, R8 on, `mapping.txt` produced. `aapt2`: package `app.settleup.settleup`, label "Settle Up", versionCode 2, versionName 1.0.0, targetSdk 36, compileSdk 37. `apksigner`: signed with the **Android Debug** certificate because `android/key.properties` is absent (the PLATFORM-R2-02 warning was printed). Build check only; the APK was deleted with `build/` and `android/.gradle/` and not published or handed out. |
+| Commit messages | `tool/check_commit_messages.sh origin/main..HEAD`: 884 commits (before this revision), all clean (no co-author or session trailers, every commit authored by sushil3125 or fonenxtaiml); `origin/main..origin/dev`: 789 commits, all clean |
 
 ### 4.2 Tests
 
@@ -155,10 +158,11 @@ trivial).
 | Suite at the end of round 21 | 3,254 |
 | Suite at the end of round 27 | 3,547 |
 | Suite at the end of round 35 | 3,880 |
-| Final suite (round 43) | 4,186 |
-| Added by QA (`test/qa/**`) | **2,224** (data 234, money 377, platform 289, security 260, sync 306, uiflow 426, visual 332) |
-| Added by the fix engineers (regression tests outside `test/qa`) | 1,096 |
-| Skipped | 3 (the UIFLOW-R42-01 repro, one per typed name) |
+| Suite in the round 43 revision of this report | 4,186 |
+| Final suite (after round 44) | 4,281 |
+| Added by QA (`test/qa/**`) | **2,312** (data 239, money 412, platform 289, security 282, sync 312, uiflow 440, visual 338) |
+| Added by the fix engineers (regression tests outside `test/qa`) | 1,103 |
+| Skipped | 0 |
 
 ### 4.3 Findings by area and severity (all rounds)
 
@@ -167,37 +171,38 @@ trivial).
 | MONEY | 0 | 1 | 12 | 19 | 0 | 32 | 0 |
 | SYNC | 0 | 1 | 5 | 12 | 0 | 18 | 0 |
 | DATA | 0 | 1 | 4 | 19 | 8 | 32 | 0 |
-| UIFLOW | 0 | 0 | 13 | 32 | 2 | 47 | 1 |
+| UIFLOW | 0 | 0 | 13 | 32 | 2 | 47 | 0 |
 | VISUAL | 0 | 0 | 13 | 42 | 2 | 57 | 0 |
 | SECURITY | 0 | 0 | 9 | 18 | 3 | 30 | 0 |
 | PLATFORM | 1 | 2 | 5 | 8 | 2 | 18 | 0 |
-| **All** | **1** | **5** | **61** | **150** | **17** | **234** | **1** |
+| **All** | **1** | **5** | **61** | **150** | **17** | **234** | **0** |
 
-Closed: 233, all **closed, fixed** (re-verified by QA). Closed as not a
-defect: 0. Open: 1 (UIFLOW-R42-01, minor). Reopen events: 33 on 28 distinct
-findings (a fix that did not hold in re-verification is reopened, not
-duplicated); the last reopen was VISUAL-R36-01 in round 37. Of the 234, 155
-were closed in rounds 2 to 6 and 78 after round 6 (67 in rounds 8 to 35 and
-11 in rounds 36 to 42).
+Closed: 234, all **closed, fixed** (re-verified by QA). Closed as not a
+defect: 0. Open: 0. Reopen events: 33 on 28 distinct findings (a fix that
+did not hold in re-verification is reopened, not duplicated); the last
+reopen was VISUAL-R36-01 in round 37. Of the 234, 155 were closed in rounds
+2 to 6 and 79 after round 6 (67 in rounds 8 to 35 and 12 in rounds 36 to
+44).
 
 ### 4.4 Findings by area and round
 
-| Area | R1 | R2-6 | R8-14 | R15 sweep | R17-21 | R21 sweep | R24 sweep | R26-28 | R29 sweep | R31-38 | R39 sweep | R41 | R42 sweep | Total |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
-| MONEY | 9 | 17 | 0 | 0 | 0 | 0 | 1 | 4 | 0 | 0 | 1 | 0 | 0 | 32 |
-| SYNC | 8 | 7 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 18 |
-| DATA | 9 | 12 | 1 | 1 | 2 | 1 | 1 | 0 | 2 | 3 | 0 | 0 | 0 | 32 |
-| UIFLOW | 21 | 11 | 2 | 3 | 4 | 1 | 1 | 0 | 1 | 0 | 2 | 0 | 1 | 47 |
-| VISUAL | 15 | 16 | 9 | 1 | 1 | 0 | 1 | 0 | 1 | 12 | 1 | 0 | 0 | 57 |
-| SECURITY | 14 | 10 | 0 | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 30 |
-| PLATFORM | 11 | 5 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 18 |
-| **All** | **87** | **78** | **13** | **8** | **10** | **3** | **4** | **4** | **4** | **15** | **6** | **1** | **1** | **234** |
+| Area | R1 | R2-6 | R8-14 | R15 sweep | R17-21 | R21 sweep | R24 sweep | R26-28 | R29 sweep | R31-38 | R39 sweep | R41 | R42 sweep | R44 sweep | Total |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| MONEY | 9 | 17 | 0 | 0 | 0 | 0 | 1 | 4 | 0 | 0 | 1 | 0 | 0 | 0 | 32 |
+| SYNC | 8 | 7 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 1 | 1 | 0 | 0 | 18 |
+| DATA | 9 | 12 | 1 | 1 | 2 | 1 | 1 | 0 | 2 | 3 | 0 | 0 | 0 | 0 | 32 |
+| UIFLOW | 21 | 11 | 2 | 3 | 4 | 1 | 1 | 0 | 1 | 0 | 2 | 0 | 1 | 0 | 47 |
+| VISUAL | 15 | 16 | 9 | 1 | 1 | 0 | 1 | 0 | 1 | 12 | 1 | 0 | 0 | 0 | 57 |
+| SECURITY | 14 | 10 | 0 | 2 | 2 | 1 | 0 | 0 | 0 | 0 | 1 | 0 | 0 | 0 | 30 |
+| PLATFORM | 11 | 5 | 0 | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 18 |
+| **All** | **87** | **78** | **13** | **8** | **10** | **3** | **4** | **4** | **4** | **15** | **6** | **1** | **1** | **0** | **234** |
 
 By severity, the 69 findings raised after round 6 were 8 major
 (VISUAL-R9-01, VISUAL-R11-01, MONEY-R24-01, DATA-R29-01, VISUAL-R29-01,
 MONEY-R39-01, UIFLOW-R39-01, UIFLOW-R39-02), 60 minor and 1 trivial
 (SECURITY-R17-02). Of the 10 raised in rounds 36 to 42, 3 were major (all
-from the round 39 sweep) and 7 minor.
+from the round 39 sweep) and 7 minor. Rounds 43 and 44, including the round
+44 full sweep, raised none.
 
 ### 4.5 Rounds
 
@@ -251,7 +256,9 @@ from the round 39 sweep) and 7 minor.
 | 41 | Re-verify | 1 | 6 | 0 | 1 |
 | 42 | Re-verify | 0 | 1 | 0 | 0 |
 | 42 | Full sweep | 1 | 0 | 0 | 1 |
-| 43 | Final report run (no probes) | - | - | - | **1** |
+| 43 | Report run and fix round (UIFLOW-R42-01 fixed) | - | - | - | 1 |
+| 44 | Re-verify | 0 | 1 | 0 | 0 |
+| 44 | Full sweep | 0 | 0 | 0 | **0** |
 
 Rounds 9 to 14 were a chain in the date picker (VISUAL-R10-01 to R14-01):
 each fix to the stock Material picker exposed the next issue, until round 15
@@ -265,47 +272,45 @@ clock-skew notice (DATA-R29-01, R29-02, R31-01, R32-01); and rounds 31 to
 round 39 sweep found three majors outside those chains: an edit lost after
 the phone's date ran ahead (MONEY-R39-01) and two Add expense group-change
 bugs (UIFLOW-R39-01, UIFLOW-R39-02); its sync-count fix led to one more
-(SYNC-R41-01), closed in round 42.
+(SYNC-R41-01), closed in round 42. The round 42 sweep found one minor form
+issue (UIFLOW-R42-01), fixed in round 43 and closed in round 44, and the
+round 44 sweep found nothing.
 
 ## 5. Findings
 
-### 5.1 Open findings (1)
+### 5.1 Open findings (0)
 
-| ID | Severity | Area | Found | Title |
-|---|---|---|---|---|
-| UIFLOW-R42-01 | Minor | UIFLOW (New group) | Round 42 full sweep | New group drops a person name with no letter or number left in the field on Create, without a word |
+None. Every finding raised in rounds 1 to 44 is closed, fixed and
+re-verified by QA, and the round 44 full sweep raised none. No repro test is
+skipped for an open finding.
 
-**UIFLOW-R42-01.**
+The last finding to close was UIFLOW-R42-01 (minor, raised by the round 42
+full sweep):
 
-- **What happens.** On New group, the user types a group name, adds Meera,
-  then types a name with no letter or number ("😎", "?!" or "---") in
-  Person name and taps Create group without tapping Add person or the
-  keyboard's Done. The group is created with Meera and without the typed
-  person, the screen closes and nothing is said. Add person is disabled for
-  that text and Done shows "needs a letter or number", so the same text is
-  refused on every path except Create.
-- **Cause.** `_save` in `lib/ui/screens/group/group_edit_screen.dart` calls
-  `_addPerson` for a name still in the field and, when it returns false,
-  clears the field and goes on. That branch is meant for a name that repeats
-  one already in the list (the person is already there), but `_addPerson`
-  also returns false when `nameInputError` refuses the text.
-- **Impact.** A person the user meant to add is missing from the new group,
-  and the user is not told. They can add the person on Members afterwards.
-  No money, balance or stored data is wrong, and only names that cannot be
-  a person's name are affected.
-- **Repro.** `skip: true` test "QA UIFLOW-R42-01 (<typed>): New group, a name
-  with no letter or number left in the person field on Create is not
-  dropped without a word", run for the three names, in
-  `test/qa/uiflow/r42_sweep_test.dart`. The premise probes in the same file
-  pass (a repeated name left in the field is added once; Add person is off
-  and Done says why).
-- **Expected fix.** Clear the field only for a duplicate. For a name that
-  `nameInputError` refuses, keep the form open, show the error under Person
-  name and do not create the group.
-- **Status.** Not fixed; no `fix/*` branch yet. Assigned to the engineer
-  pool for the next fix round, then QA re-verification (section 1, step 1).
+- **What happened.** On New group, a name with no letter or number ("😎",
+  "?!" or "---") left in Person name when the user tapped Create group was
+  cleared, and the group was created without that person and with no
+  message. Add person and the keyboard's Done refused the same text.
+- **Cause.** `_save` in `lib/ui/screens/group/group_edit_screen.dart`
+  treated every refusal from `_addPerson` as "already in the group" and
+  cleared the field.
+- **Fix** (`84d2d81` and `54a82e0` on `fix/qa-ui-r43`, merged in
+  `cfa0afe`). `_addPerson` now tells a repeat from a non-name. Create takes a
+  repeat as that person once. For a non-name, the form stays open, the
+  group is not created and "Use at least one letter or number" shows under
+  the field. Engineer regression tests:
+  `test/ui/flows/new_group_person_left_in_field_test.dart` (punctuation,
+  symbols, spaces, format characters and fillers).
+- **Re-verification (round 44).** The three repros in
+  `test/qa/uiflow/r42_sweep_test.dart` are on and pass. QA added
+  `test/qa/uiflow/r44_reverify_test.dart` for the paths around Create, and
+  `test/qa/visual/r44_sweep_test.dart` for the refused form at every size,
+  scale and theme. The Settings name prompts, which also take a typed name
+  on save, are probed in `test/qa/uiflow/r44_sweep_test.dart`. Members,
+  the claim screen and onboarding were already covered by earlier rounds'
+  name tests, which all pass in this run. Nothing failed.
 
-The 78 findings closed after round 6 (the rounds 1 to 6 list is in 5.2):
+The 79 findings closed after round 6 (the rounds 1 to 6 list is in 5.2):
 
 | ID | Severity | Closed in round |
 |---|---|---:|
@@ -345,13 +350,14 @@ The 78 findings closed after round 6 (the rounds 1 to 6 list is in 5.2):
 | MONEY-R39-01, UIFLOW-R39-01, UIFLOW-R39-02 | Major | 41 |
 | SYNC-R39-01, VISUAL-R39-01, SECURITY-R39-01 | Minor | 41 |
 | SYNC-R41-01 | Minor | 42 |
+| UIFLOW-R42-01 | Minor | 44 |
 
 ### 5.2 All findings with final status
 
 Status key: "Closed, fixed (round N)" means fixed by an engineer and
 re-verified by QA in round N. "Reopened" is how many times a fix failed
-re-verification. "Open" means not fixed yet. One finding is open
-(UIFLOW-R42-01) and none was closed as not a defect.
+re-verification. "Open" means not fixed yet. No finding is open and none
+was closed as not a defect.
 Rows are grouped by area, then by the round the finding was raised in.
 
 #### MONEY
@@ -501,7 +507,7 @@ Rows are grouped by area, then by the round the finding was raised in.
 | UIFLOW-R29-01 | Minor | Deleting or restoring a payment from its detail calls it an expense (menu, prompt and snack bars) | R29 sweep |  | Closed, fixed (round 31) |
 | UIFLOW-R39-01 | Major | Changing the group on Add expense keeps the old group's people in the split, so Save is refused | R39 sweep |  | Closed, fixed (round 41) |
 | UIFLOW-R39-02 | Major | Changing the group on Add expense to one in a currency with other decimals rescales the typed amount | R39 sweep |  | Closed, fixed (round 41) |
-| UIFLOW-R42-01 | Minor | New group drops a person name with no letter or number left in the field on Create, without a word | R42 sweep |  | **Open** |
+| UIFLOW-R42-01 | Minor | New group drops a person name with no letter or number left in the field on Create, without a word | R42 sweep |  | Closed, fixed (round 44) |
 
 #### VISUAL
 
@@ -626,7 +632,7 @@ Rows are grouped by area, then by the round the finding was raised in.
 ## 6. Device-only checks for the owner's test phone
 
 None of these were run: no emulator or phone was available. They are merged
-and deduplicated from every area's device notes in rounds 1 to 43 and from
+and deduplicated from every area's device notes in rounds 1 to 44 and from
 TEST-PLAN section 7. Tick each one and note the phone, Android version and
 result. Radio steps in detail: [../QA.md](../QA.md). Many need two phones
 (marked **2P**). Finding ids show which fix a check confirms on hardware.
@@ -675,8 +681,9 @@ from the subsections below:
   limit, names what is left, and two payments settle it (VISUAL-R39-01,
   6.7).
 - [ ] New group with an emoji-only name left in Person name, then Create
-  group: after the UIFLOW-R42-01 fix the form stays open with "needs a
-  letter or number" (6.9).
+  group: the form stays open, the group is not created and "Use at least
+  one letter or number" shows under the field above the keyboard
+  (UIFLOW-R42-01, 6.9).
 - [ ] If the test phone ever ran a preview APK: the upgrade keeps its groups,
   profile and settings, and it syncs with a phone that only ran the release
   APK (DATA-R24-01, 6.1).
@@ -727,9 +734,19 @@ from the subsections below:
   bluetooth_low_energy, mobile_scanner/ML Kit, flutter_secure_storage with
   Tink, bonsoir/gson, cryptography_flutter, path_provider over jni). The app
   has no `proguard-rules.pro` of its own and relies on the plugins' consumer
-  rules.
+  rules. In the release build R8 renames the plugin entry classes
+  (NearbyConnectionsPlugin, BluetoothLowEnergyAndroidPlugin,
+  MobileScannerPlugin, FlutterSecureStoragePlugin, BonsoirPlugin,
+  CryptographyFlutterPlugin). GeneratedPluginRegistrant registers them by
+  direct reference, not by reflection, so this should be safe. Check that
+  Nearby (GMS), BLE scan and advertise, QR scan, secure storage after a
+  restart and mDNS all work in the release build. Then run a real invite
+  join and an encrypted sync over hotspot/LAN, Nearby and BLE between two
+  phones, and check that the 6-digit verification codes match. **2P**
 - [ ] Merged manifest of the release APK (`aapt2 dump xmltree`): permissions,
-  `dataExtractionRules`, deep-link filters and no debug flags.
+  `dataExtractionRules`, deep-link filters (`settleup://join` and
+  `settleup://sync` only), only the launcher activity exported,
+  `allowBackup=false` and no debug flags.
 - [ ] Startup error screen: install over a newer-schema database (`adb install
   -d`) or a corrupt `settle_up.db`; the error screen shows and Try again
   reopens the file once it is fixed (DATA-R1-02, PLATFORM-R1-01). A database
@@ -882,7 +899,12 @@ from the subsections below:
   the retry from the same phone is accepted and resumes without duplicates
   (SYNC-R1-05).
 - [ ] Hosting expiry (5 min) and token rotation across a real 10-minute
-  boundary while advertising on all radios.
+  boundary while advertising on all radios. Let hosting expire, and cancel
+  mid-session from the session screen: an immediate retry is accepted, not
+  refused as busy.
+- [ ] Three phones gossiping A and B, then B and C, then C and A over real
+  radios: A and C converge without meeting, and repeat syncs report 0 sent
+  and 0 got. **3 phones**
 - [ ] Settle up over a real transport: record a partial payment and an
   over-payment on one phone, sync, and check both phones show the same
   direction flip and the same balances on Group, People and the Home hero.
@@ -989,6 +1011,8 @@ from the subsections below:
 - [ ] mDNS browser and nRF Connect: TXT/INFO/endpoint names show rotating
   tokens and a rotating advert id only; no group id, no key, no stable device
   id prefix (SECURITY-R1-12).
+- [ ] Tap a `settleup://join` and a `settleup://sync` link from a browser and
+  from a messenger: only MainActivity handles them.
 - [ ] Release logcat during invite, join and sync: no group key, invite link
   or payload printed.
 - [ ] Invite QR: screenshots and screen recordings are black, the recents
@@ -1007,7 +1031,8 @@ from the subsections below:
   (SecureGroupKeyStore is faked on the host). Keystore disruption (remove or
   change the screen lock, OEM reset, or delete the alias in a debug build):
   flutter_secure_storage reports the key mismatch, the app shows the
-  recovery, and re-scanning an invite stores the key again; creating a group
+  recovery, and re-scanning an invite stores the key again and restores
+  sync, with nothing else in secure storage wiped; creating a group
   works (SECURITY-R1-11, SECURITY-R2-02). A group that has ops but lost its
   key is still shown, flagged as without a key, and local edits still work.
 
@@ -1278,6 +1303,9 @@ from the subsections below:
   tether names what is left and wraps without clipping, TalkBack reads it
   in order after the amount and reads the snack after Record, and recording
   twice settles the rest.
+- [ ] Home hero, group and person balances with mixed INR, JPY and KWD
+  balances at the largest font size: the largest-currency pick and the
+  "+N more" line read right and are not cut.
 - [ ] TalkBack reads large hero amounts in their spoken form (for example
   "23999999999.76 INR" from `MoneyFormat.spoken`), and the 12- and 13-digit
   lakh-grouped hero amounts look right at 2.0x on 320 and 360 dp.
@@ -1288,6 +1316,10 @@ from the subsections below:
 
 - [ ] Edit an expense dated 1970 and one dated 2090: the date picker opens on
   that date (SECURITY-R5-01).
+- [ ] With the app in the background, set the date back and then forward in
+  Android settings, then edit an expense. The new stamp still comes after
+  the previous own op (the round 44 DATA soak checks this on the host), and
+  the "This phone's clock looks wrong" notice matches the state.
 - [ ] Clock reset (SECURITY-R6-01): set the phone clock to 1970-01-01 (auto
   time off), open Add expense, a payment edit and Settle up, and in each use
   the year grid and the text entry to choose today's real date. Save, and
@@ -1421,10 +1453,21 @@ from the subsections below:
   typed at the end of 998 letters give 1000/1000, also while autocorrect is
   composing. TalkBack reads the remaining count as 0 when the counter is full
   and as the shown room otherwise.
-- [ ] New group (UIFLOW-R42-01) with Gboard: type an emoji-only friend name in
-  Person name and tap Create group without pressing Done. Today the group is
-  created without that person and nothing is said; after the fix the form
-  stays open with "needs a letter or number" under the field.
+- [ ] New group (UIFLOW-R42-01) with Gboard: type an emoji-only friend name
+  ("😎") in Person name and tap Create group without pressing Done. The
+  phone gives the invalid haptic, the group is not created and "Use at
+  least one letter or number" shows under the field. Repeat at 320x568 and
+  font size Largest (2.0x) with the soft keyboard and with a physical
+  keyboard: add one person, type "!!!" and tap Create. The error can be
+  seen under the field and is not hidden behind the keyboard or the Create
+  bar (widget tests have no soft keyboard). With TalkBack on, the first tap
+  announces the error (a live region). A second tap with the same text
+  announces nothing new and gives only the haptic, which is expected.
+- [ ] Settle up > Note (multiline) on Gboard: Enter inserts a new line and
+  the dialog stays open, and Save stores the two-line note. In contrast,
+  Settings > Your name, Settings > Phone name and Members > Rename save on
+  Enter or the action key and never insert a line break (6.7), also with a
+  hardware or Bluetooth keyboard.
 - [ ] Edit group on a group whose name came from an older phone with no letter
   or number (UIFLOW-R15-01): another field can be changed and saved; a note
   added on Settle up can be removed (UIFLOW-R15-03). **2P**
@@ -1450,7 +1493,7 @@ from the subsections below:
    in one class (text cut with an ellipsis or broken mid-word on a 320-360 dp
    phone at 1.3x to 2.0x, and names or titles shown in full nowhere); three
    were reopened once before they held. All are closed since round 39, and
-   the round 39 and 42 sweeps found none. The fixes (`FitWordsText`,
+   the round 39, 42 and 44 sweeps found none. The fixes (`FitWordsText`,
    whole-word rows, tiles, tables and fields, `TitleCutScope` /
    `CutTitleHeading`, wrapped name rows) are pinned by property tests over
    the charter matrix with the test font and with the bundled Familjen
@@ -1464,18 +1507,19 @@ from the subsections below:
    19, 21 and 24; none since. Every fix is pinned by tests that send one edit
    per code point; a real IME sends composing regions the harness only
    simulates, and device fonts decide what is blank (6.9).
-6. **Amount parsing heuristics.** MONEY has 31 findings; 17 came from rounds
+6. **Amount parsing heuristics.** MONEY has 32 findings; 17 came from rounds
    2 to 6, nearly all in free-text parsing of typed and pasted amounts. None
    in parsing has been raised since round 6, including the full sweeps in
-   rounds 15, 21, 24, 29, 39 and 42, but the parser is still a set of rules and real
-   keyboards may send edit sequences the harness does not (6.5).
+   rounds 15, 21, 24, 29, 39, 42 and 44, but the parser is still a set of
+   rules and real keyboards may send edit sequences the harness does not
+   (6.5).
 7. **Settle up and the save lock.** The round 24 sweep found MONEY-R24-01
    (major: "What changes" did not match the ledger), and each
    re-verification up to round 28 found one more issue next to the fix
    (MONEY-R26-01, R26-02, R27-01, R28-01). All are closed; the preview is
    computed from the ledger with the payment applied, pinned by seeded
    property tests, and Settle up, Expense edit and detail and Edit group
-   lock their controls while saving. The round 29, 39 and 42 sweeps found
+   lock their controls while saving. The round 29, 39, 42 and 44 sweeps found
    nothing more in the preview or the lock (VISUAL-R39-01 was the payment
    limit, fixed in round 41), but the timing of taps and system back during a
    save is checked on a device only (6.3, 6.6).
@@ -1516,33 +1560,35 @@ from the subsections below:
 15. **Add expense context changes.** The round 39 sweep found two majors in
    one flow (UIFLOW-R39-01, UIFLOW-R39-02): changing the group or currency
    after typing kept the old split or rescaled the amount. Both are fixed
-   and pinned by widget tests on the real Ledger; the one open finding
-   (UIFLOW-R42-01) is another form that loses typed input on save. Forms
-   that change their context mid-entry deserve a look on the device (6.5).
+   and pinned by widget tests on the real Ledger. UIFLOW-R42-01, the last
+   finding to close, was another form that lost typed input on save (New
+   group). Forms that change their context mid-entry or take a field's
+   leftover text on save deserve a look on the device (6.5, 6.9).
 
 ### 7.2 Process
 
-1. **One finding is open** (UIFLOW-R42-01, section 5.1). Exit criterion 1 is
-   not met until it is fixed by an engineer, merged and re-verified by QA.
-2. **`dev` does not have the rounds 36 to 43 fixes yet** (section 1).
-   `origin/dev` is `9d4b7b8` (rounds 1 to 35); `qa/integration` is 76
+1. **No finding is open.** Exit criterion 1 (zero open findings of any
+   severity) is met on `qa/integration`, and the round 44 full sweep of all
+   seven areas was clean.
+2. **`dev` does not have the rounds 36 to 44 fixes yet** (section 1).
+   `origin/dev` is `9d4b7b8` (rounds 1 to 35); `qa/integration` is 97
    commits ahead before this revision. Exit criterion 1 counts a fix once it
-   is merged into `dev`; merge it (with `tool/squash_merge.sh` for a
+   is merged into `dev`. Merge it (with `tool/squash_merge.sh` for a
    squash), then re-run analyze and the full suite on `dev` before building
    the release.
-3. **No clean full sweep yet.** Rounds 1, 15, 21, 24, 29, 39 and 42 were full
-   sweeps of all seven areas and found 87, 8, 3, 4, 4, 6 and 1 findings. The
-   round 42 result is one minor form issue, the best of any sweep. QA does
-   not ask for another full sweep after the UIFLOW-R42-01 fix; the
-   re-verification should cover all of UIFLOW and come back clean.
+3. **Sweeps.** Rounds 1, 15, 21, 24, 29, 39, 42 and 44 were full sweeps of
+   all seven areas and found 87, 8, 3, 4, 4, 6, 1 and 0 findings. Round 44
+   is the first clean sweep. The host sweeps do not replace the device pass
+   (item 6).
 4. **Commit history.** UIFLOW-R2-05 is closed by prevention
    (`tool/git-hooks/commit-msg`, `tool/check_commit_messages.sh`,
-   `tool/squash_merge.sh`, and the CI check). All 863 commits in
+   `tool/squash_merge.sh`, and the CI check). All 884 commits in
    `origin/main..qa/integration` (before this revision) and the 789 commits
    of `origin/main..origin/dev` are clean: no co-author or session trailers,
-   and every commit is authored by sushil3125 or fonenxtaiml. 55 stale round
-   1 to 5 `fix/*` branches on `origin` (for example `fix/qa-ui-r3`) still
-   carry the old trailers. They are already merged in a clean form and must
+   and every commit is authored by sushil3125 or fonenxtaiml. Stale round 1
+   to 5 `fix/*` branches on `origin` (for example `fix/qa-ui-r3`) still
+   carry the old trailers: a grep of their history finds them on 22 of the
+   75 `fix/*` branches now on `origin`. They are already merged in a clean form and must
    never be merged again; deleting them is the owner's call.
 5. **Full suite timing.** DATA-R18-02, DATA-R21-01 and DATA-R32-02 (each
    reopened once) showed that wall-clock perf bounds fail under the `-j 2`
@@ -1556,11 +1602,12 @@ from the subsections below:
 
 | Item | Status |
 |---|---|
-| Findings | **234 raised, 233 closed and re-verified, 1 open** (UIFLOW-R42-01, minor). All rounds: 1 blocker, 5 critical, 61 major, 150 minor, 17 trivial over rounds 1 to 43 |
+| Findings | **234 raised, 234 closed and re-verified, 0 open**. All rounds: 1 blocker, 5 critical, 61 major, 150 minor, 17 trivial over rounds 1 to 44; none closed as not a defect |
+| Last full sweep | Round 44, all seven areas: **clean** (0 findings) |
 | Analyze | Clean |
-| Tests | 4,186 total, 4,183 passed, 3 skipped (the UIFLOW-R42-01 repro, one per typed name), 0 failed (2,224 added by QA) |
+| Tests | 4,281 total, 4,281 passed, 0 skipped, 0 failed (2,312 added by QA) |
 | Release build | Builds with R8 (109.0 MB); debug-signed here (no key.properties); not published |
 | Commit messages | Clean on `qa/integration` and `dev` |
 | Device checks | 0 of section 6 run (no device) |
-| Report clean | **No** (one open minor finding, UIFLOW-R42-01; the last full sweep, round 42, was not clean) |
-| Recommendation | **NO-GO** for now: no release candidate and no Play production release until UIFLOW-R42-01 is fixed and re-verified and rounds 36 to 43 are merged into `dev` (exit criterion 1). Then **GO** for a 1.0.0 release candidate built from `dev` and signed with the upload key, for the owner's device pass, and **GO for Play production** once section 6.0 passes on the device; any defect found there goes back through the same fix and re-verify loop |
+| Report clean | **Yes** (no open finding, and the round 44 full sweep was clean) |
+| Recommendation | **GO** for a 1.0.0 release candidate built from `dev` once `qa/integration` (rounds 36 to 44) is merged into it and analyze and the full suite pass there, signed with the upload key, for the owner's device pass. **GO for Play production** once section 6.0 passes on the owner's phone. Any defect found there goes back through the same fix and re-verify loop |
