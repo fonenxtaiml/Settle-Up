@@ -178,9 +178,12 @@ void main() {
         expect(results, everyElement(predicate(ok)), reason: '$results');
         expect(priya.opCount(seed.g), alex.opCount(seed.g));
         expect(priya.canonical, alex.canonical);
-        // Neither engine is left busy.
-        expect(alex.engine.status.session, isNot(isA<SessionActive>()));
-        expect(priya.engine.status.session, isNot(isA<SessionActive>()));
+        // Neither engine is left busy (the responder may still be
+        // recording when the dialer's call returns, under a loaded CPU).
+        for (final p in [alex, priya]) {
+          await waitFor(() => p.engine.status.session is! SessionActive);
+          expect(p.engine.status.session, isNot(isA<SessionActive>()));
+        }
       });
     }
 
