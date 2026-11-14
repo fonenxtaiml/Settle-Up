@@ -188,7 +188,6 @@ void main() {
       'change to a $code group: the amount is not rescaled to $wrong',
       // QA UIFLOW-R39-02: Changing the group on Add expense to one in a
       // currency with other decimals rescales the typed amount
-      skip: true,
       (tester) async {
         qaPhone(tester);
         final w = await RealWorld.create(name: 'Arjun');
