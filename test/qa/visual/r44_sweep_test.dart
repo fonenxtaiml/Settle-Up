@@ -117,7 +117,7 @@ bool _liveRegionSays(WidgetTester t, String label) {
   var found = false;
   void visit(SemanticsNode n) {
     final d = n.getSemanticsData();
-    if (d.label.contains(label) && d.hasFlag(SemanticsFlag.isLiveRegion)) {
+    if (d.label.contains(label) && d.flagsCollection.isLiveRegion) {
       found = true;
     }
     n.visitChildren((c) {
