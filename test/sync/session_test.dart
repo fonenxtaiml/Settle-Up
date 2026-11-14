@@ -298,6 +298,10 @@ void main() {
     // over the wire with it (QA SYNC-R39-01).
     expect(rp.receivedOps, 1);
     expect(rp.summary.receivedOps, 1);
+    // "Sent" is what the peer's VV came to cover: storing counter 3 closed
+    // the gap, so Ravi's 3, 4 and 5 are now known shared (QA SYNC-R41-01).
+    expect(ra.sentOps, 3);
+    expect(ra.toRecord('r').sentOps, 3);
     expect(rp.toRecord('r').receivedOps, 1);
     expect(priya.canonical, alex.canonical);
   });

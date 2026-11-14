@@ -2366,7 +2366,7 @@ final class SyncSummary {
   final TransportKind transport;
   final DateTime startedAt;
   final DateTime endedAt;
-  final int sentOps;
+  final int sentOps; // offered ops the peer's ACK VV came to cover
   final int receivedOps; // newly stored: the sum of receivedByGroup
   final Map<GroupId, int> receivedByGroup;
   final List<GroupId> groupIds;
