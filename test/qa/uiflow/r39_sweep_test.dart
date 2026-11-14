@@ -143,7 +143,6 @@ void main() {
     'split lists only the new group\'s people and Save adds the expense',
     // QA UIFLOW-R39-01: Changing the group on Add expense keeps the old
     // group's people in the split, so Save is refused
-    skip: true,
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');

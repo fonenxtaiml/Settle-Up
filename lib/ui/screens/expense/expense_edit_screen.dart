@@ -222,6 +222,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final members = [for (final m in g.activeMembers) m.id];
     _payer = _me ?? (members.isEmpty ? null : members.first);
     _multiPaid = null;
+    // A new group starts a new split: the previous group's people are not
+    // in it (QA UIFLOW-R39-01). An edited expense loads its own split
+    // after this and orders it again.
+    _split = SplitDraft(members: const []);
     _order = _orderFor(g, me);
     _split = SplitDraft(members: _order, method: SplitMethod.equal);
     if (!keepSplit) {
@@ -248,8 +252,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
     final out = [...active];
     // Members of an edited expense who were removed later stay listed.
+    // Only this group's own members: an id from another group's draft is
+    // never listed (QA UIFLOW-R39-01).
     for (final m in _split.included) {
-      if (!out.contains(m)) out.add(m);
+      if (g.members.containsKey(m) && !out.contains(m)) out.add(m);
     }
     // Ties keep the order people joined the group.
     DateTime joined(MemberId m) =>
