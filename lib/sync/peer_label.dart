@@ -15,10 +15,12 @@ import 'peer_name.dart';
 /// Shown for a phone that sent no name worth showing.
 const String kUnnamedPeer = 'Phone';
 
-/// [raw] cleaned ([cleanPeerName]) when it shows something to tell a phone
-/// by, else ''.
+/// [raw] cleaned and cut to the phone-name limit ([fitPeerName]) when it
+/// shows something to tell a phone by, else ''. Every received phone name
+/// (HELLO, advert, link `n` and `f`) is shown and recorded in this form, so
+/// none takes more than a phone name's room (SECURITY-R39-01).
 String shownPeerName(String raw) {
-  final name = cleanPeerName(raw);
+  final name = fitPeerName(raw);
   return showsPeerName(name) ? name : '';
 }
 

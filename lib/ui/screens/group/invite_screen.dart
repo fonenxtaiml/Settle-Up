@@ -132,71 +132,75 @@ class _InviteScreenState extends ConsumerState<InviteScreen>
     final g = ref.watch(groupProvider(widget.groupId)).value?.group;
     final name = g?.name ?? '';
     final link = _link;
-    return Scaffold(
-      appBar: screenAppBar(
-        leading: const BackArrow(close: true),
-        title: Text(S.inviteTitle(name)),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.symmetric(horizontal: Space.text),
-        children: [
-          Text(
-            S.inviteBody,
-            style: theme.textTheme.bodyLarge!.copyWith(color: ink2),
-          ),
-          const SizedBox(height: Space.xl),
-          if (_error != null)
-            Text(errorMessage(_error!), style: theme.textTheme.bodyLarge)
-          else if (link != null) ...[
-            Center(
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(Radii.lg),
-                ),
-                child: Semantics(
-                  image: true,
-                  label: S.inviteQrLabel,
-                  child: QrImageView(
-                    data: link,
-                    size: 248,
-                    padding: EdgeInsets.zero,
-                    eyeStyle: const QrEyeStyle(
-                      eyeShape: QrEyeShape.square,
-                      color: Color(0xFF16191D),
-                    ),
-                    dataModuleStyle: const QrDataModuleStyle(
-                      dataModuleShape: QrDataModuleShape.square,
-                      color: Color(0xFF16191D),
+    // A group name the app bar cuts reads in full at the top of the body.
+    return TitleCutScope(
+      child: Scaffold(
+        appBar: screenAppBar(
+          leading: const BackArrow(close: true),
+          title: AppBarTitle(S.inviteTitle(name)),
+        ),
+        body: ListView(
+          padding: const EdgeInsets.symmetric(horizontal: Space.text),
+          children: [
+            const CutTitleHeading(padding: EdgeInsets.only(bottom: Space.md)),
+            Text(
+              S.inviteBody,
+              style: theme.textTheme.bodyLarge!.copyWith(color: ink2),
+            ),
+            const SizedBox(height: Space.xl),
+            if (_error != null)
+              Text(errorMessage(_error!), style: theme.textTheme.bodyLarge)
+            else if (link != null) ...[
+              Center(
+                child: Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(Radii.lg),
+                  ),
+                  child: Semantics(
+                    image: true,
+                    label: S.inviteQrLabel,
+                    child: QrImageView(
+                      data: link,
+                      size: 248,
+                      padding: EdgeInsets.zero,
+                      eyeStyle: const QrEyeStyle(
+                        eyeShape: QrEyeShape.square,
+                        color: Color(0xFF16191D),
+                      ),
+                      dataModuleStyle: const QrDataModuleStyle(
+                        dataModuleShape: QrDataModuleShape.square,
+                        color: Color(0xFF16191D),
+                      ),
                     ),
                   ),
                 ),
               ),
-            ),
-            const SizedBox(height: Space.lg),
-            Text(
-              S.inviteHides(DateLabels.countdown(Duration(seconds: _left))),
-              textAlign: TextAlign.center,
-              style: theme.textTheme.bodyMedium!.copyWith(color: ink2),
-            ),
-            const SizedBox(height: Space.md),
-            Center(
-              child: TextLink(
-                S.shareLink,
-                onPressed: () => _shareLink(name, link),
+              const SizedBox(height: Space.lg),
+              Text(
+                S.inviteHides(DateLabels.countdown(Duration(seconds: _left))),
+                textAlign: TextAlign.center,
+                style: theme.textTheme.bodyMedium!.copyWith(color: ink2),
               ),
-            ),
-          ] else if (!_loading) ...[
-            Text(S.inviteHidden, style: theme.textTheme.bodyLarge),
-            const SizedBox(height: Space.lg),
-            FilledButton(
-              onPressed: _show,
-              style: KitButtonStyles.block,
-              child: const Text(S.showAgain),
-            ),
+              const SizedBox(height: Space.md),
+              Center(
+                child: TextLink(
+                  S.shareLink,
+                  onPressed: () => _shareLink(name, link),
+                ),
+              ),
+            ] else if (!_loading) ...[
+              Text(S.inviteHidden, style: theme.textTheme.bodyLarge),
+              const SizedBox(height: Space.lg),
+              FilledButton(
+                onPressed: _show,
+                style: KitButtonStyles.block,
+                child: const Text(S.showAgain),
+              ),
+            ],
           ],
-        ],
+        ),
       ),
     );
   }

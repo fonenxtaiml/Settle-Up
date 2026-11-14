@@ -85,7 +85,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R34-01: the "can\'t be removed yet" dialog splits '
     'Money.maxMinor in KWD across lines at 2.0x on a 320 dp phone',
-    skip: true, // QA VISUAL-R34-01: amount split in the Remove dialog body
     (t) async {
       late VisualWorld w;
       await t.runAsync(() async => w = await VisualWorld.huge());
@@ -166,7 +165,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R34-02: a group waiting for its first sync shows its name '
     'only in the one-line app bar, cut',
-    skip: true, // QA VISUAL-R34-02: pending group name cut in the app bar
     (t) async {
       late VisualWorld w;
       const pending = 'cccc0000-0000-7000-8000-000000000001';

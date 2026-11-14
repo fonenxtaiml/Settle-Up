@@ -403,7 +403,7 @@ class SplitSummaryBar extends StatelessWidget {
                 ? Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Text(summary, style: base),
+                      FitWordsText(summary, style: base),
                       Align(
                         alignment: AlignmentDirectional.centerStart,
                         child: right,
@@ -412,7 +412,7 @@ class SplitSummaryBar extends StatelessWidget {
                   )
                 : Row(
                     children: [
-                      Expanded(child: Text(summary, style: base)),
+                      Expanded(child: FitWordsText(summary, style: base)),
                       const SizedBox(width: Space.sm),
                       if (problem != null) Flexible(child: right) else right,
                     ],

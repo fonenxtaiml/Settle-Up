@@ -6,6 +6,7 @@ import 'dart:typed_data';
 import 'package:meta/meta.dart';
 
 import '../../core/ids.dart';
+import '../../core/name_text.dart';
 import '../peer_label.dart';
 import '../peer_name.dart';
 
@@ -68,8 +69,9 @@ final class InviteLink {
       return InviteLink(
         groupId: g,
         groupKey: key,
-        // Names come from whoever made the link: shown, so cleaned.
-        groupName: cleanPeerName(n),
+        // Names come from whoever made the link: shown, so cleaned and cut
+        // to the group-name limit (SECURITY-R39-01).
+        groupName: fitPeerName(n, NameText.maxGroupLength),
         currency: c,
         // '' when it shows nothing: the join prompt then says "Someone".
         fromName: shownPeerName(q['f'] ?? ''),

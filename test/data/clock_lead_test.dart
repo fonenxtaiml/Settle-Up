@@ -1,7 +1,8 @@
 // DATA-R29-01: an own clock that ran ahead must not hold back every later
 // change. A plain local op is never stamped more than OpFactory.maxLeadMs
-// ahead of the wall clock; an edit of an entity whose newest op this phone
-// stamped far ahead still follows it, so the edit takes effect locally.
+// ahead of the wall clock; an edit of an entity whose newest op is stamped
+// far ahead (by this phone, or by a peer on top of this phone's stamp,
+// MONEY-R39-01) still follows it, so the edit takes effect locally.
 import 'dart:math';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -10,6 +11,7 @@ import 'package:settle_up/core/ids.dart';
 import 'package:settle_up/core/models.dart';
 import 'package:settle_up/core/ops.dart';
 import 'package:settle_up/data/op_factory.dart';
+import 'package:settle_up/data/repositories.dart';
 import 'package:settle_up/data/schema.dart';
 import 'package:settle_up/sync/protocol/session.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -187,6 +189,177 @@ void main() {
       lessThanOrEqualTo(a.clock.now + OpFactory.maxLeadMs),
     );
   });
+
+  // MONEY-R39-01: the far-ahead newest op of an entity may be a peer's
+  // edit made on top of this phone's own far-ahead stamp (the peer adopted
+  // it). Every kind of local write on such an entity still takes effect
+  // here and reaches the peer.
+  test('a peer edit on top of this phone\'s stamp from a week ahead: every '
+      'later edit, delete, restore and rename here still wins', () async {
+    await join();
+    final e = await a.ledger.addExpense(
+      qaDraft(t.g, [t.me, t.sam], description: 'Taxi'),
+    );
+    expect(await sync(), SyncOutcome.completed);
+    a.clock.now = kQaBaseMs + 15 * _day ~/ 2;
+    b.clock.now = kQaBaseMs + _day;
+    await a.ledger.updateExpense(
+      e,
+      qaDraft(t.g, [t.me, t.sam], description: 'A ahead'),
+    );
+    await a.ledger.renameMember(t.g, t.priya, 'Priya (A ahead)');
+    await a.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (A ahead)'));
+    expect(await sync(), SyncOutcome.completed);
+    b.clock.advance(1000);
+    await b.ledger.updateExpense(
+      e,
+      qaDraft(t.g, [t.me, t.sam], description: 'B on top'),
+    );
+    await b.ledger.renameMember(t.g, t.priya, 'Priya (B)');
+    await b.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (B)'));
+    expect(await sync(), SyncOutcome.completed);
+    expect(a.snap.state.expense(e)!.description, 'B on top');
+    expect(newestOpOf(a, e).deviceId, b.deviceId);
+
+    // A's date is corrected: B's stamps are now more than 7 days ahead.
+    a.clock.now = kQaBaseMs + 60000;
+    final floor = newestOpOf(a, e).hlc;
+    expect(floor.millis, greaterThan(a.clock.now + HlcClock.maxAdoptDriftMs));
+    await a.ledger.updateExpense(
+      e,
+      qaDraft(t.g, [t.me, t.sam], description: 'A fixed'),
+    );
+    expect(a.snap.state.expense(e)!.description, 'A fixed');
+    expect(newestOpOf(a, e).hlc > floor, isTrue);
+    await a.ledger.renameMember(t.g, t.priya, 'Priya (A fixed)');
+    expect(a.group(t.g).members[t.priya]!.displayName, 'Priya (A fixed)');
+    await a.ledger.updateGroup(t.g, const GroupPatch(name: 'Goa (A fixed)'));
+    expect(a.group(t.g).group!.name, 'Goa (A fixed)');
+    await a.restart();
+    await a.ledger.deleteExpense(e);
+    expect(a.group(t.g).liveExpenses.map((x) => x.id), isNot(contains(e)));
+    await a.ledger.restoreExpense(e);
+    expect(a.group(t.g).liveExpenses.map((x) => x.id), contains(e));
+    // A new expense is still stamped from the corrected clock.
+    final lunch = await a.ledger.addExpense(
+      qaDraft(t.g, [t.me, t.sam], description: 'Lunch'),
+    );
+    expect(
+      newestOpOf(a, lunch).hlc.millis,
+      lessThanOrEqualTo(a.clock.now + OpFactory.maxLeadMs),
+    );
+    final own = a.snap.ops.where((o) => o.deviceId == a.deviceId).toList();
+    expect(own.map((o) => o.hlc).toSet().length, own.length);
+
+    // B (1 day ahead) accepts the edits: they are stamped after his own.
+    expect(await sync(), SyncOutcome.completed);
+    expect(b.snap.state.expense(e)!.description, 'A fixed');
+    expect(b.group(t.g).members[t.priya]!.displayName, 'Priya (A fixed)');
+    expect(b.group(t.g).group!.name, 'Goa (A fixed)');
+    expect(b.snap.state.expense(lunch), isNotNull);
+    expect(b.snap.state.toCanonicalJson(), a.snap.state.toCanonicalJson());
+  });
+
+  // Property over two phones whose dates jump days ahead and back
+  // independently, editing the same entities and syncing in between:
+  // what a phone just saved is what it shows, whoever wrote the entity's
+  // newest op and however far ahead (MONEY-R39-01), own stamps stay
+  // unique, and once real time passes every stamp both converge.
+  for (var seed = 1; seed <= 10; seed++) {
+    test(
+      'two-phone clock story $seed: a local write always wins locally',
+      () async {
+        final rnd = Random(4000 + seed);
+        await join();
+        final phones = [a, b];
+        final expenses = <ExpenseId>[];
+        var real = 0;
+        final offset = {a: 0, b: 0};
+        const offsets = [
+          0,
+          0,
+          _day,
+          -_day,
+          3 * _day,
+          6 * _day,
+          8 * _day,
+          15 * _day ~/ 2,
+          12 * _day,
+          30 * _day,
+        ];
+        for (var step = 0; step < 40; step++) {
+          real += 1000 + rnd.nextInt(60000);
+          final p = phones[rnd.nextInt(2)];
+          if (rnd.nextInt(4) == 0) {
+            offset[p] = offsets[rnd.nextInt(offsets.length)];
+          }
+          for (final q in phones) {
+            q.clock.now = kQaBaseMs + real + offset[q]!;
+          }
+          final r = rnd.nextInt(10);
+          final why = 'seed $seed step $step';
+          // The expenses this phone holds (a peer's may not have reached it).
+          final held = [
+            for (final e in expenses)
+              if (p.snap.state.expense(e) != null) e,
+          ];
+          if (r <= 1 || held.isEmpty) {
+            final d = 'E$step';
+            final e = await p.ledger.addExpense(
+              qaDraft(t.g, [t.me, t.sam], description: d),
+            );
+            expenses.add(e);
+            expect(p.snap.state.expense(e)!.description, d, reason: why);
+          } else if (r <= 4) {
+            final e = held[rnd.nextInt(held.length)];
+            final before = newestOpOf(p, e).hlc;
+            final d = 'E$step edit';
+            await p.ledger.updateExpense(
+              e,
+              qaDraft(t.g, [t.me, t.sam], description: d),
+            );
+            expect(p.snap.state.expense(e)!.description, d, reason: why);
+            expect(newestOpOf(p, e).hlc > before, isTrue, reason: why);
+          } else if (r == 5) {
+            final e = held[rnd.nextInt(held.length)];
+            final deleted = p.snap.state.expense(e)!.isDeleted;
+            if (deleted) {
+              await p.ledger.restoreExpense(e);
+            } else {
+              await p.ledger.deleteExpense(e);
+            }
+            expect(p.snap.state.expense(e)!.isDeleted, !deleted, reason: why);
+          } else if (r == 6) {
+            final n = 'Sam $step';
+            await p.ledger.renameMember(t.g, t.sam, n);
+            expect(p.group(t.g).members[t.sam]!.displayName, n, reason: why);
+          } else if (r == 7) {
+            await p.restart();
+          } else {
+            expect(await sync(), SyncOutcome.completed, reason: why);
+          }
+        }
+        for (final p in phones) {
+          final own = p.snap.ops.where((o) => o.deviceId == p.deviceId);
+          expect(
+            own.map((o) => o.hlc).toSet().length,
+            own.length,
+            reason: 'seed $seed: no two own ops share a stamp',
+          );
+        }
+        a.clock.now = kQaBaseMs + 80 * _day;
+        b.clock.now = a.clock.now;
+        expect(await sync(), SyncOutcome.completed);
+        expect(await sync(), SyncOutcome.completed);
+        expect(a.snap.totalUnshared, 0, reason: 'seed $seed');
+        expect(
+          b.snap.state.toCanonicalJson(),
+          a.snap.state.toCanonicalJson(),
+          reason: 'seed $seed',
+        );
+      },
+    );
+  }
 
   test('any damaged leading digit of a stored hlc.last: the next change is '
       'stamped near the wall clock and reaches a peer', () async {

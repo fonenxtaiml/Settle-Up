@@ -381,9 +381,12 @@ class _SyncScreenState extends ConsumerState<SyncScreen>
                       title: S.recentSyncs,
                       children: [
                         for (final r in history.take(5))
+                          // The phone's name wraps in full: the row opens
+                          // nothing, and Sync's header names only the
+                          // latest sync's phone (VISUAL-R36-01). Phone
+                          // names are at most 40 characters (SPEC 5.16).
                           KitListRow(
                             title: r.peerName,
-                            titleLines: 1,
                             subtitle: S.recentLine(
                               DateLabels.ago(r.endedAt, now: now),
                               r.transport == TransportKind.lan

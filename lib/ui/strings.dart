@@ -346,6 +346,13 @@ abstract final class S {
   static const whoIsPaying = 'Who is paying?';
   static String overpay(String extra) => "That's $extra more than the balance.";
 
+  /// A balance larger than one payment can hold (VISUAL-R39-01): "One
+  /// payment can be at most ₹99,99,99,999.99. ₹10 will still be owed:
+  /// record it as another payment."
+  static String paymentCap(String most, String left) =>
+      'One payment can be at most $most. $left will still be owed: record '
+      'it as another payment.';
+
   /// "Sam will owe you ₹10.", "You will owe Sam ₹10.", "Priya will owe
   /// Sam ₹10.": a null name is me.
   static String willOwe(String? debtor, String? creditor, String amount) =>

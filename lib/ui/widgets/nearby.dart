@@ -78,11 +78,14 @@ class NearbyPhoneRow extends StatelessWidget {
     };
     return MergeSemantics(
       child: KitListRow(
-        title: name,
-        titleLines: 1,
+        // The phone's name wraps in full: the row opens nothing, and Pair
+        // (a phone that shares no group) only explains how to join, so a
+        // cut name would read in full nowhere, and two phones of one owner
+        // that differ only at the end would look the same (VISUAL-R36-01).
         // The status line is the app's words ("Wi-Fi, may share a group",
         // "and 2 more") around at most one group name: it wraps in full
-        // (VISUAL-R31-02). Only the phone's name, user data, is capped.
+        // too (VISUAL-R31-02).
+        title: name,
         subtitle: subtitle,
         leading: ExcludeSemantics(
           child: SizedBox(

@@ -36,22 +36,37 @@ class GroupScreen extends ConsumerWidget {
     final pendingName = snap?.pendingJoins[groupId];
 
     if (group.hasValue && (g?.group == null || g!.group!.isDeleted)) {
-      return Scaffold(
-        appBar: screenAppBar(
-          leading: const BackArrow(),
-          title: AppBarTitle(pendingName ?? S.groups),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(Space.xl),
-            child: pendingName != null
-                ? EmptyState(
-                    headline: S.pendingGroupTitle,
-                    body: S.pendingGroupBody,
-                    actionLabel: S.openSync,
-                    onAction: () => context.go(Routes.sync),
-                  )
-                : const Text(S.groupNotFound, textAlign: TextAlign.center),
+      // A group waiting for its first sync is named only by the invite: a
+      // name the app bar cuts reads in full at the top of the body.
+      return TitleCutScope(
+        child: Scaffold(
+          appBar: screenAppBar(
+            leading: const BackArrow(),
+            title: AppBarTitle(pendingName ?? S.groups),
+          ),
+          body: CustomScrollView(
+            slivers: [
+              const SliverToBoxAdapter(child: CutTitleHeading()),
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(Space.xl),
+                    child: pendingName != null
+                        ? EmptyState(
+                            headline: S.pendingGroupTitle,
+                            body: S.pendingGroupBody,
+                            actionLabel: S.openSync,
+                            onAction: () => context.go(Routes.sync),
+                          )
+                        : const Text(
+                            S.groupNotFound,
+                            textAlign: TextAlign.center,
+                          ),
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
       );

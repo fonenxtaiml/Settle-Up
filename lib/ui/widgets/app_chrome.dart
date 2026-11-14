@@ -116,6 +116,14 @@ class AppNavigationBar extends StatelessWidget {
 
 /// App bar title with an optional subline (render 2, 4): "Goa trip" over
 /// "6 people, ₹38,400 spent".
+///
+/// Both lines take one line. Whatever the app bar cuts (a 60-character
+/// group name, a 40-character name, a group name in the subline, any of
+/// them at a large text scale) reads in full on the same screen: the
+/// screen wraps its [Scaffold] in a [TitleCutScope] and puts a
+/// [CutTitleHeading] at the top of its body. In debug builds an
+/// [AppBarTitle] that cuts a line with no [CutTitleHeading] on its screen
+/// reports an error, so a screen cannot miss it (VISUAL-R34-02).
 class AppBarTitle extends StatelessWidget {
   const AppBarTitle(this.title, {super.key, this.subtitle, this.shortSubtitle});
 
@@ -140,8 +148,10 @@ class AppBarTitle extends StatelessWidget {
               final style = theme.textTheme.titleLarge;
               TitleCutScope._report(
                 context,
+                _Line.title,
                 title,
-                constraints.hasBoundedWidth &&
+                cut:
+                    constraints.hasBoundedWidth &&
                     !textFitsWords(context, title, style, constraints.maxWidth),
               );
               return Text(
@@ -158,15 +168,24 @@ class AppBarTitle extends StatelessWidget {
                 final style = theme.textTheme.bodySmall!.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                 );
-                final short = shortSubtitle;
-                if (short != null &&
-                    constraints.hasBoundedWidth &&
-                    !textFitsWords(
+                final fits =
+                    !constraints.hasBoundedWidth ||
+                    textFitsWords(
                       context,
                       subtitle!,
                       style,
                       constraints.maxWidth,
-                    )) {
+                    );
+                final short = shortSubtitle;
+                // The short form replaces a subline that does not fit: it
+                // is the part worth keeping, and never cut.
+                TitleCutScope._report(
+                  context,
+                  _Line.subtitle,
+                  subtitle!,
+                  cut: !fits && short == null,
+                );
+                if (short != null && !fits) {
                   // The short form is the part worth keeping: when even it
                   // does not fit one line ("KD999,999.999 spent" at 320 dp,
                   // 1.3x) it scales down rather than lose its end.
@@ -193,30 +212,73 @@ class AppBarTitle extends StatelessWidget {
   }
 }
 
+/// The two lines of an [AppBarTitle].
+enum _Line { title, subtitle }
+
+/// What the app bar cuts: its title and its subline, each null while it
+/// fits.
+typedef _Cut = ({String? title, String? subtitle});
+
 /// Lets a screen show its [AppBarTitle] in full when the one-line app bar
 /// cuts it: wrap the screen's [Scaffold] in a [TitleCutScope] and put a
 /// [CutTitleHeading] at the top of its body. The heading appears only
-/// while the app bar cuts the title (a 60-character group name, a 40-
-/// character name, a large text scale), so a title that fits is not shown
-/// twice. Rows cap a name to one line because it reads in full one tap
-/// away; this is that place (VISUAL-R34-02).
+/// while the app bar cuts a line (a 60-character group name, a 40-
+/// character name, a group name in the subline, a large text scale), so a
+/// title that fits is not shown twice. Rows cap a name to one line because
+/// it reads in full one tap away; this is that place (VISUAL-R34-02).
 class TitleCutScope extends StatefulWidget {
   const TitleCutScope({super.key, required this.child});
 
   final Widget child;
 
-  /// Records whether the app bar under [context] cut [title].
-  static void _report(BuildContext context, String title, bool cut) {
+  /// Records whether the app bar under [context] cut [line], [text].
+  static void _report(
+    BuildContext context,
+    _Line line,
+    String text, {
+    required bool cut,
+  }) {
     final state = context
         .getInheritedWidgetOfExactType<_TitleCutInherited>()
         ?.state;
-    if (state == null) return;
-    final value = cut ? title : null;
-    if (state._cut.value == value) return;
+    if (state == null) {
+      assert(!cut || _missingHeading(text, 'no TitleCutScope'));
+      return;
+    }
+    assert(!cut || state._verifyHeading(text));
+    final value = cut ? text : null;
+    final now = state._cut.value;
+    final next = switch (line) {
+      _Line.title => (title: value, subtitle: now.subtitle),
+      _Line.subtitle => (title: now.title, subtitle: value),
+    };
+    if (next == now) return;
     // Reported from layout: the heading updates after this frame.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (state.mounted) state._cut.value = value;
+      if (!state.mounted) return;
+      final cur = state._cut.value;
+      state._cut.value = switch (line) {
+        _Line.title => (title: value, subtitle: cur.subtitle),
+        _Line.subtitle => (title: cur.title, subtitle: value),
+      };
     });
+  }
+
+  /// Reports, in debug builds, an app bar line that is cut with nowhere on
+  /// its screen to read it in full.
+  static bool _missingHeading(String text, String? why) {
+    FlutterError.reportError(
+      FlutterErrorDetails(
+        exception: FlutterError(
+          'The app bar cuts "$text" and its screen has no CutTitleHeading'
+          '${why == null ? '' : ' ($why)'}.\n'
+          'Wrap the screen in a TitleCutScope and put a CutTitleHeading at '
+          'the top of its body, so the line reads in full (VISUAL-R34-02).',
+        ),
+        library: 'settle_up ui',
+      ),
+    );
+    return true;
   }
 
   @override
@@ -224,8 +286,30 @@ class TitleCutScope extends StatefulWidget {
 }
 
 class _TitleCutScopeState extends State<TitleCutScope> {
-  /// The title the app bar cuts, or null while it fits.
-  final _cut = ValueNotifier<String?>(null);
+  /// The lines the app bar cuts.
+  final _cut = ValueNotifier<_Cut>((title: null, subtitle: null));
+
+  /// The [CutTitleHeading]s built under this scope. A heading in a lazy
+  /// list that scrolled away still counts.
+  int _headings = 0;
+
+  /// Lines already reported as cut with no heading (debug builds).
+  final _reported = <String>{};
+  bool _verifying = false;
+
+  /// Checks after this frame, once the body is built, that the screen has
+  /// a [CutTitleHeading] for the cut [text]. Debug builds only.
+  bool _verifyHeading(String text) {
+    if (_verifying || _reported.contains(text)) return true;
+    _verifying = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _verifying = false;
+      if (mounted && _headings == 0 && _reported.add(text)) {
+        TitleCutScope._missingHeading(text, null);
+      }
+    });
+    return true;
+  }
 
   @override
   void dispose() {
@@ -247,10 +331,12 @@ class _TitleCutInherited extends InheritedWidget {
   bool updateShouldNotify(_TitleCutInherited old) => old.state != state;
 }
 
-/// The screen's title in full, as a heading at the top of the body, while
-/// the app bar cuts it ([TitleCutScope]). It wraps and is never cut; a
-/// word wider than the line sets it smaller rather than break the word.
-class CutTitleHeading extends StatelessWidget {
+/// What the app bar cuts, in full, as a heading at the top of the body
+/// ([TitleCutScope]): the title in the title style, and a cut subline
+/// (the group of an entry, the group being settled) under it. Each wraps
+/// and is never cut; a word wider than the line sets it smaller rather
+/// than break the word.
+class CutTitleHeading extends StatefulWidget {
   const CutTitleHeading({
     super.key,
     this.padding = const EdgeInsets.fromLTRB(
@@ -264,25 +350,55 @@ class CutTitleHeading extends StatelessWidget {
   final EdgeInsetsGeometry padding;
 
   @override
-  Widget build(BuildContext context) {
-    final state = context
+  State<CutTitleHeading> createState() => _CutTitleHeadingState();
+}
+
+class _CutTitleHeadingState extends State<CutTitleHeading> {
+  _TitleCutScopeState? _scope;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = context
         .getInheritedWidgetOfExactType<_TitleCutInherited>()
         ?.state;
+    if (scope == _scope) return;
+    // Counted for good: a heading that scrolls out of a lazy list is
+    // disposed, but the screen still has it.
+    _scope = scope?.._headings += 1;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final state = _scope;
     if (state == null) return const SizedBox.shrink();
-    return ValueListenableBuilder<String?>(
+    final theme = Theme.of(context);
+    return ValueListenableBuilder<_Cut>(
       valueListenable: state._cut,
-      builder: (context, title, _) => title == null
-          ? const SizedBox.shrink()
-          : Padding(
-              padding: padding,
-              child: Semantics(
-                header: true,
-                child: FitWordsText(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge,
+      builder: (context, cut, _) {
+        final (:title, :subtitle) = cut;
+        if (title == null && subtitle == null) return const SizedBox.shrink();
+        return Padding(
+          padding: widget.padding,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (title != null)
+                Semantics(
+                  header: true,
+                  child: FitWordsText(title, style: theme.textTheme.titleLarge),
                 ),
-              ),
-            ),
+              if (subtitle != null)
+                FitWordsText(
+                  subtitle,
+                  style: theme.textTheme.bodyLarge!.copyWith(
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -295,6 +411,7 @@ class DropdownChip extends StatelessWidget {
     required this.label,
     required this.onTap,
     this.semanticLabel,
+    this.wrap = false,
   });
 
   final String label;
@@ -302,6 +419,18 @@ class DropdownChip extends StatelessWidget {
 
   /// Defaults to [label]; for example "Group: Goa trip. Change group".
   final String? semanticLabel;
+
+  /// Whether the label wraps in full instead of taking one line: outside
+  /// an app bar, where the chip has a line of its own (VISUAL-R34-02).
+  final bool wrap;
+
+  /// The chip's width around its label: the side padding, the gap and
+  /// the chevron.
+  static const double chrome = 11 + 8 + 6 + 18;
+
+  /// The label's text style.
+  static TextStyle labelStyle(BuildContext context) =>
+      Theme.of(context).textTheme.titleSmall!.copyWith(fontSize: 14);
 
   @override
   Widget build(BuildContext context) {
@@ -332,14 +461,14 @@ class DropdownChip extends StatelessWidget {
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Flexible(
-                      child: Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.titleSmall!.copyWith(
-                          fontSize: 14,
-                        ),
-                      ),
+                      child: wrap
+                          ? FitWordsText(label, style: labelStyle(context))
+                          : Text(
+                              label,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: labelStyle(context),
+                            ),
                     ),
                     const SizedBox(width: 6),
                     Icon(
