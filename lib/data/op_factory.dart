@@ -35,8 +35,9 @@ final class OpFactory {
   /// the newest stamp this phone holds within the lead ([newestStamp]):
   /// later ops are still stamped after everything within it, and a local
   /// edit still beats the entity's newest op ([lastHlcOf], see
-  /// [HlcClock.tickAfter]; one of this phone's own stamps beyond the
-  /// adopt window is followed, so the edit waits with the entity).
+  /// [HlcClock.tickAfter]; a stored stamp beyond the adopt window, this
+  /// phone's own or a peer's, is followed, so the edit waits with the
+  /// entity).
   static const int maxLeadMs = 5 * 24 * 60 * 60 * 1000;
 
   final DeviceId deviceId;
@@ -75,12 +76,15 @@ final class OpFactory {
   /// for a create), [pending] being the ops of the batch built so far.
   Hlc _stamp(Hlc? floor, List<Operation> pending) {
     final now = _now();
-    if (floor != null &&
-        floor.deviceId == deviceId &&
-        floor.millis > now + HlcClock.maxAdoptDriftMs) {
-      // This phone wrote the entity's newest op while its clock was far
-      // ahead: stamp after it (and after every stamp held, so no two own
-      // ops share one) rather than let the edit lose to it.
+    if (floor != null && floor.millis > now + HlcClock.maxAdoptDriftMs) {
+      // The entity's newest op is stamped further ahead of the wall clock
+      // than [HlcClock.tickAfter] adopts. Every stored op was within
+      // `Ledger.maxRemoteAheadMs` of this phone's clock when it was written
+      // or received, so the wall clock was set back since: this phone
+      // wrote it while its date ran ahead, or a peer edited on top of such
+      // a stamp, adopting it (MONEY-R39-01). Whoever wrote it, stamp after
+      // it (and after every stamp held, so no two own ops share one)
+      // rather than let the edit lose to it.
       final top = _newest([
         _clock.last,
         newestStamp?.call(null),
