@@ -17,6 +17,7 @@ import '../../../theme/app_theme.dart';
 import '../../../theme/tokens.dart';
 import '../../format/amount_input.dart';
 import '../../format/dates.dart';
+import '../../format/face_value.dart';
 import '../../format/money_format.dart';
 import '../../format/unit_input_formatter.dart';
 import '../../providers.dart';
@@ -215,13 +216,19 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
   }) {
     _groupId = g.groupId;
     _direct = null;
-    _currency = g.group!.currency;
+    // What was typed keeps its face value in the group's currency
+    // (QA UIFLOW-R39-02).
+    _setCurrency(g.group!.currency);
     _me = myMemberIn(g, me);
     _names = memberNames(g, me);
     _fullNames = memberFullNames(g);
     final members = [for (final m in g.activeMembers) m.id];
     _payer = _me ?? (members.isEmpty ? null : members.first);
     _multiPaid = null;
+    // A new group starts a new split: the previous group's people are not
+    // in it (QA UIFLOW-R39-01). An edited expense loads its own split
+    // after this and orders it again.
+    _split = SplitDraft(members: const []);
     _order = _orderFor(g, me);
     _split = SplitDraft(members: _order, method: SplitMethod.equal);
     if (!keepSplit) {
@@ -248,8 +255,10 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
 
     final out = [...active];
     // Members of an edited expense who were removed later stay listed.
+    // Only this group's own members: an id from another group's draft is
+    // never listed (QA UIFLOW-R39-01).
     for (final m in _split.included) {
-      if (!out.contains(m)) out.add(m);
+      if (g.members.containsKey(m) && !out.contains(m)) out.add(m);
     }
     // Ties keep the order people joined the group.
     DateTime joined(MemberId m) =>
@@ -328,6 +337,8 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     final multi = _multiPaid;
     if (multi != null) {
       final payers = multi.entries.where((e) => e.value > 0).toList();
+      // Amounts cleared by a currency change: still several payers.
+      if (payers.isEmpty) return S.multiplePeople;
       if (payers.length == 1) return _names[payers.first.key] ?? S.someone;
       return S.peoplePaid(payers.length);
     }
@@ -378,10 +389,36 @@ class _ExpenseEditScreenState extends ConsumerState<ExpenseEditScreen> {
     if (code == null || !mounted) return;
     setState(() {
       _touch();
-      _currency = code;
-      _amountKey++;
-      _amount = null;
+      _setCurrency(code);
     });
+  }
+
+  /// Moves the form to [code]. Every amount it holds in minor units (the
+  /// total and what each payer paid) keeps its face value: ₹300 becomes
+  /// ¥300 or KD 300, never ¥30,000 or KD 30. A value the new currency cannot
+  /// hold exactly (₹300.50 in yen) is cleared, so the field holds no
+  /// amount rather than a rescaled one. The split's typed values are text
+  /// and are read again in the new currency. One path for the currency
+  /// picker and the group picker (QA UIFLOW-R39-02).
+  void _setCurrency(String code) {
+    if (code == _currency) return;
+    final from = Currencies.of(_currency);
+    final to = Currencies.of(code);
+    _currency = code;
+    _amountKey++;
+    final amount = _amount;
+    _amount = amount == null ? null : sameFaceValue(amount, from, to);
+    final multi = _multiPaid;
+    if (multi != null) {
+      final moved = {
+        for (final e in multi.entries) e.key: sameFaceValue(e.value, from, to),
+      };
+      // The payers stay; amounts that cannot move are asked for again.
+      _multiPaid = {
+        for (final e in moved.entries)
+          e.key: moved.values.contains(null) ? 0 : e.value!,
+      };
+    }
   }
 
   Future<void> _pickCategory() async {

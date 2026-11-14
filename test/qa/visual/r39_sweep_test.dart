@@ -367,7 +367,6 @@ void main() {
   testWidgets(
     'QA VISUAL-R39-01: Settle up offers a payment above Money.maxMinor '
     'that it cannot record',
-    skip: true, // QA VISUAL-R39-01: Settle up offers a payment above Money.maxMinor that it cannot record
     (t) async {
       late VisualPhone p;
       late String gid;

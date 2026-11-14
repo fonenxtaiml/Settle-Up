@@ -8,6 +8,7 @@ import '../../../core/balances.dart';
 import '../../../core/ids.dart';
 import '../../../core/ledger_state.dart';
 import '../../../core/models.dart';
+import '../../../core/money.dart';
 import '../../../data/repositories.dart';
 import '../../../theme/tokens.dart';
 import '../../format/dates.dart';
@@ -261,7 +262,18 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
     final suggested = _transfer(transfers, from, to, currency);
     final frozen = _frozen;
     final owed = frozen?.owed ?? suggested?.amount ?? 0;
-    final amount = _amount ?? (owed > 0 ? owed : 0);
+    // One payment holds at most Money.maxMinor, as the ledger records it:
+    // a larger balance is offered up to that, and the rest is named below
+    // (VISUAL-R39-01). Never a payment the ledger would refuse.
+    final offer = owed > Money.maxMinor ? Money.maxMinor : owed;
+    final amount = _amount ?? (offer > 0 ? offer : 0);
+    final left = owed - amount;
+    final capText = amount == Money.maxMinor && left > 0
+        ? S.paymentCap(
+            MoneyFormat.format(Money.maxMinor, currency),
+            MoneyFormat.format(left, currency),
+          )
+        : null;
     final method =
         frozen?.method ??
         _method ??
@@ -388,7 +400,11 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
           child: Padding(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
             child: FilledButton(
-              onPressed: amount > 0 && !_saving && !_recorded
+              onPressed:
+                  amount > 0 &&
+                      amount <= Money.maxMinor &&
+                      !_saving &&
+                      !_recorded
                   ? () => _record(
                       g,
                       currency,
@@ -434,18 +450,20 @@ class _SettleScreenState extends ConsumerState<SettleScreen> {
                   recorded: _recorded,
                   onRecordedAnimationEnd: _close,
                   action: TextLink(
-                    owed > 0 && amount == owed ? S.payPartOfIt : S.changeAmount,
-                    onPressed: locked ? null : () => _payPart(currency, owed),
+                    owed > 0 && amount == offer
+                        ? S.payPartOfIt
+                        : S.changeAmount,
+                    onPressed: locked ? null : () => _payPart(currency, offer),
                   ),
                 ),
               ),
-              if (overText != null)
+              for (final text in [?overText, ?capText])
                 textGutter(
                   Padding(
                     padding: const EdgeInsets.only(top: Space.sm),
                     // An amount in a sentence is never split (VISUAL-R34-01).
                     child: FitWordsText(
-                      overText,
+                      text,
                       textAlign: TextAlign.center,
                       style: theme.textTheme.bodySmall!.copyWith(color: ink2),
                     ),

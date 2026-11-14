@@ -143,7 +143,6 @@ void main() {
     'split lists only the new group\'s people and Save adds the expense',
     // QA UIFLOW-R39-01: Changing the group on Add expense keeps the old
     // group's people in the split, so Save is refused
-    skip: true,
     (tester) async {
       qaPhone(tester);
       final w = await RealWorld.create(name: 'Arjun');
@@ -189,7 +188,6 @@ void main() {
       'change to a $code group: the amount is not rescaled to $wrong',
       // QA UIFLOW-R39-02: Changing the group on Add expense to one in a
       // currency with other decimals rescales the typed amount
-      skip: true,
       (tester) async {
         qaPhone(tester);
         final w = await RealWorld.create(name: 'Arjun');
