@@ -147,7 +147,10 @@ void main() {
         expect(unshared(a, s.g), 3);
 
         final ab = await syncByLink(b, a);
-        expect(ab.receivedOps, 3);
+        // X came over the wire but is held back: got counts what B stored
+        // (SYNC-R39-01).
+        expect(ab.receivedOps, 2);
+        expect(ab.receivedByGroup[s.g], 2);
         expect(b.state.expense(x), isNull, reason: 'X is held back');
         expect(b.state.expense(y), isNotNull);
         expect(b.state.expense(e0)!.description, 'Cab ride');
@@ -167,7 +170,8 @@ void main() {
         final shownOnB = b.canonical;
         for (var i = 0; i < 5; i++) {
           final again = await syncByLink(b, a);
-          expect(again.receivedOps, 3);
+          // Re-sent behind the gap, stored nothing: got 0 (SYNC-R39-01).
+          expect(again.receivedOps, 0);
           expect(b.opCount(s.g), total - 1);
           expect(b.opsOf(s.g).map((o) => o.id).toSet(), hasLength(total - 1));
           expect(b.canonical, shownOnB);
@@ -384,9 +388,6 @@ void main() {
     test(
       'SYNC-R39-01: a repeat sync across a held-back op says "got 2 changes" '
       'while it stores nothing; the same screen lists the group with 0',
-      skip:
-          'QA SYNC-R39-01: Sync summary and history count re-sent duplicates '
-          'as changes got',
       () async {
         final a = await phone('a', "Alex's Pixel");
         final b = await phone('b', "Priya's Pixel");

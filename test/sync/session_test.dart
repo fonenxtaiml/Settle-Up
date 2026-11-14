@@ -264,6 +264,11 @@ void main() {
     expect(rp.receivedByGroup, {s.g: 1});
     // Ops past the gap are offered again and ignored (SPEC 7.4).
     expect(priya.duplicatesIgnored, 2);
+    // "Got" is what this sync stored, not the re-sent duplicates that came
+    // over the wire with it (QA SYNC-R39-01).
+    expect(rp.receivedOps, 1);
+    expect(rp.summary.receivedOps, 1);
+    expect(rp.toRecord('r').receivedOps, 1);
     expect(priya.canonical, alex.canonical);
   });
 

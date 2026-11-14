@@ -117,7 +117,10 @@ final class SessionResult {
   /// Ops the peer acknowledged (committed on its side).
   final int sentOps;
 
-  /// Ops received in batches we committed.
+  /// Ops this session newly stored: the sum of [receivedByGroup]. An op
+  /// that came again (already held, re-sent behind a held-back op) is not
+  /// counted, so "got N changes" is what this sync changed (QA
+  /// SYNC-R39-01).
   final int receivedOps;
 
   /// Newly stored ops per group.
@@ -287,7 +290,12 @@ final class SyncSession {
   /// The peer sent BYE while we were LIVE with batches still un-ACKed.
   bool _peerLeftLive = false;
   int _sentOps = 0;
+
+  /// Ops that came over the wire (progress against the peer's totals).
   int _receivedOps = 0;
+
+  /// Ops this session newly stored (what the result reports as got).
+  int _storedOps = 0;
   int _bytesSent = 0;
   int _bytesReceived = 0;
   SyncPhase _phase = SyncPhase.handshaking;
@@ -685,6 +693,7 @@ final class SyncSession {
         ? const <Operation>[]
         : await store.applyRemote(g, msg.ops);
     _receivedOps += msg.ops.length;
+    _storedOps += stored.length;
     _receivedNew[g] = (_receivedNew[g] ?? 0) + stored.length;
     final vv = await store.versionVector(g);
     await _sendSealed(AckMessage(groupId: g, batch: msg.batch, vv: vv));
@@ -941,7 +950,7 @@ final class SyncSession {
         startedAt: _startedAt,
         endedAt: _now(),
         sentOps: _sentOps,
-        receivedOps: _receivedOps,
+        receivedOps: _storedOps,
         receivedByGroup: Map.unmodifiable(_receivedNew),
         groupIds: sharedGroups,
         verificationCode: verificationCode,
@@ -979,7 +988,7 @@ final class SyncSession {
     await _teardown();
     final outcome = failure == SyncFailure.cancelled
         ? SyncOutcome.cancelled
-        : (_sentOps > 0 || _receivedOps > 0
+        : (_sentOps > 0 || _storedOps > 0
             ? SyncOutcome.partial
             : SyncOutcome.failed);
     _result.complete(_snapshot(outcome, failure: failure, message: message));

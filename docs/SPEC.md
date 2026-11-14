@@ -2367,7 +2367,7 @@ final class SyncSummary {
   final DateTime startedAt;
   final DateTime endedAt;
   final int sentOps;
-  final int receivedOps;
+  final int receivedOps; // newly stored: the sum of receivedByGroup
   final Map<GroupId, int> receivedByGroup;
   final List<GroupId> groupIds;
 }
