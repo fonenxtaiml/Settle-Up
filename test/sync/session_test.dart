@@ -89,6 +89,36 @@ void main() {
     expect(results[1].peerName, "Alex's Pixel");
   });
 
+  test('SECURITY-R39-01: a HELLO name past a phone name is shown and '
+      'recorded cut to 40 characters', () async {
+    final s = await alex.seedGroup(expenses: 1);
+    await priya.join(alex, s.g);
+    // A phone on another version, or a forged one, sends the 100 code
+    // units HELLO allows.
+    priya.store.deviceNameOverride = List.filled(20, 'Pixel').join(' ');
+    final (ci, cr) = await channelPair();
+    final si = SyncSession(
+      channel: ci,
+      store: alex.store,
+      role: SessionRole.initiator,
+      timings: fastTimings,
+      peerNameHint: "Priya's Pixel",
+    );
+    final sr = SyncSession(
+      channel: cr,
+      store: priya.store,
+      role: SessionRole.responder,
+      timings: fastTimings,
+    );
+    final results = await Future.wait([si.run(), sr.run()]);
+    expect(results[0].outcome, SyncOutcome.completed);
+    expect(
+      results[0].peerName,
+      List.filled(7, 'Pixel').join(' ').substring(0, 40).trim(),
+    );
+    expect(results[0].toRecord('r').peerName.length, lessThanOrEqualTo(40));
+  });
+
   test('concurrent edits on both sides are equal after one session', () async {
     final s = await alex.seedGroup(expenses: 2);
     await priya.join(alex, s.g);
@@ -264,6 +294,11 @@ void main() {
     expect(rp.receivedByGroup, {s.g: 1});
     // Ops past the gap are offered again and ignored (SPEC 7.4).
     expect(priya.duplicatesIgnored, 2);
+    // "Got" is what this sync stored, not the re-sent duplicates that came
+    // over the wire with it (QA SYNC-R39-01).
+    expect(rp.receivedOps, 1);
+    expect(rp.summary.receivedOps, 1);
+    expect(rp.toRecord('r').receivedOps, 1);
     expect(priya.canonical, alex.canonical);
   });
 

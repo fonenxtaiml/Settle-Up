@@ -41,10 +41,6 @@ String _connectLink(String name) =>
     'settleup://sync?v=1&h=192.168.43.1:47321&d=dev-hostile'
     '&n=${Uri.encodeQueryComponent(name)}';
 
-const String _r39_01 =
-    'QA SECURITY-R39-01: A connect link from any web page records a phone '
-    'name of up to 960 code units in Sync history, which now wraps it in full';
-
 void main() {
   group('clock lead and notice against hostile peers (DATA-R29-01..R32-01)',
       () {
@@ -128,7 +124,6 @@ void main() {
           reason: 'recorded ${r.peerName.length} code units',
         );
       },
-      skip: _r39_01,
     );
   });
 
@@ -177,6 +172,5 @@ void main() {
       // A 40-character name wraps to two or three lines at this width.
       expect(lines, lessThanOrEqualTo(3), reason: '$lines lines');
     },
-    skip: true, // QA SECURITY-R39-01, see _r39_01.
   );
 }
