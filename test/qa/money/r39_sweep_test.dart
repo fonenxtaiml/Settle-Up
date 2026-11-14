@@ -188,10 +188,6 @@ void main() {
     test(
       'an edit is lost after a peer edited on top of this phone\'s stamp '
       'from a week ahead',
-      skip:
-          'QA MONEY-R39-01: An edit saved after this phone\'s date ran more '
-          'than 7 days ahead is silently lost when a peer edited the expense '
-          'on top of it',
       () async {
         final alex = await QaPhone.create(name: 'Alex', prefix: 'aaaaaaaa');
         final sam = await QaPhone.create(name: 'Sam', prefix: 'bbbbbbbb');
